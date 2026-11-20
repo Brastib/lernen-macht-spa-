@@ -1,5 +1,6 @@
 // Hauptteil: Bibliothek mit Fächern, Büchern und Seiten.
 import * as db from './db.js';
+const APP_VERSION = '14';   // gleich wie VERSION in sw.js
 import { openEditor } from './editor.js';
 import { renderPage, PAPERS } from './paper.js';
 import { detectPage, defaultCorners } from './scanner.js';
@@ -145,7 +146,7 @@ async function renderLibrary() {
         h('b', { text: 'Code' }),
         h('small', { text: nCode ? `${plural(nCode, 'Projekt', 'Projekte')} · Web, Python, Lua` : 'Kleine Spiele und Programme bauen: Web, Python, Lua' }))));
 
-  // Eingang: Seiten, die noch keinem Buch zugeordnet sind
+  // Eingang: Seiten, die noch keinem Buch zugeordnet sind (Versionshinweis kommt ganz ans Ende)
   if (inbox.length) {
     const strip = h('div.strip');
     for (const p of inbox.slice(0, 8)) {
@@ -161,6 +162,7 @@ async function renderLibrary() {
           h('small', { text: 'Öffnen, auswählen und in ein Buch verschieben' })),
         strip));
   }
+  view.append(h('p.appversion', { text: 'Version ' + APP_VERSION }));
 }
 
 // "Heute": offene Hausaufgaben und fällige Lernkarten über alle Fächer
@@ -729,7 +731,23 @@ setOnSaved(async (bookId) => {
 // ---------- Start ----------
 // Offline-Modus nur in der eigenen Web-App-Version (im Claude-Artefakt nicht möglich)
 if ('serviceWorker' in navigator && !document.documentElement.dataset.artifact) {
-  try { navigator.serviceWorker.register('sw.js').catch((e) => console.warn('Service Worker:', e)); } catch (e) { /* egal */ }
+  try {
+    const hadController = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then((reg) => {
+      // Beim Öffnen und beim Zurückkehren in die App nach einer neuen Version suchen
+      document.addEventListener('visibilitychange', () => { if (!document.hidden) reg.update().catch(() => {}); });
+      reg.update().catch(() => {});
+    }).catch((e) => console.warn('Service Worker:', e));
+    // Neue Version ist aktiv: einmal neu laden, damit alle Dateien neu sind (nicht mitten im Schreiben)
+    let reloaded = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!hadController || reloaded) return;
+      reloaded = true;
+      const busyNow = document.querySelector('.dlgscrim') || !$('editor')?.hidden || document.body.classList.contains('coding');
+      if (busyNow) toast('Neue Version da. Beim nächsten Öffnen ist sie aktiv.', 4000);
+      else location.reload();
+    });
+  } catch (e) { /* egal */ }
 }
 db.askPersistent();
 render();

@@ -46,7 +46,7 @@ export async function editHomework(item, { subjects, after }) {
       h('option', { value: 'eve', text: 'Am Tag vorher um 17 Uhr' }),
       h('option', { value: 'morning', text: 'Am Abgabetag um 7 Uhr' }));
     rem.value = oldRem ? (oldRem.when || 'eve') : (isNew ? 'eve' : '');
-    body.append(h('label.fieldlabel', { for: 'hwDue', text: 'Bis wann' }), date, quick,
+    body.append(h('label.fieldlabel', { for: 'hwDue', text: 'Bis wann' }), h('div.datewrap', null, date), quick,
       h('label.fieldlabel', { for: 'hwRem', text: 'Erinnern' }), rem,
       h('div.dlgactions', null,
         isNew ? null : h('button.btn.danger', { text: 'Löschen', on: { click: () => close('delete') } }),

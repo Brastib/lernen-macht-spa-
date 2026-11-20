@@ -628,3 +628,12 @@ input.field[type="date"]::-webkit-calendar-picker-indicator { opacity: .6; }
 .checkrow small { color: var(--muted); font-size: 13px; }
 input.field[type="time"] { min-height: 48px; line-height: 48px; text-align: left; padding: 0 14px; }
 input.field[type="time"]::-webkit-date-and-time-value { text-align: left; margin: 0; }
+
+/* Safari auf dem iPad: Datum/Uhrzeit in einer Hülle, damit nichts über den Dialog hinausragt */
+.datewrap { display: block; width: 100%; max-width: 100%; min-width: 0; overflow: hidden; border-radius: 12px; }
+.datewrap > input.field { width: 100%; min-width: 0; max-width: 100%; text-align: left; }
+.datewrap > input.field:focus { outline-offset: -2px; }
+.datewrap > input.field::-webkit-date-and-time-value { text-align: left; }
+.fieldgrid > div { min-width: 0; }
+.dlg { max-width: calc(100vw - 32px); }
+.appversion { margin: 36px 0 8px; text-align: center; font-size: 12px; color: var(--muted); }

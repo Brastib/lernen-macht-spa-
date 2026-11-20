@@ -189,8 +189,8 @@ export async function editReminder(r, { subjects = [], after, saveFile } = {}) {
     body.append(
       h('label.fieldlabel', { for: 'remText', text: 'Woran erinnern?' }), text,
       h('div.fieldgrid', null,
-        h('div', null, h('label.fieldlabel', { for: 'remDate', text: 'Tag' }), date),
-        h('div', null, h('label.fieldlabel', { for: 'remTime', text: 'Uhrzeit' }), time)),
+        h('div', null, h('label.fieldlabel', { for: 'remDate', text: 'Tag' }), h('div.datewrap', null, date)),
+        h('div', null, h('label.fieldlabel', { for: 'remTime', text: 'Uhrzeit' }), h('div.datewrap', null, time))),
       quick,
       h('div.fieldgrid', null,
         h('div', null, h('label.fieldlabel', { for: 'remRep', text: 'Wiederholen' }), rep),
