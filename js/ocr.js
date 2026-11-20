@@ -20,6 +20,47 @@ function loadLib() {
 }
 const abs = (p) => new URL(p, document.baseURI).href;
 
+async function makeWorker() {
+  const T = await loadLib();
+  return T.createWorker(['deu', 'eng'], 1, {
+    workerPath: abs('vendor/tesseract/worker.min.js'),
+    corePath: abs('vendor/tesseract/'),
+    langPath: abs('vendor/tesseract/lang'),
+    workerBlobURL: false,
+    gzip: true,
+  });
+}
+
+// Wörter mit Position (in Seiten-Einheiten, Seite ist PAGE_W breit). Für „Lernkarten aus Markiertem“.
+// Speichert nebenbei den erkannten Text der Seite, falls er noch fehlt.
+export async function ocrWords(p, pageW, onProgress = () => {}) {
+  const blob = await db.getImage(p.id);
+  if (!blob) return [];
+  onProgress('Texterkennung wird geladen …');
+  const worker = await makeWorker();
+  try {
+    onProgress('Text auf der Seite wird erkannt …');
+    const { data } = await worker.recognize(blob, {}, { text: true, blocks: true });
+    const k = pageW / p.width;
+    const words = [];
+    let li = 0;
+    for (const b of data.blocks || []) for (const par of b.paragraphs || []) for (const l of par.lines || []) {
+      li++;
+      for (const w of l.words || []) {
+        const t = (w.text || '').trim();
+        if (!t) continue;
+        const bb = w.bbox;
+        words.push({ text: t, conf: w.confidence, line: li, x0: bb.x0 * k, y0: bb.y0 * k, x1: bb.x1 * k, y1: bb.y1 * k });
+      }
+    }
+    if (p.ocr == null) {
+      const text = (data.text || '').replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+      await db.updatePage(p.id, { ocr: text, ocrAt: Date.now() }); p.ocr = text;
+    }
+    return words;
+  } finally { await worker.terminate(); }
+}
+
 // Seiten ohne erkannten Text, die ein Bild haben (Scans, PDF-Seiten)
 export const needsOcr = (p) => p.kind !== 'blank' && p.ocr == null;
 
@@ -28,14 +69,7 @@ export async function ocrPages(pages, onProgress = () => {}, shouldStop = () => 
   const todo = pages.filter(needsOcr);
   if (!todo.length) return 0;
   onProgress('Texterkennung wird geladen …');
-  const T = await loadLib();
-  const worker = await T.createWorker(['deu', 'eng'], 1, {
-    workerPath: abs('vendor/tesseract/worker.min.js'),
-    corePath: abs('vendor/tesseract/'),
-    langPath: abs('vendor/tesseract/lang'),
-    workerBlobURL: false,
-    gzip: true,
-  });
+  const worker = await makeWorker();
   let done = 0;
   try {
     for (const p of todo) {

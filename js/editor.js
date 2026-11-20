@@ -103,7 +103,13 @@ function updateToolbar() {
 }
 
 $('ed_pen').addEventListener('click', () => setTool('pen'));
-$('ed_marker').addEventListener('click', () => setTool('marker'));
+$('ed_marker').addEventListener('click', () => {
+  setTool('marker');
+  // Einmaliger Tipp: Markiertes auf Scans wird zu Lernkarten
+  try {
+    if (page && page.kind !== 'blank' && !localStorage.getItem('tipMarkCards')) { localStorage.setItem('tipMarkCards', '1'); toast('Tipp: Was du auf Scans markierst, wird unter „Werkzeuge“ → „Lernkarten aus Markiertem“ zu Karteikarten.', 5500); }
+  } catch (err) { /* egal */ }
+});
 $('ed_eraser').addEventListener('click', () => setTool('eraser'));
 $('ed_lasso').addEventListener('click', () => setTool('lasso'));
 $('ed_text').addEventListener('click', () => setTool('text'));
@@ -801,6 +807,7 @@ $('edMath').addEventListener('click', (e) => {
     { label: 'Funktionsgraph …', icon: 'graph', onClick: graphFlow },
     { label: 'Funktionsplotter …', icon: 'graph', onClick: plotterFlow },
     { label: 'Taschenrechner', icon: 'calc', onClick: () => import('./kit.js').then((m) => m.calcSheet()) },
+    ...(page && page.kind !== 'blank' ? [{ label: 'Lernkarten aus Markiertem', icon: 'cards', onClick: async () => { finishStroke(); commitText(); await flushSave(); const m = await import('./markcards.js'); m.cardsFromMarks({ page, strokes, pageW: PAGE_W }); } }] : []),
     'sep',
     ...Object.entries(TOOL_NAMES).map(([k, label]) => ({ label: (tpl && tpl.type === k ? '✓ ' : '') + label, icon: 'tool-' + k, onClick: () => showTool(k) })),
     'sep',
