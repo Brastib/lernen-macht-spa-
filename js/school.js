@@ -187,7 +187,7 @@ export async function editExam(ex, { subjects, after }) {
       h('div.fieldgrid', null, h('div', null, h('label.fieldlabel', { for: 'exSubj', text: 'Fach' }), subj), h('div', null, h('label.fieldlabel', { for: 'exKind', text: 'Art' }), kind)),
       h('label.fieldlabel', { for: 'exDate', text: 'Wann' }), h('div.datewrap', null, date),
       h('label.fieldlabel', { for: 'exTopic', text: 'Thema' }), topic,
-      h('label.fieldlabel', { for: 'exLearn', text: 'Lernplan' }), learn,
+      h('label.fieldlabel', { for: 'exLearn', text: 'Lernerinnerung' }), learn,
       h('div.dlgactions', null,
         isNew ? null : h('button.btn.danger', { text: 'Löschen', on: { click: () => close('delete') } }),
         h('button.btn', { text: 'Abbrechen', on: { click: () => close(null) } }),
@@ -221,7 +221,8 @@ export async function editExam(ex, { subjects, after }) {
   after && after();
 }
 
-function examRow(ex, s, { subjects, after, onGrade }) {
+function planPct(ex) { const t = ex.plan ? ex.plan.days.flatMap((d) => d.tasks) : []; return t.length ? Math.round(100 * t.filter((x) => x.done).length / t.length) : 0; }
+function examRow(ex, s, { subjects, after, onGrade, onPlan }) {
   const n = daysUntil(ex.date);
   const d = parseDate(ex.date);
   return h('div.examrow' + (n < 0 ? '.past' : n <= 3 ? '.soon' : ''), { style: s ? { '--c': s.color } : {} },
@@ -230,6 +231,8 @@ function examRow(ex, s, { subjects, after, onGrade }) {
       h('b', { text: `${ex.kind}${s ? ' · ' + s.name : ''}` }),
       ex.topic ? h('span', { text: ex.topic }) : null,
       h('small', { text: `${WD[d.getDay()]} ${d.getDate()}.${d.getMonth() + 1}. · ${countdownText(n)}` })),
+    n > 0 && onPlan ? h('button.btn.small.planbtn' + (ex.plan ? '.has' : ''), { style: ex.plan ? { '--p': planPct(ex) + '%' } : {}, on: { click: () => onPlan(ex) } },
+      icon('list'), h('span', { text: ex.plan ? `Lernplan ${planPct(ex)} %` : 'Lernplan' })) : null,
     n <= 0 && onGrade ? h('button.btn.small', { text: ex.gradeId ? 'Note ändern' : 'Note eintragen', on: { click: () => onGrade(ex) } }) : null);
 }
 
@@ -248,6 +251,7 @@ export async function renderExams(ctx) {
   const view = $('view');
   view.textContent = '';
   const onGrade = (ex) => gradeForExam(ex, again);
+  const onPlan = (ex) => ctx.go({ view: 'plan', examId: ex.id });
   if (!exams.length) {
     view.append(h('section.empty', null, h('h2', { text: 'Keine Prüfungen eingetragen' }),
       h('p', { text: 'Trag Klassenarbeiten, Tests und Referate ein. Du siehst dann den Countdown, und die App erinnert dich jeden Tag ans Lernen.' }),
@@ -256,7 +260,7 @@ export async function renderExams(ctx) {
   }
   if (upcoming.length) {
     const l = h('div.examlist');
-    for (const x of upcoming) l.append(examRow(x, sm.get(x.subjectId), { subjects, after: again, onGrade }));
+    for (const x of upcoming) l.append(examRow(x, sm.get(x.subjectId), { subjects, after: again, onGrade, onPlan }));
     view.append(h('section.subsec', null, h('h2.section', { text: 'Kommende' }), l));
   }
   if (past.length) {

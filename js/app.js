@@ -1,6 +1,6 @@
 // Hauptteil: Bibliothek mit Fächern, Büchern und Seiten.
 import * as db from './db.js';
-const APP_VERSION = '22';   // gleich wie VERSION in sw.js
+const APP_VERSION = '23';   // gleich wie VERSION in sw.js
 import { openEditor } from './editor.js';
 import { renderPage, PAPERS } from './paper.js';
 import { detectPage, defaultCorners } from './scanner.js';
@@ -14,6 +14,7 @@ import { backupBanner, backupSheet, backupNow } from './backup.js';
 import { greeting, applyTheme, themeSheet, focusPill, weekCard } from './dash.js';
 import { renderTimetable, renderExams, renderGrades, nowCard, examCard, subjectSchoolBox } from './school.js';
 import { editHomework, hwList, sortHw } from './homework.js';
+import { renderPlan, todayPlan } from './plan.js';
 import { importPdf, exportPdf } from './pdfio.js';
 import { ocrPages, needsOcr, snippet } from './ocr.js';
 import { renderCodeList } from './code.js';
@@ -87,6 +88,7 @@ async function render() {
   if (nav.view === 'kit') return renderKit({ setHeader, btn, iconBtn, go }, nav.tab);
   if (nav.view === 'timetable') return renderTimetable({ setHeader, btn, iconBtn, go });
   if (nav.view === 'exams') return renderExams({ setHeader, btn, iconBtn, go });
+  if (nav.view === 'plan') return renderPlan({ setHeader, btn, iconBtn, go }, nav.examId);
   if (nav.view === 'grades') return renderGrades({ setHeader, btn, iconBtn, go });
   if (nav.view === 'deck') return renderDeck(nav.deck, { setHeader, btn, iconBtn, go, subject: nav.subject, saveFile });
   return renderBook();
@@ -216,6 +218,8 @@ async function todaySection(view, subjects) {
   if (open.length > 8) col1.append(h('p.calm', { text: `… und ${open.length - 8} weitere in den Fächern` }));
   const col2 = h('div.todaycol', null, h('div.colhead', null, h('h2.section', { text: 'Heute lernen' })),
     await playerCard({ onOpen: () => profileSheet(render) }));
+  const tp = await todayPlan({ go, subjects, after: render });
+  if (tp) col2.append(tp);
   if (dueDecks.length) {
     const l = h('div.duelist');
     for (const x of dueDecks) {
@@ -225,7 +229,7 @@ async function todaySection(view, subjects) {
         h('span.duecount', { text: String(x.due) })));
     }
     col2.append(l);
-  } else col2.append(h('p.calm', { text: decks.length ? 'Alle Karten sind gelernt. Morgen geht es weiter.' : 'Lernkarten legst du in einem Fach an.' }));
+  } else if (!tp) col2.append(h('p.calm', { text: decks.length ? 'Alle Karten sind gelernt. Morgen geht es weiter.' : 'Lernkarten legst du in einem Fach an.' }));
   wrap.append(col1, col2);
   view.append(wrap);
 }
