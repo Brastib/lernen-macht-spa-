@@ -10,6 +10,7 @@ import { renderDeck, newDeckFlow, startStudy, dueCount, addCardsFlow } from './c
 import { editHomework, hwList, sortHw } from './homework.js';
 import { importPdf, exportPdf } from './pdfio.js';
 import { ocrPages, needsOcr, snippet } from './ocr.js';
+import { renderCodeList } from './code.js';
 
 // ---------- Vorlagen ----------
 const PALETTE = ['#3b6fd8', '#d0493f', '#2f9e8f', '#6c5bd4', '#3f9b4f', '#c0752a', '#2f8fb3', '#b0577a', '#8a6d3b', '#5f6673'];
@@ -72,6 +73,7 @@ async function render() {
   window.scrollTo(0, 0);
   if (nav.view === 'library') return renderLibrary();
   if (nav.view === 'subject') return renderSubject();
+  if (nav.view === 'code') return renderCodeList({ setHeader, btn, go });
   if (nav.view === 'deck') return renderDeck(nav.deck, { setHeader, btn, iconBtn, go, subject: nav.subject });
   return renderBook();
 }
@@ -120,6 +122,15 @@ async function renderLibrary() {
     grid.append(h('button.subject.add', { on: { click: () => addSubjectFlow() } }, icon('plus'), h('span.sname', { text: 'Fach hinzufügen' })));
     view.append(h('h2.section', { text: 'Fächer' }), grid);
   }
+
+  // Programmieren
+  const nCode = (await db.listCode()).length;
+  view.append(h('h2.section', { text: 'Programmieren' }),
+    h('button.inbox.codeentry', { on: { click: () => go({ view: 'code' }) } },
+      h('span.codeicon', null, icon('code')),
+      h('span.inboxtext', null,
+        h('b', { text: 'Code' }),
+        h('small', { text: nCode ? `${plural(nCode, 'Projekt', 'Projekte')} · Web, Python, Lua` : 'Kleine Spiele und Programme bauen: Web, Python, Lua' }))));
 
   // Eingang: Seiten, die noch keinem Buch zugeordnet sind
   if (inbox.length) {

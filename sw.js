@@ -1,6 +1,6 @@
 // Offline-Speicher für die App selbst (nicht für deine Scans, die liegen in IndexedDB).
 // Bei jeder neuen Version VERSION erhöhen.
-const VERSION = 'v9';
+const VERSION = 'v10';
 const CACHE = 'lernapp-' + VERSION;
 const FILES = [
   './',
@@ -21,6 +21,9 @@ const FILES = [
   './js/pdfio.js',
   './js/mathfn.js',
   './js/ocr.js',
+  './js/code.js',
+  './js/code-examples.js',
+  './vendor/fengari-web.js',
   './vendor/pdf.min.js',
   './vendor/pdf.worker.min.js',
   './icons/icon-180.png',
