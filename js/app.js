@@ -1,6 +1,6 @@
 // Hauptteil: Bibliothek mit Fächern, Büchern und Seiten.
 import * as db from './db.js';
-const APP_VERSION = '27';   // gleich wie VERSION in sw.js
+const APP_VERSION = '28';   // gleich wie VERSION in sw.js
 import { openEditor } from './editor.js';
 import { renderPage, PAPERS } from './paper.js';
 import { detectPage, defaultCorners } from './scanner.js';
@@ -15,6 +15,7 @@ import { greeting, applyTheme, themeSheet, focusPill, weekCard } from './dash.js
 import { renderTimetable, renderExams, renderGrades, nowCard, examCard, subjectSchoolBox } from './school.js';
 import { editHomework, hwList, sortHw } from './homework.js';
 import { renderPlan, todayPlan } from './plan.js';
+import { renderSorter, dateGroup, fmtDay } from './organize.js';
 import { importPdf, exportPdf } from './pdfio.js';
 import { ocrPages, needsOcr, snippet } from './ocr.js';
 import { renderCodeList } from './code.js';
@@ -88,6 +89,7 @@ async function render() {
   if (nav.view === 'kit') return renderKit({ setHeader, btn, iconBtn, go }, nav.tab);
   if (nav.view === 'timetable') return renderTimetable({ setHeader, btn, iconBtn, go });
   if (nav.view === 'exams') return renderExams({ setHeader, btn, iconBtn, go });
+  if (nav.view === 'sort') return renderSorter({ setHeader, btn, iconBtn, go });
   if (nav.view === 'plan') return renderPlan({ setHeader, btn, iconBtn, go }, nav.examId);
   if (nav.view === 'grades') return renderGrades({ setHeader, btn, iconBtn, go });
   if (nav.view === 'deck') return renderDeck(nav.deck, { setHeader, btn, iconBtn, go, subject: nav.subject, saveFile });
@@ -192,11 +194,11 @@ async function renderLibrary() {
       strip.append(h('span.mini', null, img));
     }
     view.append(
-      h('h2.section', { text: 'Eingang' }),
+      h('div.colhead.inboxhead', null, h('h2.section', { text: 'Eingang' }), h('button.txt.strong', { on: { click: () => go({ view: 'sort' }) } }, 'Einsortieren →')),
       h('button.inbox', { on: { click: () => go({ view: 'book', book: { id: INBOX, title: 'Eingang', kind: 'inbox' } }) } },
         h('span.inboxtext', null,
           h('b', { text: plural(inbox.length, 'Seite', 'Seiten') + ' noch nicht einsortiert' }),
-          h('small', { text: 'Öffnen, auswählen und in ein Buch verschieben' })),
+          h('small', { text: 'Tippe auf „Einsortieren“: Die App schlägt das Fach vor' })),
         strip));
   }
   view.append(h('p.appversion', { text: 'Version ' + APP_VERSION }));
@@ -427,6 +429,10 @@ async function renderBook() {
     { label: 'Inhaltsverzeichnis', icon: 'list', onClick: async () => { const i = await tocSheet(pages, b.title); if (i != null) openBook(i); } },
     { label: 'Als PDF speichern', icon: 'pdf', onClick: () => pdfExportFlow(pages, b.title) },
     { label: 'Text erkennen (für die Suche)', icon: 'search', onClick: () => ocrFlow(pages) },
+    ...(b.kind === 'folder' ? [{ label: 'Nach Datum sortieren', icon: 'clock', onClick: async () => {
+      const ids = [...pages].sort((x, y) => (x.created || 0) - (y.created || 0)).map((x) => x.id);
+      await db.setOrder(b.id, ids); toast('Nach Datum sortiert'); render();
+    } }] : []),
     'sep',
     { label: `${k?.label || 'Buch'} löschen`, icon: 'trash', danger: true, onClick: async () => {
       const ok = await confirmSheet(`„${b.title}“ löschen?`, `${plural(pages.length, 'Seite', 'Seiten')} werden von diesem Gerät gelöscht. Das lässt sich nicht rückgängig machen.`);
@@ -445,6 +451,7 @@ async function renderBook() {
     if (b.kind === 'notebook') newSheet(b.paper || 'lined');
     else menu(e.currentTarget, Object.entries(PAPERS).map(([p, label]) => ({ label, icon: 'page', onClick: () => newSheet(p) })));
   }));
+  if (isInbox && pages.length) actions.push(btn('Einsortieren', 'folder', () => go({ view: 'sort' })));
   actions.push(btn('Scannen', 'camera', () => startScan(b.id, 'camera'), '.primary'));
   setHeader({
     back: isInbox ? { label: 'Bibliothek', go: () => go({ view: 'library' }) } : { label: s.name, go: () => go({ view: 'subject', subject: s }) },
@@ -464,7 +471,10 @@ async function renderBook() {
     return;
   }
   const grid = h('div.grid');
+  const byDate = (b.kind === 'folder' || isInbox) && pages.length > 3;
+  let lastGroup = null;
   pages.forEach((p, i) => {
+    if (byDate) { const g = dateGroup(p.created || 0); if (g !== lastGroup) { lastGroup = g; grid.append(h('h3.gridgroup', { text: g })); } }
     const img = h('img', { alt: `Seite ${i + 1}` });
     setThumb(img, p.id);
     const tile = h('button.tile' + (selected.has(p.id) ? '.picked' : ''), { 'data-id': p.id, on: { click: () => {
@@ -474,7 +484,7 @@ async function renderBook() {
       h('span.sheet', null, img, h('span.check', null, icon('select')), p.mark ? h('span.ribbon') : null),
       h('span.cap', null,
         h('b', { text: p.mark ? `${i + 1} · ${p.mark}` : `Seite ${i + 1}` }),
-        h('small', { text: (p.kind === 'blank' ? (PAPERS[p.paper] || 'Blatt') : `Scan · ${kb(p.size)}`) + (p.strokes ? ' · beschriftet' : '') })));
+        h('small', { text: (b.kind === 'folder' || isInbox ? fmtDay(p.created || 0) + ' · ' : '') + (p.kind === 'blank' ? (PAPERS[p.paper] || 'Blatt') : `Scan · ${kb(p.size)}`) + (p.strokes ? ' · beschriftet' : '') })));
     grid.append(tile);
   });
   view.append(grid);
