@@ -2,7 +2,7 @@
 import { $, h, icon, toast, sheet } from './ui.js';
 import { compile } from './mathfn.js';
 
-export const TABS = [['calc', 'Rechner', 'calc', 'Wissenschaftlich, Grad und Bogenmaß'], ['plot', 'Funktionen', 'graph', 'Graphen live zeichnen, Nullstellen, Schnittpunkte'], ['focus', 'Fokus-Timer', 'clock', 'Konzentriert lernen mit Pausen'], ['units', 'Einheiten', 'ruler2', 'Länge, Masse, Zeit, Temperatur …'], ['pse', 'Periodensystem', 'atom', 'Alle 118 Elemente'], ['formulas', 'Formeln', 'sigma', 'Mathe, Physik, Chemie']];
+export const TABS = [['calc', 'Rechner', 'calc', 'Wissenschaftlich, Grad und Bogenmaß'], ['plot', 'Funktionen', 'graph', 'Graphen live zeichnen, Nullstellen, Schnittpunkte'], ['focus', 'Fokus-Timer', 'clock', 'Konzentriert lernen mit Pausen'], ['units', 'Einheiten', 'ruler2', 'Länge, Masse, Zeit, Temperatur …'], ['chem', 'Chemie', 'atom', 'Periodensystem, Atommodelle, Labor'], ['formulas', 'Formeln', 'sigma', 'Mathe, Physik, Chemie']];
 const store = { get: (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } }, set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* egal */ } } };
 const de = (n, digits = 10) => {
   if (!isFinite(n)) return n > 0 ? '∞' : n < 0 ? '−∞' : 'Fehler';
@@ -11,9 +11,10 @@ const de = (n, digits = 10) => {
 };
 
 export async function renderKit(ctx, tab = 'calc') {
+  if (tab === 'pse') tab = 'chem';
   ctx.setHeader({
     back: { label: 'Bibliothek', go: () => ctx.go({ view: 'library' }) },
-    eyebrow: 'Werkzeuge', title: TABS.find((t) => t[0] === tab)?.[1] || 'Werkzeuge', meta: 'Funktioniert auch ohne Internet',
+    eyebrow: 'Werkzeuge', title: TABS.find((t) => t[0] === (tab === 'pse' ? 'chem' : tab))?.[1] || 'Werkzeuge', meta: 'Funktioniert auch ohne Internet',
     actions: [],
   });
   const view = $('view');
@@ -26,7 +27,7 @@ export async function renderKit(ctx, tab = 'calc') {
   else if (tab === 'plot') import('./plotter.js').then((m) => m.plotWidget(body));
   else if (tab === 'focus') focusWidget(body);
   else if (tab === 'units') unitsWidget(body);
-  else if (tab === 'pse') pseWidget(body);
+  else if (tab === 'pse' || tab === 'chem') import('./chem.js').then((m) => m.chemWidget(body));
   else formulasWidget(body);
 }
 
@@ -226,7 +227,7 @@ function unitsWidget(root) {
 // ================= Periodensystem =================
 // Symbol, Name, Atommasse (u), Gruppe: am Alkalimetall, ae Erdalkali, tm Übergangsmetall, pm Metall, md Halbmetall, nm Nichtmetall, hg Halogen, ng Edelgas, la Lanthanoid, ac Actinoid
 const PSE_RAW = 'H Wasserstoff 1.008 nm|He Helium 4.003 ng|Li Lithium 6.94 am|Be Beryllium 9.012 ae|B Bor 10.81 md|C Kohlenstoff 12.011 nm|N Stickstoff 14.007 nm|O Sauerstoff 15.999 nm|F Fluor 18.998 hg|Ne Neon 20.180 ng|Na Natrium 22.990 am|Mg Magnesium 24.305 ae|Al Aluminium 26.982 pm|Si Silicium 28.085 md|P Phosphor 30.974 nm|S Schwefel 32.06 nm|Cl Chlor 35.45 hg|Ar Argon 39.948 ng|K Kalium 39.098 am|Ca Calcium 40.078 ae|Sc Scandium 44.956 tm|Ti Titan 47.867 tm|V Vanadium 50.942 tm|Cr Chrom 51.996 tm|Mn Mangan 54.938 tm|Fe Eisen 55.845 tm|Co Cobalt 58.933 tm|Ni Nickel 58.693 tm|Cu Kupfer 63.546 tm|Zn Zink 65.38 tm|Ga Gallium 69.723 pm|Ge Germanium 72.630 md|As Arsen 74.922 md|Se Selen 78.971 nm|Br Brom 79.904 hg|Kr Krypton 83.798 ng|Rb Rubidium 85.468 am|Sr Strontium 87.62 ae|Y Yttrium 88.906 tm|Zr Zirconium 91.224 tm|Nb Niob 92.906 tm|Mo Molybdän 95.95 tm|Tc Technetium 98 tm|Ru Ruthenium 101.07 tm|Rh Rhodium 102.91 tm|Pd Palladium 106.42 tm|Ag Silber 107.87 tm|Cd Cadmium 112.41 tm|In Indium 114.82 pm|Sn Zinn 118.71 pm|Sb Antimon 121.76 md|Te Tellur 127.60 md|I Iod 126.90 hg|Xe Xenon 131.29 ng|Cs Caesium 132.91 am|Ba Barium 137.33 ae|La Lanthan 138.91 la|Ce Cer 140.12 la|Pr Praseodym 140.91 la|Nd Neodym 144.24 la|Pm Promethium 145 la|Sm Samarium 150.36 la|Eu Europium 151.96 la|Gd Gadolinium 157.25 la|Tb Terbium 158.93 la|Dy Dysprosium 162.50 la|Ho Holmium 164.93 la|Er Erbium 167.26 la|Tm Thulium 168.93 la|Yb Ytterbium 173.05 la|Lu Lutetium 174.97 la|Hf Hafnium 178.49 tm|Ta Tantal 180.95 tm|W Wolfram 183.84 tm|Re Rhenium 186.21 tm|Os Osmium 190.23 tm|Ir Iridium 192.22 tm|Pt Platin 195.08 tm|Au Gold 196.97 tm|Hg Quecksilber 200.59 tm|Tl Thallium 204.38 pm|Pb Blei 207.2 pm|Bi Bismut 208.98 pm|Po Polonium 209 pm|At Astat 210 hg|Rn Radon 222 ng|Fr Francium 223 am|Ra Radium 226 ae|Ac Actinium 227 ac|Th Thorium 232.04 ac|Pa Protactinium 231.04 ac|U Uran 238.03 ac|Np Neptunium 237 ac|Pu Plutonium 244 ac|Am Americium 243 ac|Cm Curium 247 ac|Bk Berkelium 247 ac|Cf Californium 251 ac|Es Einsteinium 252 ac|Fm Fermium 257 ac|Md Mendelevium 258 ac|No Nobelium 259 ac|Lr Lawrencium 266 ac|Rf Rutherfordium 267 tm|Db Dubnium 268 tm|Sg Seaborgium 269 tm|Bh Bohrium 270 tm|Hs Hassium 277 tm|Mt Meitnerium 278 tm|Ds Darmstadtium 281 tm|Rg Roentgenium 282 tm|Cn Copernicium 285 tm|Nh Nihonium 286 pm|Fl Flerovium 289 pm|Mc Moscovium 290 pm|Lv Livermorium 293 pm|Ts Tenness 294 hg|Og Oganesson 294 ng';
-const CATS = { am: 'Alkalimetall', ae: 'Erdalkalimetall', tm: 'Übergangsmetall', pm: 'Metall', md: 'Halbmetall', nm: 'Nichtmetall', hg: 'Halogen', ng: 'Edelgas', la: 'Lanthanoid', ac: 'Actinoid' };
+export const CATS = { am: 'Alkalimetall', ae: 'Erdalkalimetall', tm: 'Übergangsmetall', pm: 'Metall', md: 'Halbmetall', nm: 'Nichtmetall', hg: 'Halogen', ng: 'Edelgas', la: 'Lanthanoid', ac: 'Actinoid' };
 export const ELEMENTS = PSE_RAW.split('|').map((x, i) => { const [sym, name, mass, cat] = x.split(' '); return { z: i + 1, sym, name, mass: +mass, cat, ...pos(i + 1) }; });
 function pos(z) {
   if (z === 1) return { row: 1, col: 1, period: 1, group: 1 };
@@ -241,12 +242,11 @@ function pos(z) {
   if (k <= 16) return { row: per + 3, col: k + 2, period: per, group: 3, f: true };   // La–Lu / Ac–Lr
   return { row: per, col: k - 14 + 1, period: per, group: k - 14 + 1 };
 }
-const valence = (e) => (e.group <= 2 ? e.group : e.group >= 13 ? (e.z === 2 ? 2 : e.group - 10) : null);
-function pseWidget(root) {
+export function pseWidget(root) {
   const q = h('input.field', { type: 'search', placeholder: 'Suchen: Name, Symbol oder Ordnungszahl', autocomplete: 'off' });
   const grid = h('div.pse');
   for (const e of ELEMENTS) {
-    grid.append(h('button.el.' + e.cat, { style: { gridRow: String(e.row), gridColumn: String(e.col) }, 'data-k': `${e.z} ${e.sym} ${e.name}`.toLowerCase(), on: { click: () => elSheet(e) } },
+    grid.append(h('button.el.' + e.cat, { style: { gridRow: String(e.row), gridColumn: String(e.col) }, 'data-k': `${e.z} ${e.sym} ${e.name}`.toLowerCase(), on: { click: () => import('./chem.js').then((m) => m.elSheet(e)) } },
       h('small', { text: String(e.z) }), h('b', { text: e.sym }), h('span', { text: e.name })));
   }
   grid.append(h('div.pselabel', { style: { gridRow: '6', gridColumn: '3' }, text: '57–71' }), h('div.pselabel', { style: { gridRow: '7', gridColumn: '3' }, text: '89–103' }));
@@ -258,20 +258,6 @@ function pseWidget(root) {
   });
   root.append(q, h('div.psewrap', null, grid), legend);
 }
-function elSheet(e) {
-  const v = valence(e);
-  sheet(`${e.name} (${e.sym})`, (body, close) => {
-    const rows = [['Ordnungszahl', String(e.z)], ['Atommasse', `${String(e.mass).replace('.', ',')} u`], ['Gruppe', CATS[e.cat]], ['Periode', String(e.period)],
-      ['Hauptgruppe', e.group <= 2 ? `${e.group}. Hauptgruppe` : e.group >= 13 ? `${e.group - 10}. Hauptgruppe` : 'Nebengruppe'],
-      v != null ? ['Außenelektronen', String(v)] : null, ['Protonen / Elektronen', `${e.z} / ${e.z}`],
-      ['Neutronen (häufigstes Isotop, ca.)', String(Math.round(e.mass) - e.z)]].filter(Boolean);
-    body.append(h('div.elhead.' + e.cat, null, h('small', { text: String(e.z) }), h('b', { text: e.sym }), h('span', { text: e.name })),
-      h('div.eltable', null, ...rows.map(([k, val]) => h('div.elrow', null, h('span', { text: k }), h('b', { text: val })))),
-      h('p.calm.small', { text: 'Werte gerundet. Bei sehr schweren Elementen ist die Masse die des stabilsten Isotops.' }),
-      h('div.dlgactions', null, h('button.btn.primary', { text: 'Fertig', on: { click: () => close(true) } })));
-  });
-}
-
 // ================= Formelsammlung =================
 const FORMULAS = [
   ['Mathe', 'Pythagoras', 'a² + b² = c²', 'c ist die Hypotenuse (gegenüber dem rechten Winkel)'],

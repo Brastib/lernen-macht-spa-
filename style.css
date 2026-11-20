@@ -1096,3 +1096,181 @@ table.wt th:first-child, table.wt td:first-child { text-align: left; color: var(
 .bkstat.ok i { background: #2f9e6a; }
 .bkstat span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .bkstat small { color: var(--muted); font-size: 13px; line-height: 1.4; }
+
+/* ---------- Chemie ---------- */
+.chemtabswrap { overflow-x: auto; margin: 0 -4px 16px; padding: 4px; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+.chemtabswrap::-webkit-scrollbar { display: none; }
+.chemtabs { white-space: nowrap; }
+.chemtabs button { flex: none; }
+.chembody { display: flex; flex-direction: column; gap: 16px; }
+.chembody > .field { max-width: 520px; }
+.chemgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
+.chemgrid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 900px) { .chemgrid.two { grid-template-columns: 1fr; } }
+.chemcard, .chempanel { border-radius: 18px; background: var(--surface); box-shadow: 0 0 0 1px var(--line); overflow: hidden; min-width: 0; }
+.chempanel { padding: 18px; }
+.chempanel + .chempanel { margin-top: 0; }
+.chemgrid > div { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.chemfig { display: grid; place-items: center; padding: 18px; background: linear-gradient(180deg, var(--surface-2), color-mix(in srgb, var(--surface-2) 40%, var(--surface))); }
+.chemfig svg { width: 100%; max-width: 230px; height: auto; }
+.chemtext { padding: 16px 18px 18px; }
+.chemcard h3, .chempanel h3 { margin: 0 0 4px; font: 600 18px/1.25 var(--font-display); }
+.chemsub { margin: 0 0 10px; color: var(--muted); font-size: 13.5px; line-height: 1.45; }
+.chemfacts { margin: 6px 0 0; padding-left: 18px; font-size: 14.5px; line-height: 1.55; }
+.chemfacts li + li { margin-top: 3px; }
+.chemsvg text { font-family: var(--font); text-anchor: middle; fill: var(--ink); }
+.chemsvg .cat { fill: color-mix(in srgb, #e8833a 70%, var(--surface)); }
+.chemsvg .an { fill: color-mix(in srgb, #3aa56a 55%, var(--surface)); }
+.chemsvg .ionl { font-size: 9px; font-weight: 700; fill: #fff; }
+.chemsvg .shellc { fill: color-mix(in srgb, #4a90e2 14%, transparent); stroke: #4a90e2; stroke-width: 1.5; }
+.chemsvg .big { font-size: 22px; font-weight: 700; }
+.chemsvg .mid { font-size: 15px; font-weight: 700; }
+.chemsvg .small { font-size: 13px; font-weight: 600; }
+.chemsvg .pair { fill: var(--accent); }
+.chemsvg .formula { font-size: 20px; font-weight: 600; letter-spacing: .04em; }
+.chemsvg .oxy { fill: color-mix(in srgb, #e5534b 30%, var(--surface)); stroke: #e5534b; stroke-width: 1.5; }
+.chemsvg .hyd { fill: var(--surface); stroke: var(--muted); stroke-width: 1.5; }
+.chemsvg .bond { stroke: var(--ink); stroke-width: 3; stroke-linecap: round; }
+.chemsvg .hbond { stroke: var(--accent); stroke-width: 2.5; stroke-dasharray: 3 5; stroke-linecap: round; }
+.chemsvg .delta { font-size: 14px; font-weight: 700; fill: var(--accent); }
+.chemsvg .core { fill: color-mix(in srgb, #d6b23a 55%, var(--surface)); stroke: #b8962a; stroke-width: 1; }
+.chemsvg .egas { fill: var(--accent); }
+.metalsvg .egas { animation: drift 3s ease-in-out infinite alternate; }
+.metalsvg .egas:nth-child(3n) { animation-duration: 2.3s; } .metalsvg .egas:nth-child(3n+1) { animation-duration: 3.7s; animation-direction: alternate-reverse; }
+@keyframes drift { to { transform: translate(8px, -6px); } }
+
+/* Element-Fenster mit Atommodell */
+.elhero { display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: 14px; align-items: stretch; margin-bottom: 12px; }
+.elhero .elhead { margin: 0; justify-content: center; gap: 2px; }
+.elhead em { font-style: normal; font-size: 12px; color: var(--muted); margin-top: 4px; text-align: center; }
+.atomwrap { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 8px; border-radius: 16px; background: var(--surface-2); min-width: 0; }
+.atomwrap small { color: var(--muted); font-size: 11.5px; text-align: center; }
+svg.atom { width: 100%; max-width: 260px; height: auto; overflow: visible; }
+svg.atom .orbit { fill: none; stroke: var(--line); stroke-width: 1.2; }
+svg.atom .electron { fill: var(--muted); }
+svg.atom .electron.val { fill: var(--accent); }
+svg.atom .shell { transform-box: view-box; transform-origin: 160px 160px; animation: orbit linear infinite; }
+svg.atom.turbo .shell { animation-duration: .6s !important; }
+svg.atom .shellname { font: 600 10px var(--font); fill: var(--muted); }
+svg.atom .nucleus circle { fill: color-mix(in srgb, #e5534b 70%, #f0a040); cursor: pointer; }
+svg.atom .nucleus text { font-family: var(--font); text-anchor: middle; fill: #fff; font-weight: 700; pointer-events: none; }
+svg.atom .nuc1 { font-size: 11px; } svg.atom .nuc2 { font-size: 10px; opacity: .85; }
+@keyframes orbit { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { svg.atom .shell, .metalsvg .egas { animation: none; } }
+@media (max-width: 560px) { .elhero { grid-template-columns: 1fr; } }
+.elcfg { display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; border-radius: 14px; background: var(--surface-2); margin-bottom: 10px; min-width: 0; }
+.elcfg small { color: var(--muted); font-size: 12px; }
+.elcfg b { font-size: 17px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.elcfg span { color: var(--muted); font-size: 12.5px; overflow-wrap: anywhere; }
+.ellewis { display: flex; align-items: center; gap: 14px; padding: 8px 14px 8px 8px; border-radius: 14px; box-shadow: inset 0 0 0 1px var(--line); margin-bottom: 8px; }
+.ellewis span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ellewis small { color: var(--muted); font-size: 13px; line-height: 1.4; }
+svg.lewis { flex: none; width: 76px; height: 76px; }
+svg.lewis .lsym { font: 700 30px var(--font-display); text-anchor: middle; dominant-baseline: central; fill: var(--ink); }
+svg.lewis .ldot { fill: var(--accent); }
+
+/* Organik */
+.orgctrl { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 14px; }
+.orgn { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 220px; max-width: 420px; color: var(--muted); font-size: 13.5px; }
+.orgn .slider { flex: 1; }
+.orghead { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+.orghead b { font: 600 26px/1.2 var(--font-display); }
+.orgformula { font-size: 20px; font-weight: 600; color: var(--accent); }
+.orghalf { color: var(--muted); font-size: 14px; overflow-wrap: anywhere; }
+.structwrap { overflow-x: auto; margin: 10px 0; padding: 6px 0; -webkit-overflow-scrolling: touch; }
+svg.struct { display: block; height: auto; max-width: none; margin: 0 auto; }
+svg.struct .sb { stroke: var(--ink); stroke-width: 2.2; stroke-linecap: round; }
+svg.struct text { font-family: var(--font); text-anchor: middle; }
+svg.struct .cat2 { font-size: 20px; font-weight: 700; fill: var(--ink); }
+svg.struct .hat { font-size: 16px; font-weight: 600; fill: var(--muted); }
+.orgfacts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.orgfacts > div { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: 12px; background: var(--surface-2); min-width: 0; }
+.orgfacts small { color: var(--muted); font-size: 12px; }
+.orgfacts b { font-size: 14.5px; }
+@media (max-width: 700px) { .orgfacts { grid-template-columns: 1fr; } }
+.fgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+.fcard { display: flex; flex-direction: column; gap: 3px; padding: 14px 16px; border-radius: 16px; background: var(--surface); box-shadow: 0 0 0 1px var(--line); min-width: 0; }
+.fcard b { font-size: 16px; }
+.fcard .fg { color: var(--accent); font-weight: 600; font-size: 14px; }
+.fcard small { color: var(--muted); font-size: 13px; line-height: 1.4; }
+
+/* Säuren & Basen */
+.phwrap { padding: 4px 0 6px; }
+.phbar { display: grid; grid-template-columns: repeat(15, minmax(0, 1fr)); border-radius: 12px; overflow: hidden; }
+.phbar span { height: 40px; display: grid; place-items: center; color: #fff; font-weight: 700; font-size: 13px; text-shadow: 0 1px 2px rgba(0,0,0,.35); }
+.phmarks { position: relative; height: 150px; margin-top: 6px; }
+.phmark { position: absolute; top: 0; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; width: 0; }
+.phmark i { width: 1.5px; height: 14px; background: var(--muted); }
+.phmark small { writing-mode: vertical-rl; transform: rotate(180deg); font-size: 12px; color: var(--muted); white-space: nowrap; margin-top: 4px; }
+table.ctable { width: 100%; border-collapse: collapse; font-size: 14px; }
+table.ctable th { text-align: left; padding: 8px 8px; color: var(--muted); font-weight: 600; font-size: 12.5px; border-bottom: 1px solid var(--line); }
+table.ctable td { padding: 8px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+table.ctable tr:last-child td { border-bottom: 0; }
+.eq { margin: 8px 0; padding: 10px 14px; border-radius: 12px; background: var(--surface-2); font-size: 15.5px; font-weight: 500; overflow-wrap: anywhere; }
+
+/* Metalle */
+.series { display: flex; flex-direction: column; gap: 4px; margin: 6px 0 10px; }
+.srow { display: grid; grid-template-columns: 34px minmax(0, 1fr) 62px; align-items: center; gap: 10px; font-size: 14px; }
+.srow small { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+.sbar { position: relative; height: 10px; border-radius: 5px; background: var(--surface-2); }
+.sbar i { position: absolute; top: 0; bottom: 0; border-radius: 5px; background: #8a96a8; }
+.srow.noble .sbar i { background: #d6b23a; }
+.srow.ref b { color: var(--accent); }
+
+/* Molmasse */
+.molform { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 14px; }
+@media (max-width: 600px) { .molform { grid-template-columns: 1fr; } }
+.molin { font: 600 18px/1 ui-monospace, "SF Mono", Menlo, monospace; }
+.molout { display: flex; flex-direction: column; gap: 12px; margin-top: 14px; }
+.molres { display: flex; flex-direction: column; gap: 2px; padding: 16px 18px; border-radius: 16px; background: var(--accent-soft); }
+.molres small { color: var(--muted); }
+.molres b { font: 700 26px/1.2 var(--font-display); color: var(--accent); }
+.molres span { color: var(--muted); font-size: 14px; }
+.molcalc { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.molcalc > div { display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; border-radius: 12px; background: var(--surface-2); min-width: 0; }
+.molcalc small { color: var(--muted); font-size: 12.5px; }
+.molcalc b { font-size: 17px; overflow-wrap: anywhere; }
+
+/* Labor */
+.labnote { margin: 0; color: var(--muted); font-size: 13px; }
+.seg.wrap { display: flex; flex-wrap: wrap; border-radius: 16px; }
+.labbox { margin-top: 4px; }
+.labstage { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 900px) { .labstage { grid-template-columns: 1fr; } }
+.labscene { position: relative; display: grid; place-items: center; min-height: 360px; padding: 20px; border-radius: 20px; background: var(--surface); box-shadow: 0 0 0 1px var(--line); overflow: hidden; }
+.labscene.dark { background: radial-gradient(ellipse at 50% 40%, #232836, #0d0f14); box-shadow: none; }
+.labscene.water { padding: 0; background: linear-gradient(180deg, var(--surface-2), var(--surface)); }
+.labside { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.labinfo { display: flex; flex-direction: column; gap: 4px; padding: 14px 16px; border-radius: 16px; background: var(--surface); box-shadow: 0 0 0 1px var(--line); }
+.labinfo b { font-size: 16px; }
+.labinfo small { color: var(--muted); font-size: 13.5px; line-height: 1.45; }
+.labchips { display: flex; flex-wrap: wrap; gap: 8px; }
+.labchip { display: inline-flex; align-items: center; gap: 8px; padding: 9px 14px; border-radius: 999px; background: var(--surface); box-shadow: 0 0 0 1px var(--line); font-size: 14px; font-weight: 500; }
+.labchip i { width: 12px; height: 12px; border-radius: 50%; background: var(--c); box-shadow: 0 0 10px var(--c); }
+.labchip.on { box-shadow: 0 0 0 2px var(--accent); }
+.labbtns { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.btn.acid { box-shadow: inset 0 0 0 1.5px #d0493f; color: #d0493f; justify-content: center; }
+.btn.base { box-shadow: inset 0 0 0 1.5px #3b6fd8; color: #3b6fd8; justify-content: center; }
+svg.flamesvg { width: 200px; height: 280px; }
+svg.flamesvg .fl { transform-box: fill-box; transform-origin: 50% 100%; animation: flick .18s ease-in-out infinite alternate; }
+svg.flamesvg .outer { transition: fill .4s; }
+svg.flamesvg.flare .fl { animation: flick .18s ease-in-out infinite alternate, flare .7s ease-out; }
+svg.flamesvg .burner { fill: #6b7280; }
+svg.flamesvg .wireline { stroke: #c8ccd4; stroke-width: 3; stroke-linecap: round; }
+svg.flamesvg .wiretip { fill: #f4f4f4; }
+@keyframes flick { from { transform: scale(1, 1); } to { transform: scale(.97, 1.04); } }
+@keyframes flare { 0% { transform: scale(1.25, 1.35); } 100% { transform: scale(1, 1); } }
+svg.beaker { width: 220px; height: 260px; }
+svg.beaker .glass { fill: none; stroke: var(--muted); stroke-width: 3; stroke-linejoin: round; }
+svg.beaker .ticks line { stroke: var(--muted); stroke-width: 1.5; opacity: .6; }
+svg.beaker .liq { transition: fill .6s ease, y .4s ease; }
+.phmeter { position: absolute; right: 16px; top: 16px; display: flex; flex-direction: column; align-items: flex-end; padding: 10px 14px; border-radius: 14px; background: var(--surface); box-shadow: 0 0 0 1px var(--line), inset 4px 0 0 var(--c); }
+.phval { font: 700 22px/1.1 var(--font-display); font-variant-numeric: tabular-nums; }
+.phword { color: var(--muted); font-size: 12.5px; }
+canvas.alkcv { display: block; width: 100%; height: 360px; }
+@media (prefers-reduced-motion: reduce) { svg.flamesvg .fl { animation: none; } }
+.chemgrid:not(.two) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 700px) { .chemgrid:not(.two) { grid-template-columns: 1fr; } }
+@media (min-width: 701px) { .chemgrid:not(.two) > .chemcard:last-child:nth-child(odd) { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+.fcard small { text-transform: none; letter-spacing: 0; }
+.labside > .btn { justify-content: center; }
