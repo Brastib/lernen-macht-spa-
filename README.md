@@ -12,7 +12,7 @@ Offline-Web-App (PWA) fürs iPad mit Apple Pencil. Kein App Store, keine Cloud: 
 - **Lernkarten**: Vokabeln mit Wiederholungsplan (Karteikasten), umdrehen oder eintippen, Vorlesen.
 - **Hausaufgaben** pro Fach, Übersicht „Heute“ auf der Startseite.
 - **PDF**: Arbeitsblätter als PDF importieren und beschriftete Seiten als PDF speichern.
-- **Suche** und **Sicherung** (eine .json-Datei mit allem).
+- **Suche** (auch Wörter auf Scans durch Texterkennung, nur Druckschrift) und **Sicherung** (eine .json-Datei mit allem).
 
 ## Aufs iPad
 1. In Safari die GitHub-Pages-Adresse dieses Repositorys öffnen.
@@ -22,7 +22,7 @@ Offline-Web-App (PWA) fürs iPad mit Apple Pencil. Kein App Store, keine Cloud: 
 - Reines HTML/CSS/JavaScript (ES-Module), kein Build-Schritt.
 - Daten in IndexedDB (Datenbank `lernapp`).
 - `sw.js` speichert die App für den Offline-Betrieb. Bei jeder Änderung `VERSION` erhöhen.
-- `vendor/`: pdf.js 3.11.174 von Mozilla (Apache-2.0) für den PDF-Import.
+- `vendor/`: pdf.js 3.11.174 von Mozilla (Apache-2.0) für den PDF-Import, Tesseract.js 5.1.1 mit deutschen und englischen Sprachdaten (Apache-2.0) für die Texterkennung. Beides wird erst geladen, wenn man es benutzt.
 
 ## Lokal testen
 `python3 -m http.server 8123` im Ordner, dann http://localhost:8123 öffnen.

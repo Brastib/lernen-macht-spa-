@@ -155,7 +155,7 @@ export async function saveInk(id, strokes, thumb) {
   if (thumb) tx.objectStore('thumbs').put(thumb, id);
   const ps = tx.objectStore('pages');
   const r = ps.get(id);
-  r.onsuccess = () => { const p = r.result; if (p) { p.edited = Date.now(); p.strokes = strokes.length; ps.put(p); } };
+  r.onsuccess = () => { const p = r.result; if (p) { p.edited = Date.now(); p.strokes = strokes.length; p.textBoxes = strokes.filter((x) => x.tool === 'text').map((x) => x.text).join('\n'); ps.put(p); } };
   await done(tx);
 }
 

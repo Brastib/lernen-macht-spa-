@@ -9,6 +9,7 @@ import { $, h, icon, toast, busy, kb, fmtBytes, plural, sheet, confirmSheet, pro
 import { renderDeck, newDeckFlow, startStudy, dueCount, addCardsFlow } from './cards.js';
 import { editHomework, hwList, sortHw } from './homework.js';
 import { importPdf, exportPdf } from './pdfio.js';
+import { ocrPages, needsOcr, snippet } from './ocr.js';
 
 // ---------- Vorlagen ----------
 const PALETTE = ['#3b6fd8', '#d0493f', '#2f9e8f', '#6c5bd4', '#3f9b4f', '#c0752a', '#2f8fb3', '#b0577a', '#8a6d3b', '#5f6673'];
@@ -88,6 +89,8 @@ async function renderLibrary() {
       iconBtn('more', 'Mehr', (e) => menu(e.currentTarget, [
         { label: 'Sicherung speichern', icon: 'save', onClick: () => backupFlow() },
         { label: 'Sicherung laden', icon: 'restore', onClick: () => $('fileBackup').click() },
+        'sep',
+        { label: 'Text in allen Scans erkennen', icon: 'search', onClick: async () => ocrFlow(await db.listAllPages()) },
       ])),
       btn('Fach', 'plus', () => addSubjectFlow()),
       btn('Scannen', 'camera', () => startScan(INBOX, 'camera'), '.primary'),
@@ -356,6 +359,7 @@ async function renderBook() {
     } },
     { label: 'Inhaltsverzeichnis', icon: 'list', onClick: async () => { const i = await tocSheet(pages, b.title); if (i != null) openBook(i); } },
     { label: 'Als PDF speichern', icon: 'pdf', onClick: () => pdfExportFlow(pages, b.title) },
+    { label: 'Text erkennen (für die Suche)', icon: 'search', onClick: () => ocrFlow(pages) },
     'sep',
     { label: `${k?.label || 'Buch'} löschen`, icon: 'trash', danger: true, onClick: async () => {
       const ok = await confirmSheet(`„${b.title}“ löschen?`, `${plural(pages.length, 'Seite', 'Seiten')} werden von diesem Gerät gelöscht. Das lässt sich nicht rückgängig machen.`);
@@ -515,7 +519,7 @@ async function searchFlow() {
   const bookMap = new Map(books.map((b) => [b.id, b]));
   const norm = (t) => t.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
   await sheet('Suchen', (body, close) => {
-    const input = h('input.field', { type: 'search', placeholder: 'Fach, Buch, Lesezeichen, Vokabel, Hausaufgabe', id: 'searchField', autocomplete: 'off' });
+    const input = h('input.field', { type: 'search', placeholder: 'Fach, Buch, Wort auf einer Seite, Vokabel …', id: 'searchField', autocomplete: 'off' });
     const list = h('div.targets.results');
     const show = () => {
       const q = norm(input.value.trim());
@@ -542,6 +546,20 @@ async function searchFlow() {
             const i = pages.findIndex((x) => x.id === p.id); if (i >= 0) openBook(i);
           } } }, icon('bookmark'), h('span', { text: p.mark }), h('small', { text: `${b.title} · S. ${p.index + 1}` })));
         }
+        // Text auf Seiten (Texterkennung und Textfelder)
+        let nText = 0;
+        for (const p of all) {
+          if (nText >= 30) break;
+          const src = [p.ocr, p.textBoxes].filter(Boolean).join('\n');
+          if (!src || !norm(src).includes(q)) continue;
+          const b = p.bookId === INBOX ? { id: INBOX, title: 'Eingang', kind: 'inbox' } : bookMap.get(p.bookId); if (!b) continue;
+          const s = sub.get(b.subjectId);
+          nText++;
+          list.append(h('button.target', { on: { click: async () => {
+            close(true); nav = b.id === INBOX ? { view: 'book', book: b } : { view: 'book', book: b, subject: s }; await render();
+            const i = pages.findIndex((x) => x.id === p.id); if (i >= 0) openBook(i);
+          } } }, icon('page'), h('span.snip', { text: snippet(src, q, norm) }), h('small', { text: `${b.title} · S. ${p.index + 1}` })));
+        }
         // Kartenstapel und Vokabeln
         const deckHits = new Map();
         for (const d of decks) if (norm(d.title).includes(q)) deckHits.set(d.id, null);
@@ -565,6 +583,27 @@ async function searchFlow() {
     body.append(input, list);
     show();
   });
+}
+
+// ---------- Texterkennung ----------
+async function ocrFlow(list) {
+  const todo = list.filter(needsOcr);
+  if (!todo.length) { toast(list.some((p) => p.kind !== 'blank') ? 'Text ist schon erkannt' : 'Keine Scans oder PDF-Seiten'); return; }
+  const ok = await confirmSheet('Text erkennen?', `${plural(todo.length, 'Seite wird', 'Seiten werden')} gelesen, damit die Suche Wörter darauf findet. Das dauert etwa 5 bis 15 Sekunden pro Seite und läuft nur auf diesem Gerät. Gedruckter Text klappt gut, Handschrift kaum.`, 'Starten', false);
+  if (!ok) return;
+  let stop = false;
+  busy(true, 'Texterkennung wird geladen …');
+  const cancel = h('button.btn.ghost.busystop', { text: 'Abbrechen', on: { click: () => { stop = true; cancel.disabled = true; $('busyText').textContent = 'Wird nach dieser Seite beendet …'; } } });
+  $('busy').append(cancel);
+  try {
+    const n = await ocrPages(todo, (t) => { if (!stop) $('busyText').textContent = t; }, () => stop);
+    toast(`Text auf ${plural(n, 'Seite', 'Seiten')} erkannt. Die Suche findet ihn jetzt.`, 3500);
+  } catch (err) {
+    toast('Texterkennung fehlgeschlagen: ' + err.message, 5000);
+  } finally {
+    cancel.remove();
+    busy(false);
+  }
 }
 
 // ---------- PDF ----------

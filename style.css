@@ -541,3 +541,5 @@ select.field { appearance: none; -webkit-appearance: none; }
 /* ---------- Etappe B ---------- */
 .fieldgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
 .dlgtext.err { color: var(--danger); }
+.target .snip { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.busystop { margin-top: 6px; }
