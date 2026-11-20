@@ -1079,3 +1079,20 @@ table.wt th:first-child, table.wt td:first-child { text-align: left; color: var(
 @media (max-width: 560px) { .ptiles.kit { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .ptiles:not(.kit) { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 @media (max-width: 1000px) { .ptiles:not(.kit) { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* ---------- Sicherung ---------- */
+.bkbanner { display: flex; align-items: center; gap: 14px; padding: 14px 14px 14px 16px; border-radius: 18px; background: color-mix(in srgb, #2f9e6a 10%, var(--surface)); box-shadow: inset 0 0 0 1px color-mix(in srgb, #2f9e6a 30%, transparent); }
+.bkbanner .inboxtext { flex: 1; min-width: 0; }
+.bkbanner .btn { flex: none; }
+.bkic { flex: none; width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: #2f9e6a; color: #fff; }
+.bkic .ic { stroke: currentColor; }
+@media (max-width: 560px) { .bkbanner { flex-wrap: wrap; } .bkbanner .btn.primary { flex: 1; } }
+.bkready { display: flex; flex-direction: column; gap: 2px; padding: 14px 16px; border-radius: 14px; background: var(--surface-2); margin-bottom: 12px; min-width: 0; }
+.bkready b { font-size: 14.5px; overflow-wrap: anywhere; }
+.bkready small { color: var(--muted); }
+.bksteps { margin: 0 0 6px; padding-left: 22px; color: var(--muted); font-size: 14.5px; line-height: 1.6; }
+.bkstat { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; border-radius: 14px; background: var(--surface-2); margin-bottom: 8px; }
+.bkstat i { flex: none; width: 10px; height: 10px; border-radius: 50%; margin-top: 6px; background: #e0a030; }
+.bkstat.ok i { background: #2f9e6a; }
+.bkstat span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.bkstat small { color: var(--muted); font-size: 13px; line-height: 1.4; }

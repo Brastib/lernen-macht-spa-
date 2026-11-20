@@ -1,6 +1,6 @@
 // Hauptteil: Bibliothek mit Fächern, Büchern und Seiten.
 import * as db from './db.js';
-const APP_VERSION = '19';   // gleich wie VERSION in sw.js
+const APP_VERSION = '20';   // gleich wie VERSION in sw.js
 import { openEditor } from './editor.js';
 import { renderPage, PAPERS } from './paper.js';
 import { detectPage, defaultCorners } from './scanner.js';
@@ -10,6 +10,7 @@ import { $, h, icon, toast, busy, kb, fmtBytes, plural, sheet, confirmSheet, pro
 import { renderDeck, newDeckFlow, startStudy, dueCount, addCardsFlow } from './cards.js';
 import { playerCard, profileSheet } from './game.js';
 import { renderKit, TABS as KIT_TABS, focusWatch } from './kit.js';
+import { backupBanner, backupSheet, backupNow } from './backup.js';
 import { greeting, applyTheme, themeSheet, focusPill, weekCard } from './dash.js';
 import { renderTimetable, renderExams, renderGrades, nowCard, examCard, subjectSchoolBox } from './school.js';
 import { editHomework, hwList, sortHw } from './homework.js';
@@ -103,7 +104,7 @@ async function renderLibrary() {
     actions: [
       iconBtn('search', 'Suchen', () => searchFlow()),
       iconBtn('more', 'Mehr', (e) => menu(e.currentTarget, [
-        { label: 'Sicherung speichern', icon: 'save', onClick: () => backupFlow() },
+        { label: 'Sicherung …', icon: 'save', onClick: () => backupSheet({ saveFile, onLoad: () => $('fileBackup').click(), after: render }) },
         { label: 'Sicherung laden', icon: 'restore', onClick: () => $('fileBackup').click() },
         'sep',
         { label: 'Text in allen Scans erkennen', icon: 'search', onClick: async () => ocrFlow(await db.listAllPages()) },
@@ -123,6 +124,8 @@ async function renderLibrary() {
   lastView = 'library';
   const banner = await dueBanner({ go });
   if (banner) view.append(banner);
+  const bk = await backupBanner({ saveFile, after: render });
+  if (bk) view.append(bk);
   const fp = focusPill(go);
   if (fp) view.append(fp);
   if (subjects.length) view.append(h('section.dashrow', null, await nowCard({ go, subjects }), await examCard({ go, subjects })));
@@ -728,22 +731,7 @@ async function saveFile(name, blob, type = 'application/json') {
   return true;
 }
 
-async function backupFlow() {
-  busy(true, 'Sicherung wird erstellt …');
-  try {
-    const data = await db.exportAll((i, n) => { $('busyText').textContent = `Sicherung wird erstellt … ${i} von ${n}`; });
-    const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
-    busy(false);
-    const d = new Date();
-    const name = `lernapp-sicherung-${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}.json`;
-    const ok = await saveFile(name, blob);
-    if (ok) toast(`Sicherung erstellt · ${fmtBytes(blob.size)}`);
-  } catch (e) {
-    busy(false);
-    toast('Sicherung fehlgeschlagen: ' + e.message, 5000);
-  }
-}
-
+async function backupFlow() { return backupNow({ saveFile }); }
 $('fileBackup').addEventListener('change', async (e) => {
   const f = e.target.files[0]; e.target.value = '';
   if (!f) return;
