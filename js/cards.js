@@ -3,6 +3,7 @@
 // nicht gewusst = zurück auf Stufe 0 und in dieser Runde gleich nochmal.
 import * as db from './db.js';
 import { $, h, icon, toast, plural, sheet, confirmSheet, promptSheet, menu } from './ui.js';
+import { editReminder } from './reminders.js';
 
 export const INTERVALS = [0, 1, 2, 4, 8, 16, 32];   // Tage bis zur nächsten Wiederholung je Stufe
 export const LANGS = {
@@ -142,6 +143,11 @@ export async function renderDeck(deck, ctx) {
       if (l != null) { deck.lang = l; await db.putItems('decks', deck); again(); }
     } },
     { label: 'Liste einfügen', icon: 'import', onClick: () => importListFlow(deck, again) },
+    { label: 'Ans Lernen erinnern …', icon: 'clock', onClick: async () => {
+      const subjects = await db.listSubjects();
+      const ex = (await db.listReminders()).find((r) => r.refId === deck.id && r.kind === 'vokabeln');
+      await editReminder(ex || { text: 'Lernen: ' + deck.title, kind: 'vokabeln', refId: deck.id, subjectId: deck.subjectId, repeat: 'daily', time: '17:00' }, { subjects, saveFile: ctx.saveFile });
+    } },
     { label: 'Alle neu lernen', icon: 'undo', onClick: async () => {
       if (await confirmSheet('Alle Karten neu lernen?', 'Alle Karten gehen zurück auf Stufe 0 und sind sofort wieder dran.', 'Zurücksetzen', false)) {
         await db.putItems('cards', cards.map((c) => ({ ...c, box: 0, due: 0 }))); again();

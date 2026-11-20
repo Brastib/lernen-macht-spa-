@@ -1,6 +1,6 @@
 // Offline-Speicher für die App selbst (nicht für deine Scans, die liegen in IndexedDB).
 // Bei jeder neuen Version VERSION erhöhen.
-const VERSION = 'v12';
+const VERSION = 'v13';
 const CACHE = 'lernapp-' + VERSION;
 const FILES = [
   './',
@@ -23,6 +23,7 @@ const FILES = [
   './js/ocr.js',
   './js/code.js',
   './js/code-examples.js',
+  './js/reminders.js',
   './vendor/fengari-web.js',
   './vendor/pdf.min.js',
   './vendor/pdf.worker.min.js',
@@ -46,7 +47,17 @@ self.addEventListener('activate', (e) => {
 // Erst aus dem Speicher (schnell + offline), im Hintergrund aktualisieren.
 self.addEventListener('fetch', (e) => {
   const req = e.request;
-  if (req.method !== 'GET' || new URL(req.url).origin !== location.origin) return;
+  const url = new URL(req.url);
+  if (req.method !== 'GET' || url.origin !== location.origin) return;
+  // Erinnerung für den iPad-Kalender: die App legt die .ics-Datei in die Adresse, wir liefern sie als echte Kalenderdatei aus
+  if (url.pathname.includes('/kalender/') && url.searchParams.get('d')) {
+    try {
+      const b = url.searchParams.get('d').replace(/-/g, '+').replace(/_/g, '/');
+      const text = decodeURIComponent(escape(atob(b + '==='.slice((b.length + 3) % 4))));
+      e.respondWith(new Response(text, { headers: { 'Content-Type': 'text/calendar; charset=utf-8', 'Content-Disposition': 'inline; filename="erinnerung.ics"' } }));
+    } catch (er) { e.respondWith(new Response('Kalenderdatei kaputt', { status: 400 })); }
+    return;
+  }
   e.respondWith(
     caches.open(CACHE).then(async (cache) => {
       const cached = await cache.match(req, { ignoreSearch: true });
@@ -61,4 +72,13 @@ self.addEventListener('fetch', (e) => {
       return new Response('Offline', { status: 503 });
     })
   );
+});
+
+// Tippen auf eine Mitteilung: App nach vorne holen
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+    for (const c of list) if ('focus' in c) return c.focus();
+    return self.clients.openWindow('./');
+  }));
 });

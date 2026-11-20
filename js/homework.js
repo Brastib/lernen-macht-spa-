@@ -1,6 +1,7 @@
 // Hausaufgaben pro Fach: kurze Liste mit Datum, abhaken wenn erledigt.
 import * as db from './db.js';
 import { h, icon, toast, sheet } from './ui.js';
+import { syncHomeworkReminder, homeworkReminderOf } from './reminders.js';
 
 const DAY = 86400000;
 const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -25,6 +26,7 @@ export const sortHw = (a, b) => (a.done - b.done) || String(a.due || '9999').loc
 // Neue oder bestehende Hausaufgabe bearbeiten. subjects nur nötig, wenn kein Fach feststeht.
 export async function editHomework(item, { subjects, after }) {
   const isNew = !item.id;
+  const oldRem = isNew ? null : await homeworkReminderOf(item.id);
   const res = await sheet(isNew ? 'Neue Hausaufgabe' : 'Hausaufgabe', (body, close) => {
     const text = h('textarea.field.area', { id: 'hwText', rows: 3, placeholder: 'z. B. Buch S. 54 Nr. 3a–c', autocapitalize: 'sentences' });
     text.value = item.text || '';
@@ -39,7 +41,13 @@ export async function editHomework(item, { subjects, after }) {
         ...subjects.map((s) => h('option', { value: s.id, text: s.name })));
       body.append(h('label.fieldlabel', { for: 'hwSubj', text: 'Fach' }), sel);
     }
+    const rem = h('select.field', { id: 'hwRem' },
+      h('option', { value: '', text: 'Nicht erinnern' }),
+      h('option', { value: 'eve', text: 'Am Tag vorher um 17 Uhr' }),
+      h('option', { value: 'morning', text: 'Am Abgabetag um 7 Uhr' }));
+    rem.value = oldRem ? (oldRem.when || 'eve') : (isNew ? 'eve' : '');
     body.append(h('label.fieldlabel', { for: 'hwDue', text: 'Bis wann' }), date, quick,
+      h('label.fieldlabel', { for: 'hwRem', text: 'Erinnern' }), rem,
       h('div.dlgactions', null,
         isNew ? null : h('button.btn.danger', { text: 'Löschen', on: { click: () => close('delete') } }),
         h('button.btn', { text: 'Abbrechen', on: { click: () => close(null) } }),
@@ -47,13 +55,17 @@ export async function editHomework(item, { subjects, after }) {
           const t = text.value.trim();
           if (!t) { text.focus(); return; }
           if (!subjectId) { toast('Leg zuerst ein Fach an'); return; }
-          close({ text: t, due: date.value || '', subjectId });
+          close({ text: t, due: date.value || '', subjectId, remWhen: rem.value });
         } } })));
     setTimeout(() => text.focus(), 60);
   });
   if (!res) return;
-  if (res === 'delete') { await db.deleteItems('homework', item.id); toast('Gelöscht'); }
-  else await db.putItems('homework', { ...item, ...res, done: item.done || false });
+  if (res === 'delete') { await db.deleteItems('homework', item.id); await syncHomeworkReminder(item, ''); toast('Gelöscht'); }
+  else {
+    const { remWhen, ...vals } = res;
+    const [saved] = await db.putItems('homework', [{ ...item, ...vals, done: item.done || false }]);
+    await syncHomeworkReminder(saved, remWhen);
+  }
   after();
 }
 
@@ -68,6 +80,8 @@ export function hwList(items, { subjMap, after }) {
         it.done = !it.done;
         it.doneAt = it.done ? Date.now() : null;
         await db.putItems('homework', it);
+        const r = await homeworkReminderOf(it.id);
+        if (r) await syncHomeworkReminder(it, r.when || 'eve');
         if (it.done) toast('Erledigt');
         after();
       } } }, icon('select')),

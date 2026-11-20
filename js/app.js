@@ -11,6 +11,7 @@ import { editHomework, hwList, sortHw } from './homework.js';
 import { importPdf, exportPdf } from './pdfio.js';
 import { ocrPages, needsOcr, snippet } from './ocr.js';
 import { renderCodeList } from './code.js';
+import { renderReminders, dueBanner, startReminderWatch, editReminder } from './reminders.js';
 
 // ---------- Vorlagen ----------
 const PALETTE = ['#3b6fd8', '#d0493f', '#2f9e8f', '#6c5bd4', '#3f9b4f', '#c0752a', '#2f8fb3', '#b0577a', '#8a6d3b', '#5f6673'];
@@ -74,7 +75,8 @@ async function render() {
   if (nav.view === 'library') return renderLibrary();
   if (nav.view === 'subject') return renderSubject();
   if (nav.view === 'code') return renderCodeList({ setHeader, btn, go });
-  if (nav.view === 'deck') return renderDeck(nav.deck, { setHeader, btn, iconBtn, go, subject: nav.subject });
+  if (nav.view === 'reminders') return renderReminders({ setHeader, btn, go, saveFile });
+  if (nav.view === 'deck') return renderDeck(nav.deck, { setHeader, btn, iconBtn, go, subject: nav.subject, saveFile });
   return renderBook();
 }
 function go(n) { nav = n; render(); }
@@ -102,6 +104,8 @@ async function renderLibrary() {
 
   const view = $('view');
   view.textContent = '';
+  const banner = await dueBanner({ go });
+  if (banner) view.append(banner);
   if (subjects.length) await todaySection(view, subjects);
   if (!subjects.length) {
     view.append(h('section.empty', null,
@@ -122,6 +126,15 @@ async function renderLibrary() {
     grid.append(h('button.subject.add', { on: { click: () => addSubjectFlow() } }, icon('plus'), h('span.sname', { text: 'Fach hinzufügen' })));
     view.append(h('h2.section', { text: 'Fächer' }), grid);
   }
+
+  // Erinnerungen
+  const rems = (await db.listReminders()).filter((r) => !r.done);
+  view.append(h('h2.section', { text: 'Planer' }),
+    h('button.inbox.codeentry.rementry', { on: { click: () => go({ view: 'reminders' }) } },
+      h('span.codeicon', null, icon('clock')),
+      h('span.inboxtext', null,
+        h('b', { text: 'Erinnerungen' }),
+        h('small', { text: rems.length ? `${plural(rems.length, 'Erinnerung', 'Erinnerungen')} offen` : 'Hausaufgaben, Vokabeln lernen oder was du willst' }))));
 
   // Programmieren
   const nCode = (await db.listCode()).length;
@@ -720,6 +733,10 @@ if ('serviceWorker' in navigator && !document.documentElement.dataset.artifact) 
 }
 db.askPersistent();
 render();
+// Erinnerungen prüfen, solange die App offen ist (Hinweis + Mitteilung, falls erlaubt)
+startReminderWatch(() => {
+  if ((nav.view === 'library' || nav.view === 'reminders') && !document.querySelector('.dlgscrim')) render();
+});
 
 // für Tests
 window.__lernapp = { db, detectPage, defaultCorners, openEditor, nav: () => nav };
