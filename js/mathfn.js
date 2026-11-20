@@ -47,7 +47,10 @@ function tokenize(src) {
 }
 
 // Grammatik: expr = term (+|- term)* ; term = unary (*|/ unary)* ; unary = -unary | power ; power = atom (^ unary)?
-export function compile(src) {
+// opts.deg: Winkel in Grad (Taschenrechner)
+const R = Math.PI / 180;
+const DEGF = { sin: (v) => Math.sin(v * R), cos: (v) => Math.cos(v * R), tan: (v) => Math.tan(v * R), arcsin: (v) => Math.asin(v) / R, arccos: (v) => Math.acos(v) / R, arctan: (v) => Math.atan(v) / R };
+export function compile(src, opts = {}) {
   const tk = tokenize(src);
   if (!tk.length) throw new Error('Bitte einen Term eingeben, z. B. x^2 - 1');
   let i = 0;
@@ -81,7 +84,7 @@ export function compile(src) {
     if (t.t === 'x') return (x) => x;
     if (t.t === '(') { const a = expr(); eat(')'); return a; }
     if (t.t === 'fn') {
-      const f = FUNCS[t.v];
+      const f = (opts.deg && DEGF[t.v]) || FUNCS[t.v];
       if (peek() === '(') { i++; const a = expr(); eat(')'); return (x) => f(a(x)); }
       const a = power();     // sin x
       return (x) => f(a(x));

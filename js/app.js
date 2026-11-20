@@ -1,6 +1,6 @@
 // Hauptteil: Bibliothek mit Fächern, Büchern und Seiten.
 import * as db from './db.js';
-const APP_VERSION = '16';   // gleich wie VERSION in sw.js
+const APP_VERSION = '17';   // gleich wie VERSION in sw.js
 import { openEditor } from './editor.js';
 import { renderPage, PAPERS } from './paper.js';
 import { detectPage, defaultCorners } from './scanner.js';
@@ -9,6 +9,7 @@ import { openReader, readerOpen, readerPages, invalidate, tocSheet } from './rea
 import { $, h, icon, toast, busy, kb, fmtBytes, plural, sheet, confirmSheet, promptSheet, menu } from './ui.js';
 import { renderDeck, newDeckFlow, startStudy, dueCount, addCardsFlow } from './cards.js';
 import { playerCard, profileSheet } from './game.js';
+import { renderKit, TABS as KIT_TABS, focusWatch } from './kit.js';
 import { renderTimetable, renderExams, renderGrades, nowCard, examCard, subjectSchoolBox } from './school.js';
 import { editHomework, hwList, sortHw } from './homework.js';
 import { importPdf, exportPdf } from './pdfio.js';
@@ -79,6 +80,7 @@ async function render() {
   if (nav.view === 'subject') return renderSubject();
   if (nav.view === 'code') return renderCodeList({ setHeader, btn, go });
   if (nav.view === 'reminders') return renderReminders({ setHeader, btn, go, saveFile });
+  if (nav.view === 'kit') return renderKit({ setHeader, btn, iconBtn, go }, nav.tab);
   if (nav.view === 'timetable') return renderTimetable({ setHeader, btn, iconBtn, go });
   if (nav.view === 'exams') return renderExams({ setHeader, btn, iconBtn, go });
   if (nav.view === 'grades') return renderGrades({ setHeader, btn, iconBtn, go });
@@ -144,6 +146,9 @@ async function renderLibrary() {
     tile('', 'bookmark', 'Prüfungen', exams.length ? plural(exams.filter((x) => x.date >= new Date().toISOString().slice(0, 10)).length, 'geplant', 'geplant') : 'Arbeiten und Tests', 'exams'),
     tile('', 'homework', 'Noten', grades.length ? plural(grades.length, 'Note', 'Noten') : 'Schnitt pro Fach', 'grades'),
     tile('.rementry', 'clock', 'Erinnerungen', openRems ? `${openRems} offen` : 'Für alles, was du nicht vergessen willst', 'reminders')));
+  // Werkzeuge
+  view.append(h('h2.section', { text: 'Werkzeuge' }), h('div.ptiles.kit', null,
+    ...KIT_TABS.map(([k, l, ic, sub]) => h('button.ptile', { on: { click: () => go({ view: 'kit', tab: k }) } }, h('span.ptileic', null, icon(ic)), h('b', { text: l }), h('small', { text: sub })))));
 
   // Programmieren
   const nCode = (await db.listCode()).length;
@@ -771,6 +776,7 @@ if ('serviceWorker' in navigator && !document.documentElement.dataset.artifact) 
 db.askPersistent();
 render();
 // Erinnerungen prüfen, solange die App offen ist (Hinweis + Mitteilung, falls erlaubt)
+focusWatch();
 startReminderWatch(() => {
   if ((nav.view === 'library' || nav.view === 'reminders') && !document.querySelector('.dlgscrim')) render();
 });

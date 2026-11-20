@@ -837,3 +837,94 @@ input.field[type="time"]::-webkit-date-and-time-value { text-align: left; margin
 .sbitem.add { align-items: center; justify-content: center; flex-direction: row; gap: 8px; color: var(--accent); font-weight: 600; }
 .sbitem.add span { color: var(--accent); font-size: 15px; }
 @media (max-width: 640px) { .schoolbox { grid-template-columns: 1fr 1fr; } .gradepick { grid-template-columns: repeat(4, 1fr); } }
+
+/* ---------- Werkzeuge ---------- */
+.kittabs { margin-bottom: 18px; overflow-x: auto; max-width: 100%; }
+.kittabs button { white-space: nowrap; }
+.kitbody { max-width: 980px; }
+/* Rechner */
+.calc { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 16px; align-items: start; }
+.calc.compact { grid-template-columns: 1fr; }
+.calcscreen { grid-column: 1 / -1; padding: 14px 18px; border-radius: 18px; background: var(--surface); box-shadow: 0 0 0 1px var(--line); }
+.calc.compact .calcscreen { grid-column: auto; }
+.calctop { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.calctop small { margin-left: auto; color: var(--muted); font-size: 12px; }
+.calcmode { min-width: 48px; height: 30px; padding: 0 10px; border-radius: 8px; background: var(--surface-2); font-size: 12px; font-weight: 700; letter-spacing: .04em; display: inline-flex; align-items: center; justify-content: center; }
+.calcmode .ic { width: 16px; height: 16px; }
+.calcin { width: 100%; border: 0; background: transparent; color: var(--ink); font: 500 30px/1.3 ui-monospace, "SF Mono", Menlo, monospace; text-align: right; padding: 4px 0; outline: none; }
+.calcout { min-height: 34px; text-align: right; font: 700 26px/1.3 var(--font-display); color: var(--accent); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.calcout.err { font-size: 15px; font-weight: 500; color: var(--danger); }
+.calcpad { display: grid; grid-template-columns: repeat(30, 1fr); gap: 8px; }
+.ck { grid-column: span 6; min-height: 54px; border-radius: 14px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); font-size: 20px; font-weight: 500; font-variant-numeric: tabular-nums; transition: transform .06s ease, background .1s ease; touch-action: manipulation; user-select: none; -webkit-user-select: none; }
+.ck.sci { grid-column: span 5; min-height: 44px; font-size: 15px; background: var(--surface-2); box-shadow: none; }
+.ck:active { transform: scale(.96); background: var(--surface-2); }
+.ck.op { background: color-mix(in srgb, var(--accent) 12%, var(--surface)); color: var(--accent); font-weight: 600; }
+.ck.fn { color: var(--danger); font-weight: 600; }
+.ck.eq { background: var(--accent); color: var(--on-accent); font-weight: 700; box-shadow: none; }
+.calchist { display: flex; flex-direction: column; gap: 4px; padding: 8px; border-radius: 16px; background: var(--surface); box-shadow: 0 0 0 1px var(--line); max-height: 520px; overflow: auto; }
+.calchist:empty { display: none; }
+.hrow { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; padding: 8px 10px; border-radius: 10px; text-align: right; font-variant-numeric: tabular-nums; }
+.hrow:active { background: var(--surface-2); }
+.hrow span { font-size: 13px; color: var(--muted); font-family: ui-monospace, "SF Mono", Menlo, monospace; overflow-wrap: anywhere; }
+.hrow b { font-size: 16px; }
+@media (max-width: 860px) { .calc { grid-template-columns: 1fr; } .calchist { max-height: 220px; } }
+/* Fokus */
+.focus { display: flex; flex-direction: column; align-items: center; gap: 18px; padding: 10px 0 20px; }
+.focusring { position: relative; width: min(300px, 80vw); aspect-ratio: 1; }
+.focusring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.focusring circle { fill: none; stroke-width: 14; }
+.focusring .track { stroke: color-mix(in srgb, var(--muted) 18%, transparent); }
+.focusring .fill { stroke: var(--accent); stroke-linecap: round; transition: stroke-dashoffset .25s linear; }
+.focusring.brk .fill { stroke: #2f9e6a; }
+.focuscenter { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.focustime { font: 700 clamp(44px, 9vw, 64px)/1 var(--font-display); font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+.focusmode { font-size: 13px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+.focusbtns { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+.focusbtns .btn.big { min-width: 140px; }
+.focus .calm.small { max-width: 52ch; text-align: center; }
+/* Einheiten */
+.unitbox { margin-top: 14px; padding: 16px; border-radius: 18px; background: var(--surface); box-shadow: 0 0 0 1px var(--line); }
+.unitrow { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) auto minmax(0, 1fr); gap: 8px; align-items: center; }
+.unitval { font-size: 20px; font-variant-numeric: tabular-nums; }
+.unitres { margin: 16px 0; font: 600 22px/1.3 var(--font-display); overflow-wrap: anywhere; }
+.unitall { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 6px; }
+.urow { display: flex; align-items: baseline; gap: 6px; padding: 8px 10px; border-radius: 10px; background: var(--surface-2); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.urow span { color: var(--muted); font-size: 13px; }
+@media (max-width: 600px) { .unitrow { grid-template-columns: 1fr 1fr; } }
+/* Periodensystem */
+.psewrap { overflow-x: auto; margin: 14px -4px 12px; padding: 4px; -webkit-overflow-scrolling: touch; }
+.pse { display: grid; grid-template-columns: repeat(18, minmax(44px, 1fr)); grid-template-rows: repeat(7, auto) 14px auto auto; gap: 3px; min-width: 860px; }
+.el { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; aspect-ratio: 1 / 1.08; padding: 2px; border-radius: 6px; background: var(--c-el, var(--surface-2)); color: var(--ink); transition: opacity .15s ease, transform .1s ease; }
+.el small { position: absolute; top: 2px; left: 4px; font-size: 9px; color: var(--muted); }
+.el b { font-size: 16px; line-height: 1; margin-top: 6px; }
+.el span { font-size: 7.5px; line-height: 1.1; color: var(--muted); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px; }
+.el:active { transform: scale(.95); }
+.pse.filtering .el:not(.hit) { opacity: .18; }
+.pse.filtering .el.hit { outline: 2px solid var(--accent); }
+.pselabel { display: grid; place-items: center; font-size: 9px; color: var(--muted); border-radius: 6px; box-shadow: inset 0 0 0 1px var(--line); }
+.am { --c-el: color-mix(in srgb, #e5534b 26%, var(--surface)); }
+.ae { --c-el: color-mix(in srgb, #e8833a 26%, var(--surface)); }
+.tm { --c-el: color-mix(in srgb, #d6b23a 22%, var(--surface)); }
+.pm { --c-el: color-mix(in srgb, #7aa37a 26%, var(--surface)); }
+.md { --c-el: color-mix(in srgb, #3aa5a0 26%, var(--surface)); }
+.nm { --c-el: color-mix(in srgb, #4a90e2 24%, var(--surface)); }
+.hg { --c-el: color-mix(in srgb, #8e6bd8 26%, var(--surface)); }
+.ng { --c-el: color-mix(in srgb, #c55fb3 24%, var(--surface)); }
+.la { --c-el: color-mix(in srgb, #9a8f78 24%, var(--surface)); }
+.ac { --c-el: color-mix(in srgb, #8a7464 26%, var(--surface)); }
+.pselegend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12.5px; color: var(--muted); }
+.lg { display: inline-flex; align-items: center; gap: 6px; }
+.lg i { width: 12px; height: 12px; border-radius: 3px; background: var(--c-el); }
+.elhead { display: flex; flex-direction: column; align-items: center; padding: 18px; border-radius: 16px; background: var(--c-el); margin-bottom: 14px; }
+.elhead small { color: var(--muted); }
+.elhead b { font: 700 46px/1.1 var(--font-display); }
+.eltable { display: flex; flex-direction: column; }
+.elrow { display: flex; justify-content: space-between; gap: 12px; padding: 10px 2px; border-top: 1px solid var(--line); font-size: 15px; }
+.elrow span { color: var(--muted); }
+/* Formeln */
+.flist { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; margin-top: 14px; }
+.fcard { display: flex; flex-direction: column; gap: 6px; padding: 14px 16px; border-radius: 16px; background: var(--surface); box-shadow: 0 0 0 1px var(--line); }
+.fcard small:empty { display: none; }
+.fcard small { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+.fmath { margin: 0; font: 500 17px/1.55 "STIX Two Math", "Cambria Math", ui-serif, Georgia, serif; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink); }
+.fcard span { font-size: 13px; color: var(--muted); }

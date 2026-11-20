@@ -700,6 +700,7 @@ $('edMath').addEventListener('click', (e) => {
   menu(e.currentTarget, [
     { label: 'Koordinatensystem …', icon: 'axes', onClick: axesFlow },
     { label: 'Funktionsgraph …', icon: 'graph', onClick: graphFlow },
+    { label: 'Taschenrechner', icon: 'calc', onClick: () => import('./kit.js').then((m) => m.calcSheet()) },
     'sep',
     ...Object.entries(TOOL_NAMES).map(([k, label]) => ({ label: (tpl && tpl.type === k ? '✓ ' : '') + label, icon: 'tool-' + k, onClick: () => showTool(k) })),
     'sep',
