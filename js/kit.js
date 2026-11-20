@@ -215,26 +215,36 @@ function ding() {
   } catch (e) { /* egal */ }
 }
 function focusWidget(root) {
-  const R = 120, C = 2 * Math.PI * R;
+  const R = 118, C = 2 * Math.PI * R;
+  const ticks = Array.from({ length: 60 }, (_, i) => { const a = i / 60 * 2 * Math.PI, r1 = i % 5 ? 132 : 128, r2 = 137; return `<line x1="${140 + r1 * Math.cos(a)}" y1="${140 + r1 * Math.sin(a)}" x2="${140 + r2 * Math.cos(a)}" y2="${140 + r2 * Math.sin(a)}" class="${i % 5 ? 'tk' : 'tk5'}"/>`; }).join('');
   const ringEl = h('div.focusring');
-  ringEl.innerHTML = `<svg viewBox="0 0 280 280"><circle cx="140" cy="140" r="${R}" class="track"/><circle cx="140" cy="140" r="${R}" class="fill" stroke-dasharray="${C}" stroke-dashoffset="0"/></svg>`;
-  const timeEl = h('b.focustime'), modeEl = h('small.focusmode');
-  ringEl.append(h('div.focuscenter', null, modeEl, timeEl));
-  const startBtn = h('button.btn.big.primary', { on: { click: () => {
+  ringEl.innerHTML = `<svg viewBox="0 0 280 280" aria-hidden="true"><defs>
+    <linearGradient id="fgF" x1="0" y1="0" x2="1" y2="1"><stop offset="0" class="g1"/><stop offset="1" class="g2"/></linearGradient></defs>
+    <g class="ticks">${ticks}</g>
+    <circle cx="140" cy="140" r="${R}" class="track"/>
+    <circle cx="140" cy="140" r="${R}" class="fill" stroke="url(#fgF)" stroke-dasharray="${C}" stroke-dashoffset="0"/>
+    <circle cx="${140 + R}" cy="140" r="9" class="knob"/></svg>`;
+  const timeEl = h('b.focustime'), modeEl = h('span.focusmode'), endEl = h('small.focusend');
+  ringEl.append(h('div.focuscenter', null, modeEl, timeEl, endEl));
+  const toggle = () => {
     const s = fstate();
     if (s.running) { s.left = leftOf(s); s.running = false; } else { s.end = Date.now() + s.left; s.running = true; }
     fsave(s); draw();
-  } } });
-  const resetBtn = h('button.btn.big', { text: 'Zurücksetzen', on: { click: () => { const s = fstate(); s.running = false; s.left = durOf(s); fsave(s); draw(); } } });
-  const skipBtn = h('button.btn.big', { text: 'Überspringen', on: { click: () => { const s = fstate(); s.mode = s.mode === 'focus' ? 'break' : 'focus'; s.running = false; s.left = durOf(s); fsave(s); draw(); } } });
+  };
+  const startBtn = h('button.fplay', { on: { click: toggle } });
+  const resetBtn = h('button.fround', { 'aria-label': 'Zurücksetzen', title: 'Zurücksetzen', on: { click: () => { const s = fstate(); s.running = false; s.left = durOf(s); fsave(s); draw(); } } }, icon('undo'), h('small', { text: 'Neu' }));
+  const skipBtn = h('button.fround', { 'aria-label': 'Überspringen', title: 'Überspringen', on: { click: () => { const s = fstate(); s.mode = s.mode === 'focus' ? 'break' : 'focus'; s.running = false; s.left = durOf(s); fsave(s); draw(); } } }, icon('right'), h('small', { text: 'Weiter' }));
   const presets = h('div.seg');
   FOCUS_PRESETS.forEach(([, , l], i) => presets.append(h('button' + (fstate().preset === i ? '.on' : ''), { text: l, on: { click: (e) => {
     const s = fstate(); s.preset = i; s.running = false; s.left = durOf(s); fsave(s);
     presets.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b === e.currentTarget)); draw();
   } } })));
-  const countEl = h('p.calm');
-  root.append(h('div.focus', null, ringEl, h('div.focusbtns', null, resetBtn, startBtn, skipBtn), presets, countEl,
-    h('p.calm.small', { text: 'Leg das iPad weg und arbeite, bis der Ring leer ist. Der Timer läuft weiter, wenn du in der App etwas anderes machst. Ist die App ganz geschlossen, gibt es keinen Ton.' })));
+  const dots = h('div.fdots');
+  const countEl = h('p.fcount');
+  const wrap = h('div.focus', null, h('div.focusstage', null, ringEl), h('div.focusbtns', null, resetBtn, startBtn, skipBtn), presets, h('div.ftoday', null, dots, countEl),
+    h('p.calm.small', { text: 'Leg das iPad weg und arbeite, bis der Ring leer ist. Der Timer läuft weiter, wenn du in der App etwas anderes machst. Ist die App ganz geschlossen, gibt es keinen Ton.' }));
+  root.append(wrap);
+  let lastSig = '';
   const draw = () => {
     if (!root.isConnected && root.dataset.drawn) { clearInterval(t); return; }
     root.dataset.drawn = '1';
@@ -242,11 +252,20 @@ function focusWidget(root) {
     const m = Math.floor(left / 60000), sec = Math.floor((left % 60000) / 1000);
     timeEl.textContent = `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
     modeEl.textContent = s.mode === 'focus' ? 'Fokus' : 'Pause';
-    ringEl.classList.toggle('brk', s.mode !== 'focus');
-    ringEl.querySelector('.fill').setAttribute('stroke-dashoffset', String(C * (1 - left / d)));
-    startBtn.textContent = s.running ? 'Pause' : left < d ? 'Weiter' : 'Start';
+    const frac = d ? left / d : 0;
+    wrap.classList.toggle('brk', s.mode !== 'focus');
+    wrap.classList.toggle('running', !!s.running);
+    ringEl.querySelector('.fill').setAttribute('stroke-dashoffset', String(C * (1 - frac)));
+    const ang = -frac * 2 * Math.PI;   // Ring läuft gegen den Uhrzeigersinn leer
+    const kn = ringEl.querySelector('.knob'); kn.setAttribute('cx', String(140 + R * Math.cos(ang))); kn.setAttribute('cy', String(140 + R * Math.sin(ang)));
+    if (s.running) { const e = new Date(s.end); endEl.textContent = `bis ${String(e.getHours()).padStart(2, '0')}:${String(e.getMinutes()).padStart(2, '0')} Uhr`; }
+    else endEl.textContent = left < d ? 'angehalten' : `${presetOf(s)[s.mode === 'focus' ? 0 : 1]} Minuten`;
+    const sig = (s.running ? 'p' : left < d ? 'w' : 's');
+    if (sig !== lastSig) { lastSig = sig; startBtn.replaceChildren(icon(s.running ? 'pause' : 'play'), h('span', { text: s.running ? 'Pause' : left < d ? 'Weiter' : 'Start' })); }
     const n = s.day === new Date().toDateString() ? s.count : 0;
-    countEl.textContent = n ? `Heute ${n} Fokus-${n === 1 ? 'Einheit' : 'Einheiten'} geschafft` : 'Heute noch keine Fokus-Einheit';
+    const goal = Math.max(4, n);
+    if (dots.childElementCount !== goal || dots.dataset.n !== String(n)) { dots.dataset.n = String(n); dots.replaceChildren(...Array.from({ length: goal }, (_, i) => h('i' + (i < n ? '.on' : '')))); }
+    countEl.textContent = n ? `Heute ${n} Fokus-${n === 1 ? 'Einheit' : 'Einheiten'} geschafft${n >= 4 ? '. Stark!' : ''}` : 'Heute noch keine Fokus-Einheit';
   };
   draw();
   const t = setInterval(draw, 250);
@@ -269,33 +288,56 @@ function convTemp(v, from, to) {
   const c = from === '°C' ? v : from === 'K' ? v - 273.15 : (v - 32) * 5 / 9;
   return to === '°C' ? c : to === 'K' ? c + 273.15 : c * 9 / 5 + 32;
 }
+// Zahl für Einheiten: sehr groß/klein als 6,21 · 10⁻⁵
+const SUPD = { '-': '⁻', 0: '⁰', 1: '¹', 2: '²', 3: '³', 4: '⁴', 5: '⁵', 6: '⁶', 7: '⁷', 8: '⁸', 9: '⁹' };
+export function fmtU(v) {
+  if (!isFinite(v)) return de(v);
+  const a = Math.abs(v);
+  if (a !== 0 && (a < 1e-4 || a >= 1e10)) {
+    const e = Math.floor(Math.log10(a)), m = v / 10 ** e;
+    return `${String(parseFloat(m.toPrecision(4))).replace('.', ',').replace('-', '−')} · 10${String(e).split('').map((c) => SUPD[c]).join('')}`;
+  }
+  return de(v, 8);
+}
 function unitsWidget(root) {
   let cat = store.get('unitCat', 'Länge');
   if (!UNITS[cat]) cat = 'Länge';
-  const cats = h('div.chips.left');
+  const cats = h('div.seg.wrap.unitcats');
   const box = h('div.unitbox');
-  const drawCats = () => { cats.textContent = ''; for (const c of Object.keys(UNITS)) cats.append(h('button.pchip.small' + (c === cat ? '.on' : ''), { text: c, on: { click: () => { cat = c; store.set('unitCat', c); drawCats(); drawBox(); } } })); };
+  const drawCats = () => { cats.textContent = ''; for (const c of Object.keys(UNITS)) cats.append(h('button' + (c === cat ? '.on' : ''), { text: c, on: { click: () => { cat = c; store.set('unitCat', c); drawCats(); drawBox(); } } })); };
   function drawBox() {
     box.textContent = '';
     const list = UNITS[cat];
-    const val = h('input.field.unitval', { type: 'text', inputmode: 'decimal', value: '1', 'aria-label': 'Wert' });
-    const from = h('select.field', null, ...list.map(([u]) => h('option', { value: u, text: u })));
-    const to = h('select.field', null, ...list.map(([u]) => h('option', { value: u, text: u })));
-    from.value = list[cat === 'Temperatur' ? 0 : Math.min(2, list.length - 1)][0];
-    to.value = list[cat === 'Temperatur' ? 1 : Math.min(3, list.length - 1)][0];
-    const res = h('div.unitres');
+    const val = h('input.unitval', { type: 'text', inputmode: 'decimal', value: store.get('unitVal', '1'), 'aria-label': 'Wert' });
+    const from = h('select.unitsel', { 'aria-label': 'Von' }, ...list.map(([u]) => h('option', { value: u, text: u })));
+    const to = h('select.unitsel', { 'aria-label': 'Nach' }, ...list.map(([u]) => h('option', { value: u, text: u })));
+    const pair = store.get('unitPair_' + cat, null);
+    from.value = pair ? pair[0] : list[cat === 'Temperatur' ? 0 : Math.min(2, list.length - 1)][0];
+    to.value = pair ? pair[1] : list[cat === 'Temperatur' ? 1 : Math.min(3, list.length - 1)][0];
+    if (!list.some((x) => x[0] === from.value)) from.value = list[0][0];
+    if (!list.some((x) => x[0] === to.value)) to.value = list[1][0];
+    const out = h('output.unitout');
     const all = h('div.unitall');
     const conv = (v, f, t) => (cat === 'Temperatur' ? convTemp(v, f, t) : v * list.find((x) => x[0] === f)[1] / list.find((x) => x[0] === t)[1]);
     const upd = () => {
+      store.set('unitVal', val.value); store.set('unitPair_' + cat, [from.value, to.value]);
       const v = parseFloat(val.value.replace(',', '.').replace('−', '-'));
       all.textContent = '';
-      if (isNaN(v)) { res.textContent = 'Bitte eine Zahl eingeben'; return; }
-      res.textContent = `${de(v)} ${from.value} = ${de(conv(v, from.value, to.value))} ${to.value}`;
-      for (const [u] of list) if (u !== from.value) all.append(h('div.urow', null, h('b', { text: de(conv(v, from.value, u)) }), h('span', { text: u })));
+      if (isNaN(v)) { out.textContent = '–'; return; }
+      out.textContent = fmtU(conv(v, from.value, to.value));
+      for (const [u] of list) {
+        if (u === from.value) continue;
+        all.append(h('button.urow' + (u === to.value ? '.on' : ''), { on: { click: () => { to.value = u; upd(); } } }, h('span', { text: u }), h('b', { text: fmtU(conv(v, from.value, u)) })));
+      }
     };
     [val, from, to].forEach((x) => x.addEventListener('input', upd));
-    const swap = h('button.icbtn', { 'aria-label': 'Tauschen', on: { click: () => { const a = from.value; from.value = to.value; to.value = a; upd(); } } }, icon('undo'));
-    box.append(h('div.unitrow', null, val, from, swap, to), res, h('h3.dlgsub', { text: 'In allen Einheiten' }), all);
+    const swap = h('button.uswap', { 'aria-label': 'Tauschen', title: 'Tauschen', on: { click: () => { const a = from.value; from.value = to.value; to.value = a; swap.classList.toggle('turn'); upd(); } } }, icon('undo'));
+    box.append(
+      h('div.unitpair', null,
+        h('label.ucard', null, h('small', { text: 'Von' }), val, from),
+        swap,
+        h('div.ucard.res', null, h('small', { text: 'Ergebnis' }), out, to)),
+      h('p.fieldlabel', { text: 'In allen Einheiten' }), all);
     upd();
   }
   drawCats(); drawBox();
@@ -387,6 +429,26 @@ const FORMULAS = [
   ['Chemie', 'Massenanteil', 'w = m(Stoff) ⁄ m(Gemisch)', ''],
   ['Konstanten', 'Naturkonstanten', 'g = 9,81 m/s²\nc = 299 792 458 m/s\nN_A = 6,022 · 10²³ 1/mol\ne = 1,602 · 10⁻¹⁹ C', ''],
 ];
+
+// Kleine Strichzeichnungen zu den Geometrie-Formeln (viewBox 0 0 96 72)
+const FIG = {
+  'Pythagoras': '<path class="fl" d="M14 60 L82 60 L14 16 Z"/><path class="ra" d="M14 50 h10 v10"/><text x="48" y="70">a</text><text x="6" y="40">b</text><text x="52" y="34">c</text>',
+  'Rechteck': '<rect class="fl" x="14" y="16" width="68" height="40" rx="2"/><text x="48" y="68">a</text><text x="86" y="40">b</text>',
+  'Dreieck': '<path class="fl" d="M10 58 L86 58 L56 12 Z"/><path class="dh" d="M56 12 V58"/><path class="ra" d="M56 50 h-8 v8"/><text x="30" y="69">g</text><text x="60" y="38">h</text>',
+  'Trapez': '<path class="fl" d="M8 58 L88 58 L68 16 L26 16 Z"/><path class="dh" d="M40 16 V58"/><text x="48" y="69">a</text><text x="48" y="11">c</text><text x="46" y="40">h</text>',
+  'Parallelogramm': '<path class="fl" d="M8 58 L68 58 L88 16 L28 16 Z"/><path class="dh" d="M28 16 V58"/><text x="40" y="69">g</text><text x="34" y="40">h</text>',
+  'Kreis': '<circle class="fl" cx="48" cy="36" r="27"/><path class="ln" d="M48 36 L75 36"/><circle class="pt" cx="48" cy="36" r="2.4"/><text x="62" y="31">r</text>',
+  'Quader': '<path class="fl" d="M12 26 L62 26 L62 62 L12 62 Z"/><path class="fl2" d="M12 26 L30 12 L80 12 L62 26 Z M62 26 L80 12 L80 48 L62 62 Z"/><text x="36" y="71">a</text><text x="74" y="62">b</text><text x="3" y="47">c</text>',
+  'Würfel': '<path class="fl" d="M16 24 L56 24 L56 64 L16 64 Z"/><path class="fl2" d="M16 24 L32 10 L72 10 L56 24 Z M56 24 L72 10 L72 50 L56 64 Z"/><text x="34" y="72">a</text>',
+  'Zylinder': '<path class="fl" d="M22 16 V56 A26 8 0 0 0 74 56 V16"/><ellipse class="fl2" cx="48" cy="16" rx="26" ry="8"/><path class="dh" d="M22 56 A26 8 0 0 1 74 56"/><path class="ln" d="M48 16 H74"/><text x="62" y="5">r</text><text x="81" y="40">h</text>',
+  'Kegel': '<path class="fl" d="M48 8 L20 56 A28 8 0 0 0 76 56 Z"/><path class="dh" d="M20 56 A28 8 0 0 1 76 56 M48 8 V56"/><path class="ln" d="M48 56 H76"/><text x="60" y="70">r</text><text x="51" y="36">h</text>',
+  'Pyramide': '<path class="fl" d="M12 54 L58 64 L48 10 Z"/><path class="fl2" d="M58 64 L84 50 L48 10 Z"/><path class="dh" d="M12 54 L38 42 L84 50 M38 42 L48 10"/><text x="30" y="70">G</text>',
+  'Kugel': '<circle class="fl" cx="48" cy="36" r="28"/><ellipse class="dh" cx="48" cy="36" rx="28" ry="8"/><path class="ln" d="M48 36 L76 36"/><circle class="pt" cx="48" cy="36" r="2.4"/><text x="62" y="24">r</text>',
+};
+function figEl(name) {
+  if (!FIG[name]) return null;
+  const d = h('div.ffig'); d.innerHTML = `<svg viewBox="0 0 96 72" aria-hidden="true">${FIG[name]}</svg>`; return d;
+}
 function formulasWidget(root) {
   const q = h('input.field', { type: 'search', placeholder: 'Suchen, z. B. Kreis, Dichte, Stoffmenge', autocomplete: 'off' });
   let cat = store.get('fCat', 'Mathe');
@@ -399,7 +461,7 @@ function formulasWidget(root) {
     list.textContent = '';
     const items = FORMULAS.filter(([c, n, f, note]) => (v ? (n + ' ' + f + ' ' + note + ' ' + c).toLowerCase().includes(v) : c === cat));
     if (!items.length) list.append(h('p.calm', { text: 'Nichts gefunden.' }));
-    for (const [c, n, f, note] of items) list.append(h('div.fcard', null, h('small', { text: v ? c : '' }), h('b', { text: n }), h('pre.fmath', { text: f }), note ? h('span', { text: note }) : null));
+    for (const [c, n, f, note] of items) { const fig = figEl(n); list.append(h('div.fcard' + (fig ? '.hasfig' : '') + '.cat-' + c.toLowerCase(), null, h('div.ftext', null, h('small', { text: v ? c : '' }), h('b', { text: n }), h('pre.fmath', { text: fig ? f.replace(/ {3,}/g, '\n') : f }), note ? h('span', { text: note }) : null), fig)); }
   };
   q.addEventListener('input', draw);
   draw();
