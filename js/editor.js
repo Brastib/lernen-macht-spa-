@@ -646,6 +646,29 @@ async function graphFlow() {
   const group = [];
   let ax = axes;
   if (!ax) { ax = makeAxes({ xmin: -5, xmax: 5, ymin: -5, ymax: 5, cm: 1 }); if (!ax) { toast('Kein Platz für ein Koordinatensystem'); return; } group.push(ax); }
+  if (!plotInto(ax, res.f, res.src, color, group)) { toast('Der Graph liegt ganz außerhalb des Koordinatensystems'); if (group.length) addGroup(group); return; }
+  addGroup(group);
+}
+// Aus dem Funktionsplotter: Koordinatensystem passend zum Ausschnitt plus alle Graphen in ihren Farben
+async function plotterFlow() {
+  commitText();
+  const { plotterSheet } = await import('./plotter.js');
+  const res = await plotterSheet();
+  if (!res) return;
+  const b = res.bounds;
+  const ax = { xmin: Math.floor(b.x0), xmax: Math.ceil(b.x1), ymin: Math.floor(b.y0), ymax: Math.ceil(b.y1) };
+  if (ax.xmin >= 0) ax.xmin = -1; if (ax.xmax <= 0) ax.xmax = 1; if (ax.ymin >= 0) ax.ymin = -1; if (ax.ymax <= 0) ax.ymax = 1;
+  if (ax.xmax - ax.xmin > 40 || ax.ymax - ax.ymin > 56) { toast('Der Ausschnitt ist zu groß fürs Blatt. Zoom im Plotter etwas hinein (höchstens etwa 40 Einheiten breit).', 6000); return; }
+  let st = null;
+  for (const cm of [1, 0.5, 0.25]) { st = makeAxes({ ...ax, cm }); if (st) break; }
+  if (!st) { toast('Kein Platz für das Koordinatensystem auf dieser Seite'); return; }
+  const group = [st];
+  for (const fn of res.fns) plotInto(st, fn.f, fn.src, fn.color, group);
+  addGroup(group);
+  toast('Graphen eingezeichnet. Mit dem Lasso kannst du sie verschieben.');
+}
+function plotInto(ax, fnc, src, color, group) {
+  const res = { f: fnc, src };
   const { xmin, xmax, ymin, ymax, unit } = ax.ax;
   const { ox, oy } = axesFrame(ax);
   const N = 800, segs = [];
@@ -660,7 +683,7 @@ async function graphFlow() {
     prevY = Number.isFinite(y) ? y : null;
   }
   if (seg.length > 3) segs.push(seg);
-  if (!segs.length) { toast('Der Graph liegt ganz außerhalb des Koordinatensystems'); if (group.length) addGroup(group); return; }
+  if (!segs.length) return false;
   for (const pts of segs) {
     // Punkte ausdünnen (fast gerade Stücke brauchen weniger Punkte)
     const out = [pts[0], pts[1], pts[2]];
@@ -671,7 +694,7 @@ async function graphFlow() {
     group.push({ tool: 'pen', color, size: SIZES.pen[1], pts: out });
   }
   // Beschriftung am Ende des Graphen
-  const used = strokes.filter((st) => st.fnOf === ax.pts.join(',')).length;
+  const used = strokes.concat(group).filter((st) => st.fnOf === ax.pts.join(',')).length;
   const name = FN_NAMES[used % FN_NAMES.length];
   const last = segs[segs.length - 1];
   const ex = last[last.length - 3], ey = last[last.length - 2];
@@ -680,7 +703,7 @@ async function graphFlow() {
   label.pts = [r1(lx), r1(ly), 0, r1(lx), r1(ly + 24), 0];
   fitText(label);
   group.push(label);
-  addGroup(group);
+  return true;
 }
 
 function showTool(type) {
@@ -700,6 +723,7 @@ $('edMath').addEventListener('click', (e) => {
   menu(e.currentTarget, [
     { label: 'Koordinatensystem …', icon: 'axes', onClick: axesFlow },
     { label: 'Funktionsgraph …', icon: 'graph', onClick: graphFlow },
+    { label: 'Funktionsplotter …', icon: 'graph', onClick: plotterFlow },
     { label: 'Taschenrechner', icon: 'calc', onClick: () => import('./kit.js').then((m) => m.calcSheet()) },
     'sep',
     ...Object.entries(TOOL_NAMES).map(([k, label]) => ({ label: (tpl && tpl.type === k ? '✓ ' : '') + label, icon: 'tool-' + k, onClick: () => showTool(k) })),

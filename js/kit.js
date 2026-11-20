@@ -2,7 +2,7 @@
 import { $, h, icon, toast, sheet } from './ui.js';
 import { compile } from './mathfn.js';
 
-export const TABS = [['calc', 'Rechner', 'calc', 'Wissenschaftlich, Grad und Bogenmaß'], ['focus', 'Fokus-Timer', 'clock', 'Konzentriert lernen mit Pausen'], ['units', 'Einheiten', 'ruler2', 'Länge, Masse, Zeit, Temperatur …'], ['pse', 'Periodensystem', 'atom', 'Alle 118 Elemente'], ['formulas', 'Formeln', 'sigma', 'Mathe, Physik, Chemie']];
+export const TABS = [['calc', 'Rechner', 'calc', 'Wissenschaftlich, Grad und Bogenmaß'], ['plot', 'Funktionen', 'graph', 'Graphen live zeichnen, Nullstellen, Schnittpunkte'], ['focus', 'Fokus-Timer', 'clock', 'Konzentriert lernen mit Pausen'], ['units', 'Einheiten', 'ruler2', 'Länge, Masse, Zeit, Temperatur …'], ['pse', 'Periodensystem', 'atom', 'Alle 118 Elemente'], ['formulas', 'Formeln', 'sigma', 'Mathe, Physik, Chemie']];
 const store = { get: (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } }, set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* egal */ } } };
 const de = (n, digits = 10) => {
   if (!isFinite(n)) return n > 0 ? '∞' : n < 0 ? '−∞' : 'Fehler';
@@ -23,6 +23,7 @@ export async function renderKit(ctx, tab = 'calc') {
   const body = h('div.kitbody');
   view.append(tabs, body);
   if (tab === 'calc') calcWidget(body);
+  else if (tab === 'plot') import('./plotter.js').then((m) => m.plotWidget(body));
   else if (tab === 'focus') focusWidget(body);
   else if (tab === 'units') unitsWidget(body);
   else if (tab === 'pse') pseWidget(body);

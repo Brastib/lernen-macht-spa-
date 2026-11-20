@@ -7,8 +7,11 @@ const FUNCS = {
 };
 const SUP = { '²': '^2', '³': '^3', '⁴': '^4', '¹': '^1', '⁰': '^0', '√': 'sqrt', '·': '*', '×': '*', '−': '-', '÷': '/', 'π': 'pi' };
 
-function tokenize(src) {
-  let s = String(src).trim().replace(/^(f\s*\(\s*x\s*\)|y)\s*=/i, '');
+// Buchstaben, die als Parameter (Schieberegler) gelten dürfen
+export const PARAM_LETTERS = 'abcdkmnpqrstuvw';
+export const stripName = (src) => String(src).trim().replace(/^([a-z]\s*\(\s*x\s*\)|y)\s*=/i, '');
+function tokenize(src, opts = {}) {
+  let s = stripName(src);
   s = s.replace(/[²³⁴¹⁰√·×−÷π]/g, (c) => SUP[c]).replace(/(\d),(\d)/g, '$1.$2').toLowerCase();
   const out = [];
   let i = 0;
@@ -25,6 +28,7 @@ function tokenize(src) {
         if (f) { out.push(f === 'pi' ? { t: 'num', v: Math.PI } : { t: 'fn', v: f }); w = w.slice(f.length); continue; }
         if (w[0] === 'x') { out.push({ t: 'x' }); w = w.slice(1); continue; }
         if (w[0] === 'e') { out.push({ t: 'num', v: Math.E }); w = w.slice(1); continue; }
+        if (opts.params && PARAM_LETTERS.includes(w[0])) { out.push({ t: 'par', v: w[0] }); w = w.slice(1); continue; }
         throw new Error(`„${w}“ kenne ich nicht. Erlaubt: x, Zahlen, + − · / ^, Klammern, sin, cos, tan, sqrt, abs, ln, log, exp, pi`);
       }
       i = j; continue;
@@ -38,8 +42,8 @@ function tokenize(src) {
   const res = [];
   for (const tk of out) {
     const prev = res[res.length - 1];
-    const prevEnds = prev && (prev.t === 'num' || prev.t === 'x' || prev.t === ')');
-    const curStarts = tk.t === 'num' || tk.t === 'x' || tk.t === '(' || tk.t === 'fn';
+    const prevEnds = prev && (prev.t === 'num' || prev.t === 'x' || prev.t === ')' || prev.t === 'par');
+    const curStarts = tk.t === 'num' || tk.t === 'x' || tk.t === '(' || tk.t === 'fn' || tk.t === 'par';
     if (prevEnds && curStarts) res.push({ t: '*' });
     res.push(tk);
   }
@@ -51,7 +55,7 @@ function tokenize(src) {
 const R = Math.PI / 180;
 const DEGF = { sin: (v) => Math.sin(v * R), cos: (v) => Math.cos(v * R), tan: (v) => Math.tan(v * R), arcsin: (v) => Math.asin(v) / R, arccos: (v) => Math.acos(v) / R, arctan: (v) => Math.atan(v) / R };
 export function compile(src, opts = {}) {
-  const tk = tokenize(src);
+  const tk = tokenize(src, opts);
   if (!tk.length) throw new Error('Bitte einen Term eingeben, z. B. x^2 - 1');
   let i = 0;
   const peek = () => tk[i] && tk[i].t;
@@ -82,6 +86,7 @@ export function compile(src, opts = {}) {
     i++;
     if (t.t === 'num') { const v = t.v; return () => v; }
     if (t.t === 'x') return (x) => x;
+    if (t.t === 'par') { const P = opts.params, k = t.v; return () => (P[k] ?? 1); }
     if (t.t === '(') { const a = expr(); eat(')'); return a; }
     if (t.t === 'fn') {
       const f = (opts.deg && DEGF[t.v]) || FUNCS[t.v];
@@ -118,4 +123,9 @@ export function mathify(text) {
     .replace(/<=>/g, '⇔').replace(/=>/g, '⇒').replace(/->/g, '→').replace(/>=/g, '≥').replace(/<=/g, '≤').replace(/!=/g, '≠').replace(/\+-/g, '±')
     .replace(/~=/g, '≈').replace(/(\S)\s*\*\s*(?=\S)/g, '$1 · ').replace(/\binf\b/g, '∞').replace(/(\d)\s*grad\b/gi, '$1°')
     .replace(/\b(alpha|beta|gamma|delta|Delta|lambda|sigma|phi|omega|Omega|theta|pi|mu|rho|epsilon)\b/g, (m) => GREEK[m]);
+}
+
+// Welche Parameter (a, b, k …) kommen im Term vor?
+export function paramsOf(src) {
+  try { return [...new Set(tokenize(src, { params: {} }).filter((t) => t.t === 'par').map((t) => t.v))]; } catch (e) { return []; }
 }
