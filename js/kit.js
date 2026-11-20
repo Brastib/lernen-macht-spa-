@@ -1,6 +1,7 @@
 // Werkzeuge für die Schule: Taschenrechner, Fokus-Timer, Einheiten, Periodensystem, Formelsammlung. Alles offline.
 import { $, h, icon, toast, sheet } from './ui.js';
 import { compile } from './mathfn.js';
+export { de };
 
 export const TABS = [['calc', 'Rechner', 'calc', 'Wissenschaftlich, Grad und Bogenmaß'], ['plot', 'Funktionen', 'graph', 'Graphen live zeichnen, Nullstellen, Schnittpunkte'], ['focus', 'Fokus-Timer', 'clock', 'Konzentriert lernen mit Pausen'], ['units', 'Einheiten', 'ruler2', 'Länge, Masse, Zeit, Temperatur …'], ['chem', 'Chemie', 'atom', 'Periodensystem, Atommodelle, Labor'], ['formulas', 'Formeln', 'sigma', 'Mathe, Physik, Chemie']];
 const store = { get: (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } }, set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* egal */ } } };
@@ -23,7 +24,7 @@ export async function renderKit(ctx, tab = 'calc') {
   for (const [k, l] of TABS) tabs.append(h('button' + (k === tab ? '.on' : ''), { text: l, on: { click: () => ctx.go({ view: 'kit', tab: k }) } }));
   const body = h('div.kitbody');
   view.append(tabs, body);
-  if (tab === 'calc') calcWidget(body);
+  if (tab === 'calc') calcModes(body);
   else if (tab === 'plot') import('./plotter.js').then((m) => m.plotWidget(body));
   else if (tab === 'focus') focusWidget(body);
   else if (tab === 'units') unitsWidget(body);
@@ -32,35 +33,96 @@ export async function renderKit(ctx, tab = 'calc') {
 }
 
 // ================= Taschenrechner =================
+// Bruch zu einer Kommazahl (Kettenbruch). null, wenn es keinen „schönen“ Bruch gibt.
+export function toFrac(x, maxDen = 10000) {
+  if (!isFinite(x) || Number.isInteger(x)) return null;
+  const sign = x < 0 ? -1 : 1; let v = Math.abs(x);
+  let h1 = 1, h0 = 0, k1 = 0, k0 = 1, b = v;
+  for (let i = 0; i < 30; i++) {
+    const a = Math.floor(b);
+    [h1, h0] = [a * h1 + h0, h1]; [k1, k0] = [a * k1 + k0, k1];
+    if (k1 > maxDen) return null;
+    if (Math.abs(v - h1 / k1) < 1e-10 * Math.max(1, v)) return k1 === 1 ? null : { n: sign * h1, d: k1 };
+    if (b - a < 1e-12) break;
+    b = 1 / (b - a);
+  }
+  return null;
+}
+export function fracEl(fr, { mixed = false } = {}) {
+  const neg = fr.n < 0, n = Math.abs(fr.n), w = Math.floor(n / fr.d), r = n % fr.d;
+  const stack = (a, b) => h('span.fr', null, h('span', { text: String(a) }), h('span', { text: String(b) }));
+  if (mixed && w) return h('span.frw', null, (neg ? '−' : '') + w, stack(r, fr.d));
+  return h('span.frw', null, neg ? '−' : '', stack(n, fr.d));
+}
+const VAR_LETTERS = 'abcdkmnpqrstuvwx';
 export function calcWidget(root, { compact = false } = {}) {
   let deg = store.get('calcDeg', true), ans = store.get('calcAns', 0);
-  let hist = store.get('calcHist', []);
+  let hist = store.get('calcHist', []), vars = store.get('calcVars', {}), fracFirst = store.get('calcFrac', false);
+  let last = null;   // letztes Ergebnis für die Bruchanzeige
   const inp = h('input.calcin', { type: 'text', inputmode: 'none', autocomplete: 'off', autocapitalize: 'off', spellcheck: false, placeholder: '0', 'aria-label': 'Rechnung' });
   const out = h('div.calcout', { text: ' ' });
   const histEl = h('div.calchist');
+  const varsEl = h('div.calcvars');
   const modeBtn = h('button.calcmode', { on: { click: () => { deg = !deg; store.set('calcDeg', deg); modeBtn.textContent = deg ? 'DEG' : 'RAD'; preview(); } } }, deg ? 'DEG' : 'RAD');
-  const kbBtn = h('button.calcmode', { title: 'Tastatur', on: { click: () => { inp.inputMode = inp.inputMode === 'none' ? 'decimal' : 'none'; inp.blur(); inp.focus(); } } }, icon('edit'));
+  const kbBtn = h('button.calcmode', { title: 'Tastatur', 'aria-label': 'Tastatur', on: { click: () => { inp.inputMode = inp.inputMode === 'none' ? 'decimal' : 'none'; inp.blur(); inp.focus(); } } }, icon('edit'));
+  const saveBtn = h('button.calcmode', { title: 'Ergebnis als Variable speichern', on: { click: (e) => saveVar(e.currentTarget) } }, '→ Var');
+  const varProxy = () => new Proxy(vars, { get: (t, k) => { if (typeof k === 'string' && k in t) return t[k]; throw new Error(`${k} hat noch keinen Wert. Zum Beispiel: ${k} = 5`); }, has: (t, k) => k in t });
+  const prep = (src) => src.replace(/ans/gi, `(${ans})`).replace(/(\d+(?:[.,]\d+)?)\s*%/g, '($1/100)').replace(/(\d+)!/g, (m, n) => String(fact(+n)));
+  // Gibt { v, name } zurück; name gesetzt, wenn eine Variable belegt wird („a = 5“)
   const evalStr = (src) => {
-    const s = src.replace(/ans/gi, `(${ans})`).replace(/(\d+(?:[.,]\d+)?)\s*%/g, '($1/100)').replace(/(\d+)!/g, (m, n) => String(fact(+n)));
-    return compile(s, { deg })(0);
+    let name = null, body = src;
+    const m = src.match(/^\s*([a-zA-Z])\s*=(?!=)\s*(.+)$/);
+    if (m && VAR_LETTERS.includes(m[1].toLowerCase())) { name = m[1].toLowerCase(); body = m[2]; }
+    const f = compile(prep(body), { deg, params: varProxy() });
+    let v;
+    if (vars.x === undefined) {
+      const a = f(1.2345), b = f(2.7183);
+      if (!(Number.isNaN(a) && Number.isNaN(b)) && a !== b) throw new Error('x hat noch keinen Wert. Zum Beispiel: x = 2. Gleichungen löst der Bereich „Gleichungen“.');
+      v = a;
+    } else v = f(vars.x);
+    return { v, name };
   };
+  function show(v, name) {
+    out.textContent = ''; out.classList.remove('err');
+    const fr = toFrac(v);
+    const dec = h('span', { text: (name ? name + ' = ' : '= ') + de(v) });
+    if (fr && fracFirst) out.append(h('span.calcmain', null, name ? name + ' = ' : '= ', fracEl(fr)), h('small.calcalt', { text: '≈ ' + de(v) }));
+    else if (fr) out.append(dec, h('small.calcalt', null, '= ', fracEl(fr, { mixed: Math.abs(v) > 1 })));
+    else out.append(dec);
+  }
   function preview() {
     const v = inp.value.trim();
     if (!v) { out.textContent = ' '; out.classList.remove('err'); return; }
-    try { const r = evalStr(v); out.textContent = '= ' + de(r); out.classList.remove('err'); } catch (e) { out.textContent = ' '; }
+    try { const r = evalStr(v); show(r.v, r.name); } catch (e) { out.textContent = ' '; }
   }
   function equals() {
     const v = inp.value.trim();
     if (!v) return;
     try {
-      const r = evalStr(v);
+      const { v: r, name } = evalStr(v);
       if (!isFinite(r) && isNaN(r)) throw new Error('Das geht nicht (z. B. Wurzel aus einer negativen Zahl).');
       hist.unshift({ q: v, a: r }); hist = hist.slice(0, 30); store.set('calcHist', hist);
-      ans = r; store.set('calcAns', r);
-      out.textContent = '= ' + de(r); out.classList.remove('err');
-      inp.value = de(r).replace('−', '-');
+      ans = r; store.set('calcAns', r); last = r;
+      if (name) { vars[name] = r; store.set('calcVars', vars); drawVars(); }
+      show(r, name);
+      inp.value = name ? '' : de(r).replace('−', '-');
       drawHist();
     } catch (e) { out.textContent = e.message; out.classList.add('err'); }
+  }
+  function saveVar(anchor) {
+    const v = inp.value.trim() ? (() => { try { return evalStr(inp.value).v; } catch (e) { return null; } })() : ans;
+    if (v == null || !isFinite(v)) { toast('Erst etwas ausrechnen'); return; }
+    import('./ui.js').then(({ menu }) => menu(anchor, [...'abcdx'].map((k) => ({ label: `${k} = ${de(v)}${vars[k] !== undefined ? '  (statt ' + de(vars[k]) + ')' : ''}`, onClick: () => { vars[k] = v; store.set('calcVars', vars); drawVars(); toast(`${k} = ${de(v)} gespeichert`); } }))));
+  }
+  function drawVars() {
+    varsEl.textContent = '';
+    const ks = Object.keys(vars).sort();
+    for (const k of ks) {
+      varsEl.append(h('span.vchip', null,
+        h('button', { on: { click: () => ins(k) } }, h('b', { text: k }), ' = ' + de(vars[k])),
+        h('button.vdel', { 'aria-label': `${k} löschen`, on: { click: () => { delete vars[k]; store.set('calcVars', vars); drawVars(); preview(); } } }, icon('close'))));
+    }
+    if (!ks.length) varsEl.append(h('small', { text: 'Variablen: tippe z. B. „a = 5“ und dann =, oder nimm „→ Var“.' }));
   }
   const ins = (t, back = 0) => {
     const s = inp.selectionStart ?? inp.value.length, e = inp.selectionEnd ?? inp.value.length;
@@ -72,6 +134,7 @@ export function calcWidget(root, { compact = false } = {}) {
     [['sin', () => ins('sin()', 1)], ['cos', () => ins('cos()', 1)], ['tan', () => ins('tan()', 1)], ['√', () => ins('sqrt()', 1)], ['x²', () => ins('^2')], ['xʸ', () => ins('^')]],
     [['sin⁻¹', () => ins('arcsin()', 1)], ['cos⁻¹', () => ins('arccos()', 1)], ['tan⁻¹', () => ins('arctan()', 1)], ['ln', () => ins('ln()', 1)], ['log', () => ins('log()', 1)], ['π', () => ins('π')]],
     [['(', () => ins('(')], [')', () => { const c = inp.selectionStart; if (inp.value[c] === ')') { inp.setSelectionRange(c + 1, c + 1); preview(); } else ins(')'); }], ['%', () => ins('%')], ['n!', () => ins('!')], ['Ans', () => ins('Ans')], ['e', () => ins('e')]],
+    [['a'], ['b'], ['x'], ['ⁿ√', () => ins('^(1/)', 1)], ['|x|', () => ins('abs()', 1)], ['a/b', () => { fracFirst = !fracFirst; store.set('calcFrac', fracFirst); if (inp.value.trim()) preview(); else if (last != null) show(last); toast(fracFirst ? 'Ergebnis als Bruch' : 'Ergebnis als Kommazahl'); }, 'frac']],
     [['7'], ['8'], ['9'], ['C', () => { inp.value = ''; preview(); }, 'fn'], ['⌫', () => { const s = inp.selectionStart; if (s > 0) { inp.setRangeText('', s - 1, s, 'end'); preview(); } }, 'fn']],
     [['4'], ['5'], ['6'], ['×', () => ins('·'), 'op'], ['÷', () => ins('/'), 'op']],
     [['1'], ['2'], ['3'], ['+', () => ins('+'), 'op'], ['−', () => ins('-'), 'op']],
@@ -80,7 +143,7 @@ export function calcWidget(root, { compact = false } = {}) {
   const pad = h('div.calcpad');
   K.forEach((row, ri) => {
     for (const [l, fn, cls, span] of row) {
-      const b = h('button.ck' + (cls ? '.' + cls : '') + (ri < 3 ? '.sci' : ''), { text: l, style: span ? { gridColumn: `span ${span}` } : {} });
+      const b = h('button.ck' + (cls ? '.' + cls : '') + (ri < 4 ? '.sci' : ''), { text: l, style: span ? { gridColumn: `span ${span}` } : {} });
       b.addEventListener('pointerdown', (e) => { e.preventDefault(); (fn || (() => ins(l)))(); });
       pad.append(b);
     }
@@ -93,13 +156,28 @@ export function calcWidget(root, { compact = false } = {}) {
       histEl.append(h('button.hrow', { on: { click: () => { inp.value = x.q; preview(); } } }, h('span', { text: x.q }), h('b', { text: '= ' + de(x.a) })));
     }
   }
-  drawHist();
+  drawHist(); drawVars();
   root.append(h('div.calc' + (compact ? '.compact' : ''), null,
-    h('div.calcscreen', null, h('div.calctop', null, modeBtn, kbBtn, h('small', { text: 'Tippe oder schreib die Rechnung' })), inp, out),
+    h('div.calcscreen', null, h('div.calctop', null, modeBtn, kbBtn, saveBtn, h('small', { text: 'Tippe oder schreib die Rechnung' })), inp, out, varsEl),
     pad, histEl));
   setTimeout(() => inp.focus(), 50);
 }
 function fact(n) { if (n > 170) return Infinity; let r = 1; for (let i = 2; i <= n; i++) r *= i; return r; }
+function calcModes(root) {
+  const modes = [['calc', 'Rechnen'], ['eq', 'Gleichungen'], ['stat', 'Statistik']];
+  let cur = store.get('calcMode', 'calc');
+  const seg = h('div.seg.calcmodes');
+  const box = h('div.calcmodebody');
+  const draw = () => {
+    seg.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.k === cur));
+    box.textContent = '';
+    if (cur === 'calc') calcWidget(box);
+    else import('./calc2.js').then((m) => (cur === 'eq' ? m.eqWidget(box) : m.statWidget(box)));
+  };
+  for (const [k, l] of modes) seg.append(h('button', { 'data-k': k, text: l, on: { click: () => { cur = k; store.set('calcMode', k); draw(); } } }));
+  root.append(seg, box);
+  draw();
+}
 export function calcSheet() {
   return sheet('Taschenrechner', (body) => calcWidget(body, { compact: true }), { wide: true });
 }

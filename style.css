@@ -1376,3 +1376,71 @@ canvas.alkcv { display: block; width: 100%; height: 360px; }
 :root[data-theme="dark"] .swatch::before { box-shadow: inset 0 0 0 1.5px rgba(255,255,255,.35); }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .swatch::before { box-shadow: inset 0 0 0 1.5px rgba(255,255,255,.35); } }
 :root[data-theme="dark"] .swatch.on { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--sw) 60%, #fff); }
+
+/* ---------- Rechner: Brüche, Variablen, Gleichungen, Statistik ---------- */
+.calcmodes { margin-bottom: 14px; }
+.ck.frac { color: var(--accent); font-weight: 600; }
+.calcout { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.calcmain { display: inline-flex; align-items: center; gap: 6px; }
+.calcalt { display: inline-flex; align-items: center; gap: 6px; font: 500 16px/1.3 var(--font); color: var(--muted); }
+.frw { display: inline-flex; align-items: center; gap: 3px; }
+.fr { display: inline-flex; flex-direction: column; align-items: center; line-height: 1.05; font-size: .82em; vertical-align: middle; }
+.fr > span:first-child { border-bottom: 2px solid currentColor; padding: 0 3px 1px; }
+.fr > span:last-child { padding: 1px 3px 0; }
+.calcvars { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); min-height: 36px; align-items: center; }
+.calcvars > small { color: var(--muted); font-size: 12.5px; }
+.vchip { display: inline-flex; align-items: center; border-radius: 999px; background: var(--accent-soft); color: var(--ink); font-size: 14px; font-variant-numeric: tabular-nums; }
+.vchip > button:first-child { padding: 6px 4px 6px 12px; min-height: 34px; }
+.vchip b { color: var(--accent); }
+.vdel { width: 30px; height: 34px; display: grid; place-items: center; color: var(--muted); }
+.vdel .ic { width: 14px; height: 14px; }
+.eqwrap { display: flex; flex-direction: column; gap: 14px; }
+.eqseg { align-self: flex-start; max-width: 100%; }
+.eqcard { padding: 14px; border-radius: 18px; background: var(--surface); box-shadow: 0 0 0 1px var(--line); display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.eqin { font: 500 24px/1.3 ui-monospace, "SF Mono", Menlo, monospace; }
+.eqkeys { display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); gap: 6px; }
+.eqkeys .ck { grid-column: auto; min-height: 44px; }
+.eqres { margin-top: 4px; }
+.eqerr { color: var(--danger); font-size: 15px; margin: 12px 0; }
+.eqout { padding: 14px 18px 16px; border-radius: 18px; background: var(--surface); box-shadow: 0 0 0 1px var(--line); margin-top: 12px; }
+.eqout > .fieldlabel:first-child { margin-top: 0; }
+.eqsol { display: flex; flex-direction: column; gap: 6px; }
+.eqsol > b { font: 600 20px/1.3 var(--font-display); }
+.eqsol > small { color: var(--muted); }
+.solrow { display: flex; align-items: center; gap: 10px; font: 600 22px/1.3 var(--font-display); font-variant-numeric: tabular-nums; flex-wrap: wrap; }
+.solrow > span:first-child { color: var(--muted); font-weight: 500; min-width: 44px; }
+.solrow .nv { color: var(--accent); }
+.solrow small { font: 400 14px var(--font); color: var(--muted); }
+.eqL { font-family: ui-monospace, "SF Mono", Menlo, monospace; color: var(--muted); font-size: 13.5px; }
+.eqsteps { margin: 0; padding: 0; list-style: none; counter-reset: st; display: flex; flex-direction: column; gap: 8px; }
+.eqsteps li { counter-increment: st; display: grid; grid-template-columns: 26px 1fr; column-gap: 10px; align-items: start; }
+.eqsteps li::before { content: counter(st); grid-row: span 2; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: var(--surface-2); font-size: 12px; font-weight: 700; color: var(--muted); }
+.eqsteps small { color: var(--muted); font-size: 13px; }
+.eqsteps span { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 16px; overflow-wrap: anywhere; }
+.sysgrid { display: grid; grid-template-columns: 36px repeat(calc(var(--n) + 1), minmax(0, 1fr) auto); gap: 8px 6px; align-items: center; }
+.sysno { color: var(--muted); font-size: 13px; font-weight: 600; }
+.sysin { text-align: center; min-width: 0; padding-left: 6px; padding-right: 6px; font-variant-numeric: tabular-nums; }
+.sysop { font: 500 17px/1 ui-monospace, "SF Mono", Menlo, monospace; white-space: pre; color: var(--ink); min-width: 10px; }
+.statin { font-size: 17px; font-variant-numeric: tabular-nums; }
+.stgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-top: 14px; }
+.stile { display: flex; flex-direction: column; gap: 3px; padding: 12px 14px; border-radius: 14px; background: var(--surface); box-shadow: 0 0 0 1px var(--line); min-width: 0; }
+.stile small { color: var(--muted); font-size: 12.5px; }
+.stile b, .stile .nv { font: 600 20px/1.25 var(--font-display); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.stile em { font-style: normal; color: var(--muted); font-size: 12px; }
+.stcharts { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px; margin-top: 12px; }
+.stchart { padding: 12px 16px; border-radius: 18px; background: var(--surface); box-shadow: 0 0 0 1px var(--line); min-width: 0; }
+.stchart > .fieldlabel:first-child { margin-top: 0; }
+.statsvg { width: 100%; height: auto; display: block; }
+.statsvg .bpw { stroke: var(--muted); stroke-width: 2; }
+.statsvg .bpbox { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 2; }
+.statsvg .bpmed { stroke: var(--accent); stroke-width: 3.5; }
+.statsvg .bpmean { fill: var(--surface); stroke: var(--ink); stroke-width: 2; }
+.statsvg .bpnum, .statsvg .barlab { fill: var(--muted); font: 500 12px var(--font); }
+.statsvg .bplab { fill: var(--muted); font: 600 11px var(--font); letter-spacing: .04em; }
+.statsvg .axis { stroke: var(--line); stroke-width: 1.5; }
+.statsvg .bar { fill: var(--accent); }
+.statsvg .barnum { fill: var(--ink); font: 600 12px var(--font); }
+.stsorted { font-variant-numeric: tabular-nums; font-size: 15px; overflow-wrap: anywhere; margin: 0 0 8px; }
+@media (max-width: 700px) { .eqkeys { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
+.eqin { font: 500 24px/1.3 var(--font-display); letter-spacing: .01em; }
+.eqsteps span { font: 500 17px/1.4 var(--font); font-variant-numeric: tabular-nums; }
