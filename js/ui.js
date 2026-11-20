@@ -136,3 +136,36 @@ export function closeMenus() {
     m.remove();
   });
 }
+
+// ---------- Datei speichern / teilen ----------
+export async function saveFile(name, blob, type = 'application/json') {
+  // Im Claude-Artefakt: Speichern über die Plattform. Als eigene Web-App: Teilen-Menü oder Download.
+  const dl = window.claude && window.claude.use ? await window.claude.use('downloads').catch(() => null) : null;
+  if (dl) {
+    try { await dl.save({ filename: name, data: blob }); return true; } catch (e) {
+      if (e && e.code === 'declined') return false;
+      throw new Error('Speichern ist hier nicht möglich (' + (e && e.code || 'Fehler') + ').');
+    }
+  }
+  const file = new File([blob], name, { type });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: name }); return true; } catch (e) { if (e && e.name === 'AbortError') return false; }
+  }
+  const a = h('a', { href: URL.createObjectURL(blob), download: name });
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+  return true;
+}
+
+
+// Datei ist fertig: eigener Knopf zum Teilen (Safari erlaubt Teilen nur direkt nach einem Tipp)
+export function shareReady(title, name, blob, { type = 'application/pdf', hint = 'Im Teilen-Menü kannst du die Datei per Mail, AirDrop oder Teams schicken oder „In Dateien sichern“ wählen.', button = 'Teilen' } = {}) {
+  return sheet(title, (body, close) => {
+    body.append(
+      h('div.bkready', null, h('b', { text: name }), h('small', { text: fmtBytes(blob.size) })),
+      h('p.calm.small', { text: hint }),
+      h('div.dlgactions', null,
+        h('button.btn', { text: 'Abbrechen', on: { click: () => close(false) } }),
+        h('button.btn.primary', { on: { click: async () => { try { if (await saveFile(name, blob, type)) close(true); } catch (e) { toast(e.message, 5000); } } } }, icon('share'), h('span', { text: button }))));
+  });
+}

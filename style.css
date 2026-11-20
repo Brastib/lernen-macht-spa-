@@ -1274,3 +1274,4 @@ canvas.alkcv { display: block; width: 100%; height: 360px; }
 @media (min-width: 701px) { .chemgrid:not(.two) > .chemcard:last-child:nth-child(odd) { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
 .fcard small { text-transform: none; letter-spacing: 0; }
 .labside > .btn { justify-content: center; }
+@media (max-width: 1000px) { .btn.wideonly { display: none; } }

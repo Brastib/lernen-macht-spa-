@@ -1,12 +1,12 @@
 // Hauptteil: Bibliothek mit Fächern, Büchern und Seiten.
 import * as db from './db.js';
-const APP_VERSION = '21';   // gleich wie VERSION in sw.js
+const APP_VERSION = '22';   // gleich wie VERSION in sw.js
 import { openEditor } from './editor.js';
 import { renderPage, PAPERS } from './paper.js';
 import { detectPage, defaultCorners } from './scanner.js';
 import { startScan, setOnSaved } from './scan.js';
 import { openReader, readerOpen, readerPages, invalidate, tocSheet } from './reader.js';
-import { $, h, icon, toast, busy, kb, fmtBytes, plural, sheet, confirmSheet, promptSheet, menu } from './ui.js';
+import { $, h, icon, toast, busy, kb, fmtBytes, plural, sheet, confirmSheet, promptSheet, menu, saveFile, shareReady } from './ui.js';
 import { renderDeck, newDeckFlow, startStudy, dueCount, addCardsFlow } from './cards.js';
 import { playerCard, profileSheet } from './game.js';
 import { renderKit, TABS as KIT_TABS, focusWatch } from './kit.js';
@@ -104,6 +104,8 @@ async function renderLibrary() {
     actions: [
       iconBtn('search', 'Suchen', () => searchFlow()),
       iconBtn('more', 'Mehr', (e) => menu(e.currentTarget, [
+        { label: 'Arbeitsblatt scannen und ausfüllen', icon: 'page', onClick: () => worksheetScan() },
+        'sep',
         { label: 'Sicherung …', icon: 'save', onClick: () => backupSheet({ saveFile, onLoad: () => $('fileBackup').click(), after: render }) },
         { label: 'Sicherung laden', icon: 'restore', onClick: () => $('fileBackup').click() },
         'sep',
@@ -112,6 +114,7 @@ async function renderLibrary() {
         { label: 'Darstellung (hell/dunkel)', icon: 'moon', onClick: () => themeSheet() },
       ])),
       btn('Notiz', 'pen', () => quickNote()),
+      btn('Arbeitsblatt', 'page', () => worksheetScan(), '.wideonly'),
       btn('Fach', 'plus', () => addSubjectFlow()),
       btn('Scannen', 'camera', () => startScan(INBOX, 'camera'), '.primary'),
     ],
@@ -704,7 +707,7 @@ async function pdfExportFlow(list, title) {
     const blob = await exportPdf(chosen, (i, n) => { $('busyText').textContent = `PDF wird erstellt … Seite ${i} von ${n}`; });
     busy(false);
     const name = `${title.replace(/[\\/:*?"<>|]+/g, '-').trim() || 'Seiten'}.pdf`;
-    if (await saveFile(name, blob, 'application/pdf')) toast(`PDF mit ${plural(chosen.length, 'Seite', 'Seiten')} · ${fmtBytes(blob.size)}`);
+    if (await shareReady('PDF ist bereit', name, blob)) toast(`PDF mit ${plural(chosen.length, 'Seite', 'Seiten')} · ${fmtBytes(blob.size)}`);
   } catch (err) {
     busy(false);
     toast('PDF fehlgeschlagen: ' + err.message, 5000);
@@ -712,25 +715,6 @@ async function pdfExportFlow(list, title) {
 }
 
 // ---------- Sicherung ----------
-async function saveFile(name, blob, type = 'application/json') {
-  // Im Claude-Artefakt: Speichern über die Plattform. Als eigene Web-App: Teilen-Menü oder Download.
-  const dl = window.claude && window.claude.use ? await window.claude.use('downloads').catch(() => null) : null;
-  if (dl) {
-    try { await dl.save({ filename: name, data: blob }); return true; } catch (e) {
-      if (e && e.code === 'declined') return false;
-      throw new Error('Speichern ist hier nicht möglich (' + (e && e.code || 'Fehler') + ').');
-    }
-  }
-  const file = new File([blob], name, { type });
-  if (navigator.canShare && navigator.canShare({ files: [file] })) {
-    try { await navigator.share({ files: [file], title: name }); return true; } catch (e) { if (e && e.name === 'AbortError') return false; }
-  }
-  const a = h('a', { href: URL.createObjectURL(blob), download: name });
-  document.body.append(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(a.href), 30000);
-  return true;
-}
-
 async function backupFlow() { return backupNow({ saveFile }); }
 $('fileBackup').addEventListener('change', async (e) => {
   const f = e.target.files[0]; e.target.value = '';
@@ -750,8 +734,20 @@ $('fileBackup').addEventListener('change', async (e) => {
   }
 });
 
+// ---------- Arbeitsblatt: scannen und gleich ausfüllen ----------
+let worksheetPending = false;
+function worksheetScan() {
+  worksheetPending = true;
+  toast('Arbeitsblatt fotografieren. Danach öffnet es sich direkt zum Ausfüllen.', 3500);
+  startScan(INBOX, 'camera');
+}
 // ---------- Scannen fertig ----------
 setOnSaved(async (bookId) => {
+  if (worksheetPending) {
+    worksheetPending = false;
+    const list = (await db.listPages(bookId)).sort((a, b) => (b.created || 0) - (a.created || 0) || b.index - a.index);
+    if (list[0]) { openEditor(list[0], { onClose: () => render() }); return; }
+  }
   if (nav.view === 'book' && nav.book.id === bookId) await render();
   else if (nav.view === 'library') await render();
 });

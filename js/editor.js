@@ -2,7 +2,7 @@
 import * as db from './db.js';
 import { PAGE_W, drawPaper, drawStroke, renderPage, pageHeight, blobToImage, paperLines, fitText, lhOf, lineHeight, textWidthMax, FONT } from './paper.js';
 import { makeTool, drawTool, hitTool, findEdge, snapPoint, niceAngle, niceRadius, magnetTool, TOOL_NAMES, KNOB_OFF, MM } from './tools.js';
-import { menu, sheet, h as el, toast } from './ui.js';
+import { menu, sheet, h as el, toast, busy, promptSheet, shareReady } from './ui.js';
 import { compile, mathify } from './mathfn.js';
 import { axesBox, axesFrame } from './paper.js';
 
@@ -115,6 +115,47 @@ $('ed_text').addEventListener('click', () => setTool('text'));
 $('edUndo').addEventListener('click', doUndo);
 $('edRedo').addEventListener('click', doRedo);
 $('edDone').addEventListener('click', close);
+// ---------- Arbeitsblatt: Name/Datum einsetzen, als PDF teilen ----------
+$('edShare').addEventListener('click', (e) => {
+  menu(e.currentTarget, [
+    { label: 'Als PDF teilen', icon: 'share', onClick: sharePagePdf },
+    { label: 'Name und Datum einsetzen', icon: 'text', onClick: stampName },
+    { label: 'Namen ändern', icon: 'edit', onClick: () => { try { localStorage.removeItem('myName'); } catch (err) { /* egal */ } stampName(); } },
+  ]);
+});
+async function sharePagePdf() {
+  finishStroke(); commitText();
+  await flushSave();
+  busy(true, 'PDF wird erstellt …');
+  try {
+    const { exportPdf } = await import('./pdfio.js');
+    const blob = await exportPdf([page]);
+    busy(false);
+    const d = new Date();
+    const name = `Arbeitsblatt ${d.getDate()}.${d.getMonth() + 1}.${d.getFullYear()}.pdf`;
+    await shareReady('Arbeitsblatt ist bereit', name, blob, { hint: 'Im Teilen-Menü kannst du es per Mail, AirDrop oder Teams an deine Lehrkraft schicken oder „In Dateien sichern“ wählen.' });
+  } catch (err) { busy(false); toast('PDF fehlgeschlagen: ' + err.message, 5000); }
+}
+async function stampName() {
+  commitText();
+  let name = '';
+  try { name = localStorage.getItem('myName') || ''; } catch (err) { /* egal */ }
+  if (!name) {
+    name = await promptSheet('Dein Name', { label: 'So steht er auf deinen Arbeitsblättern', placeholder: 'Vorname Nachname', ok: 'Einsetzen' });
+    if (!name || !name.trim()) return;
+    name = name.trim();
+    try { localStorage.setItem('myName', name); } catch (err) { /* egal */ }
+  }
+  const d = new Date();
+  const text = `${name} · ${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`;
+  const x = PAGE_W - 30 * MM - Math.min(320, text.length * 10), y = 12 * MM;
+  const st = { tool: 'text', color, size: 18, text, pts: [x, y, 0, x, y + 24, 0] };
+  fitText(st);
+  const w = st.pts[3] - st.pts[0];
+  if (w > 0 && st.pts[0] + w > PAGE_W - 8 * MM) { const dx = PAGE_W - 8 * MM - w - st.pts[0]; st.pts[0] += dx; st.pts[3] += dx; }
+  strokes.push(st); undo.push({ type: 'add', stroke: st }); redo = []; changed(); redrawInk(); updateToolbar();
+  toast('Name und Datum stehen oben rechts. Mit dem Lasso kannst du sie verschieben.', 3500);
+}
 $('edZoomIn').addEventListener('click', () => setZoom(zoom * 1.25));
 $('edZoomOut').addEventListener('click', () => setZoom(zoom / 1.25));
 $('edFinger').addEventListener('click', () => {
