@@ -8,7 +8,7 @@
 //   ink       = Pencil-Notizen pro Seite (Schritt 4, noch leer)
 
 const DB_NAME = 'lernapp';
-const DB_VERSION = 4;   // 2: Hausaufgaben, Lernkarten · 3: Code-Projekte · 4: Erinnerungen
+const DB_VERSION = 5;   // 2: Hausaufgaben, Lernkarten · 3: Code-Projekte · 4: Erinnerungen · 5: Spielstand (meta)
 export const INBOX_BOOK = 'inbox';
 
 let dbPromise = null;
@@ -38,6 +38,7 @@ function openDB() {
       // Version 3
       if (!db.objectStoreNames.contains('code')) db.createObjectStore('code', { keyPath: 'id' });
       if (!db.objectStoreNames.contains('reminders')) db.createObjectStore('reminders', { keyPath: 'id' });
+      if (!db.objectStoreNames.contains('meta')) db.createObjectStore('meta', { keyPath: 'id' });
     };
     req.onblocked = () => console.warn('Datenbank: alte Version noch in einem anderen Tab offen');
     req.onsuccess = () => resolve(req.result);
@@ -233,6 +234,7 @@ export const listHomework = (subjectId) => (subjectId ? getAll('homework', 'subj
 export const listDecks = (subjectId) => (subjectId ? getAll('decks', 'subjectId', subjectId) : getAll('decks'));
 export const listCode = () => getAll('code');
 export const listReminders = () => getAll('reminders');
+export const listMeta = () => getAll('meta');
 export const listCards = (deckId) => (deckId ? getAll('cards', 'deckId', deckId) : getAll('cards'));
 export async function putItems(store, items) {
   const db = await openDB();
@@ -327,8 +329,8 @@ function b64ToBlob(b64, type) {
 // Alles in ein Objekt (Bilder als Base64). onProgress(fertig, gesamt)
 export async function exportAll(onProgress = () => {}) {
   const [subjects, books, pages] = await Promise.all([listSubjects(), listAllBooks(), listAllPages()]);
-  const [homework, decks, cards, code, reminders] = await Promise.all([listHomework(), listDecks(), listCards(), listCode(), listReminders()]);
-  const out = { app: 'lernapp', version: 4, created: new Date().toISOString(), subjects, books, pages, homework, decks, cards, code, reminders, images: {}, thumbs: {}, ink: {} };
+  const [homework, decks, cards, code, reminders, meta] = await Promise.all([listHomework(), listDecks(), listCards(), listCode(), listReminders(), listMeta()]);
+  const out = { app: 'lernapp', version: 5, created: new Date().toISOString(), subjects, books, pages, homework, decks, cards, code, reminders, meta, images: {}, thumbs: {}, ink: {} };
   let i = 0;
   for (const p of pages) {
     const [img, th, ink] = await Promise.all([getImage(p.id), getThumb(p.id), getInk(p.id)]);
@@ -344,8 +346,8 @@ export async function exportAll(onProgress = () => {}) {
 export async function importAll(data) {
   if (!data || data.app !== 'lernapp' || !Array.isArray(data.pages)) throw new Error('Das ist keine Sicherung dieser App.');
   const db = await openDB();
-  const tx = db.transaction(['subjects', 'books', 'pages', 'images', 'thumbs', 'ink', 'homework', 'decks', 'cards', 'code', 'reminders'], 'readwrite');
-  for (const st of ['homework', 'decks', 'cards', 'code', 'reminders']) for (const it of data[st] || []) tx.objectStore(st).put(it);
+  const tx = db.transaction(['subjects', 'books', 'pages', 'images', 'thumbs', 'ink', 'homework', 'decks', 'cards', 'code', 'reminders', 'meta'], 'readwrite');
+  for (const st of ['homework', 'decks', 'cards', 'code', 'reminders', 'meta']) for (const it of data[st] || []) tx.objectStore(st).put(it);
   for (const s of data.subjects || []) tx.objectStore('subjects').put(s);
   for (const b of data.books || []) tx.objectStore('books').put(b);
   for (const p of data.pages) {

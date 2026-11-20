@@ -4,6 +4,8 @@
 import * as db from './db.js';
 import { $, h, icon, toast, plural, sheet, confirmSheet, promptSheet, menu } from './ui.js';
 import { editReminder } from './reminders.js';
+import { profile, newRun, hit, endRun, resultView, floatXp, multOf, playerCard } from './game.js';
+import { playMenu } from './play.js';
 
 export const INTERVALS = [0, 1, 2, 4, 8, 16, 32];   // Tage bis zur nächsten Wiederholung je Stufe
 export const LANGS = {
@@ -166,6 +168,7 @@ export async function renderDeck(deck, ctx) {
     title: deck.title,
     meta: `${plural(cards.length, 'Karte', 'Karten')} · ${due} fällig`,
     actions: [more, ctx.btn('Karte', 'plus', () => addCardsFlow(deck, again)),
+      ...(cards.length >= 3 ? [ctx.btn('Spielen', 'bolt', () => playMenu(deck, cards, again))] : []),
       ctx.btn('Lernen', 'cards', () => startStudy(deck, cards, again), '.primary')],
   });
   const view = $('view');
@@ -186,6 +189,7 @@ export async function renderDeck(deck, ctx) {
   const bar = h('div.boxbar');
   boxes.forEach((n, i) => { if (n) bar.append(h('span', { style: { flexGrow: String(n), '--k': String(i / 6) }, title: `Stufe ${i}: ${n}` })); });
   const learned = boxes.slice(4).reduce((a, b) => a + b, 0);
+  view.append(await playerCard({ onOpen: async () => { const { profileSheet } = await import('./game.js'); profileSheet(again); } }));
   view.append(h('section.deckstats', null,
     h('div.stat', null, h('b', { text: String(due) }), h('small', { text: 'heute fällig' })),
     h('div.stat', null, h('b', { text: String(cards.length - learned) }), h('small', { text: 'in Arbeit' })),
@@ -230,6 +234,7 @@ let S = null;   // laufende Runde
 
 export async function startStudy(deck, cards, onDone) {
   if (!cards.length) { toast('Noch keine Karten'); return; }
+  await profile();
   const due = cards.filter((c) => isDue(c));
   const opts = await sheet('Lernen', (body, close) => {
     let dir = 'ab', mode = 'flip', practice = !due.length;
@@ -248,7 +253,8 @@ export async function startStudy(deck, cards, onDone) {
       h('p.fieldlabel', { text: 'Richtung' }),
       seg([['ab', `${fl} → ${bl}`], ['ba', `${bl} → ${fl}`], ['mix', 'Gemischt']], dir, (v) => { dir = v; }),
       h('p.fieldlabel', { text: 'Antworten' }),
-      seg([['flip', 'Umdrehen'], ['type', 'Eintippen']], mode, (v) => { mode = v; }),
+      seg([['flip', 'Umdrehen'], ...(cards.length >= 4 ? [['choice', 'Auswählen']] : []), ['type', 'Eintippen']], mode, (v) => { mode = v; }),
+      h('p.calm.small', { text: 'Eintippen gibt die meisten Punkte. Mit dem Pencil kannst du ins Feld auch schreiben.' }),
       h('div.dlgactions', null,
         h('button.btn', { text: 'Abbrechen', on: { click: () => close(null) } }),
         due.length && due.length < cards.length ? h('button.btn', { text: 'Alle üben', on: { click: () => close({ dir, mode, practice: true }) } }) : null,
@@ -258,7 +264,9 @@ export async function startStudy(deck, cards, onDone) {
   const list = (opts.practice ? cards : due).slice();
   for (let i = list.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [list[i], list[j]] = [list[j], list[i]]; }
   S = { deck, queue: list.map((c) => ({ c, rev: opts.dir === 'ba' || (opts.dir === 'mix' && Math.random() < 0.5), missed: false })),
-    total: list.length, done: 0, right: 0, wrong: 0, mode: opts.mode, practice: opts.practice, onDone, shown: false, item: null };
+    total: list.length, done: 0, right: 0, wrong: 0, mode: opts.mode, practice: opts.practice, onDone, shown: false, item: null,
+    all: cards, run: newRun() };
+  hud();
   $('study').hidden = false;
   document.body.classList.add('studying');
   nextCard();
@@ -305,7 +313,7 @@ function nextCard() {
     if (result) {
       act.append(h('button.btn.big' + (result === 'wrong' ? '.primary' : ''), { text: result === 'wrong' ? 'Weiter' : 'Doch nicht gewusst', on: { click: () => grade(false) } }));
       if (result !== 'wrong') act.append(h('button.btn.big.good', { text: 'Weiter', on: { click: () => grade(true) } }));
-      else act.append(h('button.btn.big', { text: 'War doch richtig', on: { click: () => grade(true) } }));
+      else if (S.mode !== 'choice') act.append(h('button.btn.big', { text: 'War doch richtig', on: { click: () => grade(true) } }));
       setTimeout(() => act.lastChild && act.lastChild.focus && (result === 'wrong' ? act.firstChild : act.lastChild).focus(), 30);
     } else {
       act.append(
@@ -314,7 +322,21 @@ function nextCard() {
     }
   };
   S.reveal = reveal;
-  if (S.mode === 'type') {
+  if (S.mode === 'choice') {
+    const opts = choicesFor(it, S.all);
+    const grid = h('div.choices');
+    for (const o of opts) {
+      grid.append(h('button.choice', { text: o, on: { click: (e) => {
+        if (S.shown) return;
+        const ok = o === a;
+        grid.querySelectorAll('.choice').forEach((b) => { b.disabled = true; if (b.textContent === a) b.classList.add('right'); });
+        if (!ok) e.currentTarget.classList.add('wrong');
+        reveal(ok ? 'right' : 'wrong', o);
+        if (ok) { act.textContent = ''; setTimeout(() => { if (S && S.item === it) grade(true); }, 650); }
+      } } }));
+    }
+    act.append(grid);
+  } else if (S.mode === 'type') {
     const inp = h('input.field.answer', { type: 'text', placeholder: 'Antwort eintippen', autocomplete: 'off', autocapitalize: 'off', spellcheck: false, id: 'studyInput' });
     const check = () => { if (!S.shown) { const g = inp.value.trim(); inp.disabled = true; reveal(checkAnswer(g, a), g); } };
     inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); check(); } });
@@ -331,6 +353,11 @@ async function grade(knew) {
   if (!it) return;
   S.item = null;
   const c = it.c;
+  const gain = hit(S.run, knew, { base: S.mode === 'type' ? 15 : S.mode === 'choice' ? 8 : 10 });
+  const card = $('studyCard').querySelector('.flash');
+  if (card) card.classList.add(knew ? 'won' : 'lost');
+  if (gain) floatXp($('studyCard'), '+' + gain + (S.run.combo >= 5 ? ` · ×${multOf(S.run.combo - 1)}` : ''));
+  hud();
   if (knew) {
     S.done++; S.right++;
     if (!S.practice) {
@@ -347,17 +374,42 @@ async function grade(knew) {
     S.queue.splice(Math.min(S.queue.length, 3), 0, it);
   }
   await db.putItems('cards', c);
-  nextCard();
+  if (card) await new Promise((r) => setTimeout(r, knew ? 180 : 260));
+  if (S) nextCard();
 }
 
-function finish() {
+// Combo und Punkte oben in der Leiste
+function hud() {
+  const el = $('studyHud');
+  if (!el || !S || !S.run) return;
+  const R = S.run;
+  el.textContent = '';
+  el.append(h('span.hudxp', { text: `${R.xp} XP` }));
+  if (R.combo >= 2) {
+    const c = h('span.combo' + (R.combo >= 5 ? '.hot' : ''), { text: `${R.combo}er Combo${R.combo >= 5 ? ' ×' + String(multOf(R.combo)).replace('.', ',') : ''}` });
+    el.append(c);
+  }
+}
+// 4 Antworten: richtige + 3 andere aus demselben Stapel
+export function choicesFor(it, all) {
+  const a = it.rev ? it.c.front : it.c.back;
+  const pool = [...new Set(all.filter((c) => c.id !== it.c.id).map((c) => (it.rev ? c.front : c.back)).filter((x) => x && x !== a))];
+  for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; }
+  const opts = [a, ...pool.slice(0, 3)];
+  for (let i = opts.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [opts[i], opts[j]] = [opts[j], opts[i]]; }
+  return opts;
+}
+
+async function finish() {
   const box = $('studyCard'), act = $('studyActions');
   $('studyProg').style.setProperty('--p', '1');
-  box.append(h('div.studydone', null,
-    h('div.donemark', null, icon('select')),
-    h('h2', { text: 'Runde geschafft' }),
-    h('p', { text: `${plural(S.total, 'Karte', 'Karten')} gelernt${S.wrong ? `, ${S.wrong}× musstest du nochmal ran` : ', alle beim ersten Mal gewusst'}.` }),
-    S.practice ? null : h('p', { text: 'Was du gewusst hast, kommt erst in ein paar Tagen wieder. So bleibt es im Langzeitgedächtnis.' })));
+  S.ended = true;
+  const R = await endRun(S.run, { extra: { perfect: S.total >= 10 && S.wrong === 0 } });
+  box.append(resultView(R, {
+    title: S.wrong ? 'Runde geschafft' : 'Fehlerlos',
+    lines: [`${plural(S.total, 'Karte', 'Karten')} gelernt${S.wrong ? `, ${S.wrong}× nochmal ran` : ', alle beim ersten Mal gewusst'} · beste Combo ${R.best}.`,
+      S.practice ? '' : 'Was du gewusst hast, kommt erst in ein paar Tagen wieder. So bleibt es im Langzeitgedächtnis.'].filter(Boolean),
+  }));
   act.append(h('button.btn.big.primary', { text: 'Fertig', on: { click: closeStudy } }));
 }
 
@@ -365,6 +417,7 @@ function closeStudy() {
   if (!S) return;
   try { speechSynthesis.cancel(); } catch (e) { /* egal */ }
   const cb = S.onDone;
+  if (S.run && !S.ended && (S.run.right || S.run.wrong)) endRun(S.run, { bonus: 0 }).catch(() => {});
   S = null;
   $('study').hidden = true;
   document.body.classList.remove('studying');
@@ -376,6 +429,7 @@ document.addEventListener('keydown', (e) => {
   if (!S || $('study').hidden || document.querySelector('.dlgscrim')) return;
   if (e.target.id === 'studyInput') return;
   if (e.key === 'Escape') closeStudy();
+  else if (S.mode === 'choice' && !S.shown && /^[1-4]$/.test(e.key)) { const b = document.querySelectorAll('#studyActions .choice')[+e.key - 1]; if (b) b.click(); }
   else if (S.mode === 'flip' && !S.shown && (e.key === ' ' || e.key === 'Enter')) { e.preventDefault(); S.reveal(null); }
   else if (S.mode === 'flip' && S.shown && S.item && (e.key === 'ArrowRight' || e.key === '2')) grade(true);
   else if (S.mode === 'flip' && S.shown && S.item && (e.key === 'ArrowLeft' || e.key === '1')) grade(false);

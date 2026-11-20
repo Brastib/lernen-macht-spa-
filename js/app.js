@@ -1,6 +1,6 @@
 // Hauptteil: Bibliothek mit Fächern, Büchern und Seiten.
 import * as db from './db.js';
-const APP_VERSION = '14';   // gleich wie VERSION in sw.js
+const APP_VERSION = '15';   // gleich wie VERSION in sw.js
 import { openEditor } from './editor.js';
 import { renderPage, PAPERS } from './paper.js';
 import { detectPage, defaultCorners } from './scanner.js';
@@ -8,6 +8,7 @@ import { startScan, setOnSaved } from './scan.js';
 import { openReader, readerOpen, readerPages, invalidate, tocSheet } from './reader.js';
 import { $, h, icon, toast, busy, kb, fmtBytes, plural, sheet, confirmSheet, promptSheet, menu } from './ui.js';
 import { renderDeck, newDeckFlow, startStudy, dueCount, addCardsFlow } from './cards.js';
+import { playerCard, profileSheet } from './game.js';
 import { editHomework, hwList, sortHw } from './homework.js';
 import { importPdf, exportPdf } from './pdfio.js';
 import { ocrPages, needsOcr, snippet } from './ocr.js';
@@ -179,7 +180,8 @@ async function todaySection(view, subjects) {
   if (open.length) col1.append(hwList(open.slice(0, 8), { subjMap, after: render }));
   else col1.append(h('p.calm', { text: 'Nichts offen.' }));
   if (open.length > 8) col1.append(h('p.calm', { text: `… und ${open.length - 8} weitere in den Fächern` }));
-  const col2 = h('div.todaycol', null, h('div.colhead', null, h('h2.section', { text: 'Heute lernen' })));
+  const col2 = h('div.todaycol', null, h('div.colhead', null, h('h2.section', { text: 'Heute lernen' })),
+    await playerCard({ onOpen: () => profileSheet(render) }));
   if (dueDecks.length) {
     const l = h('div.duelist');
     for (const x of dueDecks) {

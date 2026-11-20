@@ -9,7 +9,8 @@ Offline-Web-App (PWA) fürs iPad mit Apple Pencil. Kein App Store, keine Cloud: 
 - **Schreiben mit dem Pencil**: Stift mit Druck, Marker, Radierer, Lasso, Textfelder (mit Formel-Schreibweise wie x² und ≥).
 - **Papiere**: kariert, liniert, blanko, Millimeter, Noten, Cornell.
 - **Mathe**: Lineal (30 cm), Geodreieck, Parabelschablone, Zirkel, Karo-Hilfe, Koordinatensystem und Funktionsgraphen.
-- **Lernkarten**: Vokabeln mit Wiederholungsplan (Karteikasten), umdrehen oder eintippen, Vorlesen.
+- **Lernkarten**: Vokabeln mit Wiederholungsplan (Karteikasten), umdrehen, auswählen oder eintippen, Vorlesen. Als Spiel: XP, Level, Combo, Tages-Serie, Tagesziel, Abzeichen und Spielmodi (Zeit-Challenge, Paare finden, Boss-Runde).
+- **Erinnerungen**: für Hausaufgaben, Lernen und Eigenes, auch als Termin für den iPad-Kalender.
 - **Hausaufgaben** pro Fach, Übersicht „Heute“ auf der Startseite.
 - **PDF**: Arbeitsblätter als PDF importieren und beschriftete Seiten als PDF speichern.
 - **Programmieren**: eigene Projekte in HTML/CSS/JavaScript (mit Live-Vorschau, gut für kleine Spiele), Python und Lua. Mit Beispielspielen, Tastenleiste fürs iPad und Schutz gegen Endlosschleifen.
