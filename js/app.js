@@ -1,6 +1,6 @@
 // Hauptteil: Bibliothek mit Fächern, Büchern und Seiten.
 import * as db from './db.js';
-const APP_VERSION = '15';   // gleich wie VERSION in sw.js
+const APP_VERSION = '16';   // gleich wie VERSION in sw.js
 import { openEditor } from './editor.js';
 import { renderPage, PAPERS } from './paper.js';
 import { detectPage, defaultCorners } from './scanner.js';
@@ -9,6 +9,7 @@ import { openReader, readerOpen, readerPages, invalidate, tocSheet } from './rea
 import { $, h, icon, toast, busy, kb, fmtBytes, plural, sheet, confirmSheet, promptSheet, menu } from './ui.js';
 import { renderDeck, newDeckFlow, startStudy, dueCount, addCardsFlow } from './cards.js';
 import { playerCard, profileSheet } from './game.js';
+import { renderTimetable, renderExams, renderGrades, nowCard, examCard, subjectSchoolBox } from './school.js';
 import { editHomework, hwList, sortHw } from './homework.js';
 import { importPdf, exportPdf } from './pdfio.js';
 import { ocrPages, needsOcr, snippet } from './ocr.js';
@@ -78,6 +79,9 @@ async function render() {
   if (nav.view === 'subject') return renderSubject();
   if (nav.view === 'code') return renderCodeList({ setHeader, btn, go });
   if (nav.view === 'reminders') return renderReminders({ setHeader, btn, go, saveFile });
+  if (nav.view === 'timetable') return renderTimetable({ setHeader, btn, iconBtn, go });
+  if (nav.view === 'exams') return renderExams({ setHeader, btn, iconBtn, go });
+  if (nav.view === 'grades') return renderGrades({ setHeader, btn, iconBtn, go });
   if (nav.view === 'deck') return renderDeck(nav.deck, { setHeader, btn, iconBtn, go, subject: nav.subject, saveFile });
   return renderBook();
 }
@@ -98,6 +102,7 @@ async function renderLibrary() {
         'sep',
         { label: 'Text in allen Scans erkennen', icon: 'search', onClick: async () => ocrFlow(await db.listAllPages()) },
       ])),
+      btn('Notiz', 'pen', () => quickNote()),
       btn('Fach', 'plus', () => addSubjectFlow()),
       btn('Scannen', 'camera', () => startScan(INBOX, 'camera'), '.primary'),
     ],
@@ -108,6 +113,7 @@ async function renderLibrary() {
   view.textContent = '';
   const banner = await dueBanner({ go });
   if (banner) view.append(banner);
+  if (subjects.length) view.append(h('section.dashrow', null, await nowCard({ go, subjects }), await examCard({ go, subjects })));
   if (subjects.length) await todaySection(view, subjects);
   if (!subjects.length) {
     view.append(h('section.empty', null,
@@ -129,14 +135,15 @@ async function renderLibrary() {
     view.append(h('h2.section', { text: 'Fächer' }), grid);
   }
 
-  // Erinnerungen
-  const rems = (await db.listReminders()).filter((r) => !r.done);
-  view.append(h('h2.section', { text: 'Planer' }),
-    h('button.inbox.codeentry.rementry', { on: { click: () => go({ view: 'reminders' }) } },
-      h('span.codeicon', null, icon('clock')),
-      h('span.inboxtext', null,
-        h('b', { text: 'Erinnerungen' }),
-        h('small', { text: rems.length ? `${plural(rems.length, 'Erinnerung', 'Erinnerungen')} offen` : 'Hausaufgaben, Vokabeln lernen oder was du willst' }))));
+  // Planer
+  const [rems, exams, grades] = await Promise.all([db.listReminders(), db.listExams(), db.listGrades()]);
+  const openRems = rems.filter((r) => !r.done).length;
+  const tile = (cls, ic, title, sub, view) => h('button.ptile' + cls, { on: { click: () => go({ view }) } }, h('span.ptileic', null, icon(ic)), h('b', { text: title }), h('small', { text: sub }));
+  view.append(h('h2.section', { text: 'Planer' }), h('div.ptiles', null,
+    tile('', 'grid', 'Stundenplan', 'Fächer, Räume, Zeiten', 'timetable'),
+    tile('', 'bookmark', 'Prüfungen', exams.length ? plural(exams.filter((x) => x.date >= new Date().toISOString().slice(0, 10)).length, 'geplant', 'geplant') : 'Arbeiten und Tests', 'exams'),
+    tile('', 'homework', 'Noten', grades.length ? plural(grades.length, 'Note', 'Noten') : 'Schnitt pro Fach', 'grades'),
+    tile('.rementry', 'clock', 'Erinnerungen', openRems ? `${openRems} offen` : 'Für alles, was du nicht vergessen willst', 'reminders')));
 
   // Programmieren
   const nCode = (await db.listCode()).length;
@@ -276,6 +283,7 @@ async function renderSubject() {
 
   const view = $('view');
   view.textContent = '';
+  view.append(await subjectSchoolBox(s, { go, after: render }));
   // Hausaufgaben
   const openHw = hw.filter((x) => !x.done).sort(sortHw), doneHw = hw.filter((x) => x.done).sort((a, b) => (b.doneAt || 0) - (a.doneAt || 0));
   if (hw.length || decks.length) {
@@ -453,7 +461,16 @@ function openBook(i) {
   openReader(pages, i, { title: nav.book.title, onEdit: (p) => openEditor(p, { onClose: afterEdit }), onMarks: () => { if (nav.view === 'book') renderBookGridOnly(); } });
 }
 
+// Schnellnotiz: sofort ein leeres Blatt im Eingang (Papier wie beim letzten Mal)
+async function quickNote() {
+  let paper = 'grid';
+  try { paper = localStorage.getItem('quickPaper') || 'grid'; } catch (e) { /* egal */ }
+  nav = { view: 'library' };
+  await newSheet(paper);
+}
+
 async function newSheet(paper) {
+  try { localStorage.setItem('quickPaper', paper); } catch (e) { /* egal */ }
   const probe = { kind: 'blank', paper, width: 1000, height: 1414 };
   const thumb = await new Promise((r) => renderPage(probe, null, [], 260).toBlob(r, 'image/jpeg', 0.7));
   const page = await db.addBlankPage({ bookId: nav.book?.id || INBOX, paper, thumb });

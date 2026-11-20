@@ -34,7 +34,17 @@ function firstOcc(r) {
   return b;
 }
 // Letzter Termin, der schon erreicht ist (oder null) und nächster Termin danach (oder null)
+// Mit Enddatum (r.until, YYYY-MM-DD): danach keine Termine mehr
 export function occurrences(r, now = Date.now()) {
+  const o = occRaw(r, now);
+  if (!r.until || !r.repeat || r.repeat === 'none') return o;
+  const [y, m, d] = r.until.split('-').map(Number);
+  const end = new Date(y, m - 1, d, 23, 59, 59).getTime();
+  if (o.next && o.next > end) o.next = null;
+  if (o.last && o.last > end) { const o2 = occRaw(r, end); o.last = o2.last; }
+  return o;
+}
+function occRaw(r, now) {
   let cur = firstOcc(r);
   if (!r.repeat || r.repeat === 'none') return cur.getTime() <= now ? { last: cur.getTime(), next: null } : { last: null, next: cur.getTime() };
   if (cur.getTime() > now) return { last: null, next: cur.getTime() };
@@ -87,7 +97,8 @@ const icsEsc = (s) => String(s || '').replace(/\\/g, '\\\\').replace(/\n/g, '\\n
 const icsTime = (d) => `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}T${pad(d.getHours())}${pad(d.getMinutes())}00`;
 export function buildIcs(r, subjectName) {
   const start = firstOcc(r);
-  const rule = { daily: 'RRULE:FREQ=DAILY', weekly: 'RRULE:FREQ=WEEKLY', weekdays: 'RRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR' }[r.repeat];
+  let rule = { daily: 'RRULE:FREQ=DAILY', weekly: 'RRULE:FREQ=WEEKLY', weekdays: 'RRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR' }[r.repeat];
+  if (rule && r.until) rule += ';UNTIL=' + r.until.replace(/-/g, '') + 'T235959';
   const now = new Date();
   const stamp = `${now.getUTCFullYear()}${pad(now.getUTCMonth() + 1)}${pad(now.getUTCDate())}T${pad(now.getUTCHours())}${pad(now.getUTCMinutes())}${pad(now.getUTCSeconds())}Z`;
   const lines = [
@@ -250,7 +261,7 @@ function row(r, { subjMap, after, onOpen, saveFile }) {
     h('button.hwbody', { on: { click: () => onOpen(r) } },
       h('span.hwtext', { text: r.text }),
       h('span.hwmeta', null,
-        h('span.remkind', { text: (r.kind === 'hausaufgabe' ? 'Hausaufgabe' : r.kind === 'vokabeln' ? 'Lernen' : 'Erinnerung') + (s ? ' ·' : '') }),
+        h('span.remkind', { text: (r.kind === 'hausaufgabe' ? 'Hausaufgabe' : (r.kind === 'vokabeln' || r.kind === 'lernen') ? 'Lernen' : 'Erinnerung') + (s ? ' ·' : '') }),
         s ? h('i.dot', { style: { '--c': s.color } }) : null,
         s ? h('span', { text: s.name }) : null,
         h('span.hwdue' + (due ? '.late' : ''), { text: when }),

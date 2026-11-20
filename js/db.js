@@ -8,7 +8,7 @@
 //   ink       = Pencil-Notizen pro Seite (Schritt 4, noch leer)
 
 const DB_NAME = 'lernapp';
-const DB_VERSION = 5;   // 2: Hausaufgaben, Lernkarten · 3: Code-Projekte · 4: Erinnerungen · 5: Spielstand (meta)
+const DB_VERSION = 6;   // 2: Hausaufgaben, Lernkarten · 3: Code-Projekte · 4: Erinnerungen · 5: Spielstand (meta) · 6: Prüfungen, Noten
 export const INBOX_BOOK = 'inbox';
 
 let dbPromise = null;
@@ -39,6 +39,8 @@ function openDB() {
       if (!db.objectStoreNames.contains('code')) db.createObjectStore('code', { keyPath: 'id' });
       if (!db.objectStoreNames.contains('reminders')) db.createObjectStore('reminders', { keyPath: 'id' });
       if (!db.objectStoreNames.contains('meta')) db.createObjectStore('meta', { keyPath: 'id' });
+      if (!db.objectStoreNames.contains('exams')) db.createObjectStore('exams', { keyPath: 'id' });
+      if (!db.objectStoreNames.contains('grades')) db.createObjectStore('grades', { keyPath: 'id' });
     };
     req.onblocked = () => console.warn('Datenbank: alte Version noch in einem anderen Tab offen');
     req.onsuccess = () => resolve(req.result);
@@ -235,6 +237,9 @@ export const listDecks = (subjectId) => (subjectId ? getAll('decks', 'subjectId'
 export const listCode = () => getAll('code');
 export const listReminders = () => getAll('reminders');
 export const listMeta = () => getAll('meta');
+export const listExams = () => getAll('exams');
+export const listGrades = () => getAll('grades');
+export async function getMeta(id) { return (await listMeta()).find((m) => m.id === id) || null; }
 export const listCards = (deckId) => (deckId ? getAll('cards', 'deckId', deckId) : getAll('cards'));
 export async function putItems(store, items) {
   const db = await openDB();
@@ -282,7 +287,10 @@ export async function deleteSubject(id) {
   const [hw, decks] = await Promise.all([listHomework(id), listDecks(id)]);
   await deleteItems('homework', hw.map((x) => x.id));
   for (const d of decks) await deleteDeck(d.id);
-  const refs = new Set([...hw.map((x) => x.id), ...decks.map((d) => d.id)]);
+  const [ex, gr] = await Promise.all([listExams(), listGrades()]);
+  await deleteItems('exams', ex.filter((x) => x.subjectId === id).map((x) => x.id));
+  await deleteItems('grades', gr.filter((x) => x.subjectId === id).map((x) => x.id));
+  const refs = new Set([...hw.map((x) => x.id), ...decks.map((d) => d.id), ...ex.filter((x) => x.subjectId === id).map((x) => x.id)]);
   await deleteItems('reminders', (await listReminders()).filter((r) => refs.has(r.refId) || r.subjectId === id).map((r) => r.id));
 }
 
@@ -329,8 +337,8 @@ function b64ToBlob(b64, type) {
 // Alles in ein Objekt (Bilder als Base64). onProgress(fertig, gesamt)
 export async function exportAll(onProgress = () => {}) {
   const [subjects, books, pages] = await Promise.all([listSubjects(), listAllBooks(), listAllPages()]);
-  const [homework, decks, cards, code, reminders, meta] = await Promise.all([listHomework(), listDecks(), listCards(), listCode(), listReminders(), listMeta()]);
-  const out = { app: 'lernapp', version: 5, created: new Date().toISOString(), subjects, books, pages, homework, decks, cards, code, reminders, meta, images: {}, thumbs: {}, ink: {} };
+  const [homework, decks, cards, code, reminders, meta, exams, grades] = await Promise.all([listHomework(), listDecks(), listCards(), listCode(), listReminders(), listMeta(), listExams(), listGrades()]);
+  const out = { app: 'lernapp', version: 6, created: new Date().toISOString(), subjects, books, pages, homework, decks, cards, code, reminders, meta, exams, grades, images: {}, thumbs: {}, ink: {} };
   let i = 0;
   for (const p of pages) {
     const [img, th, ink] = await Promise.all([getImage(p.id), getThumb(p.id), getInk(p.id)]);
@@ -346,8 +354,8 @@ export async function exportAll(onProgress = () => {}) {
 export async function importAll(data) {
   if (!data || data.app !== 'lernapp' || !Array.isArray(data.pages)) throw new Error('Das ist keine Sicherung dieser App.');
   const db = await openDB();
-  const tx = db.transaction(['subjects', 'books', 'pages', 'images', 'thumbs', 'ink', 'homework', 'decks', 'cards', 'code', 'reminders', 'meta'], 'readwrite');
-  for (const st of ['homework', 'decks', 'cards', 'code', 'reminders', 'meta']) for (const it of data[st] || []) tx.objectStore(st).put(it);
+  const tx = db.transaction(['subjects', 'books', 'pages', 'images', 'thumbs', 'ink', 'homework', 'decks', 'cards', 'code', 'reminders', 'meta', 'exams', 'grades'], 'readwrite');
+  for (const st of ['homework', 'decks', 'cards', 'code', 'reminders', 'meta', 'exams', 'grades']) for (const it of data[st] || []) tx.objectStore(st).put(it);
   for (const s of data.subjects || []) tx.objectStore('subjects').put(s);
   for (const b of data.books || []) tx.objectStore('books').put(b);
   for (const p of data.pages) {
