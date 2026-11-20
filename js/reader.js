@@ -3,7 +3,7 @@
 // Hoch: eine Seite.
 import * as db from './db.js';
 import { renderPage, blobToImage } from './paper.js';
-import { $, h, icon, sheet, promptSheet, toast, menu } from './ui.js';
+import { $, h, icon, sheet, promptSheet, toast, menu, busy } from './ui.js';
 
 let pages = [], spreads = [], si = 0, selected = 0, title = '', onEdit = null, onMarks = null;
 const urls = new Map();       // Seiten-ID -> Bild-URL (fertig zusammengesetzt)
@@ -160,6 +160,18 @@ $('viewMark').addEventListener('click', (e) => {
 $('viewToc').addEventListener('click', async () => {
   const i = await tocSheet(pages, title);
   if (i != null) gotoPage(i);
+});
+$('viewSpeak').addEventListener('click', async () => {
+  const p = pages[selected]; if (!p) return;
+  let ocr = p.ocr;
+  if (p.kind !== 'blank' && ocr == null) {
+    busy(true, 'Text auf der Seite wird erkannt …');
+    try { const { ocrPages } = await import('./ocr.js'); await ocrPages([p], (t) => { const b = $('busyText'); if (b) b.textContent = t; }); ocr = p.ocr; }
+    catch (err) { toast('Texterkennung fehlgeschlagen: ' + err.message, 4000); }
+    busy(false);
+  }
+  const { readAloud } = await import('./speech.js');
+  readAloud([ocr, p.textBoxes].filter(Boolean).join('\n\n'), { title: `Seite ${selected + 1} vorlesen`, emptyHint: 'Auf dieser Seite wurde kein gedruckter Text gefunden. Handschrift kann die App nicht vorlesen.' });
 });
 $('viewEdit').addEventListener('click', () => { if (onEdit) onEdit(pages[selected], selected); });
 $('readScrub').addEventListener('input', (e) => { const n = +e.target.value; const d = n - si; si = n; selected = spreads[si].find((x) => x != null); show(Math.sign(d)); });

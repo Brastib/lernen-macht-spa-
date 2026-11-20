@@ -1333,3 +1333,46 @@ canvas.alkcv { display: block; width: 100%; height: 360px; }
 @media (max-width: 700px) { .plantl { grid-template-columns: 1fr; } .planmiss { flex-wrap: wrap; } }
 .dlgbody > .seg { align-self: flex-start; max-width: 100%; }
 .planring .rfg.zero { opacity: 0; }
+
+/* ---------- Vorlesen und Diktieren ---------- */
+.rdtext { max-height: min(52vh, 460px); overflow-y: auto; padding: 18px 20px; border-radius: 16px; background: var(--bg); box-shadow: inset 0 0 0 1px var(--line); font-size: 19px; line-height: 1.75; letter-spacing: .01em; word-spacing: .06em; -webkit-user-select: text; user-select: text; overscroll-behavior: contain; }
+.rdtext.big { font-size: 24px; line-height: 1.85; letter-spacing: .02em; word-spacing: .1em; }
+.rds { cursor: pointer; border-radius: 6px; padding: 1px 0; transition: background .2s, color .2s; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+.rds.read { color: var(--muted); }
+.rds.on { background: var(--hl); color: var(--ink); box-shadow: 0 0 0 3px var(--hl); }
+:root { --hl: rgba(245, 197, 66, .45); }
+:root[data-theme="dark"] { --hl: rgba(245, 197, 66, .28); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --hl: rgba(245, 197, 66, .28); } }
+.rdfoot { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
+.rdfoot p { flex: 1; margin: 0; }
+.rdbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+.rdplay { width: 56px; height: 56px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: var(--on-accent); box-shadow: 0 4px 14px color-mix(in srgb, var(--accent) 35%, transparent); transition: transform .15s; }
+.rdplay:active { transform: scale(.94); }
+.rdplay .ic { width: 24px; height: 24px; fill: currentColor; stroke: none; }
+.rdpos { font-size: 14px; color: var(--muted); font-variant-numeric: tabular-nums; min-width: 52px; }
+.rdgap { flex: 1; }
+.rdbig { gap: 0 !important; align-items: baseline !important; font-weight: 600; }
+.rdbig span { font-size: 19px; } .rdbig small { font-size: 13px; }
+.rdbig.on { background: var(--ink); color: var(--bg); }
+.micwrap { position: relative; }
+.micwrap .field { padding-right: 56px; width: 100%; }
+.micbtn { position: absolute; right: 6px; bottom: 8px; width: 40px; height: 40px; min-height: 0; padding: 0; justify-content: center; }
+.micbtn .ic { width: 20px; height: 20px; }
+.dicthead { display: flex; align-items: center; gap: 16px; margin-bottom: 14px; }
+.dicthead > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.dicthead small { color: var(--muted); font-size: 13px; }
+.dictstate { font-weight: 600; }
+.dictmic { flex: none; width: 64px; height: 64px; border-radius: 50%; display: grid; place-items: center; background: var(--surface-2); color: var(--ink); transition: background .2s, color .2s; position: relative; }
+.dictmic .ic { width: 28px; height: 28px; }
+.dictmic.on { background: var(--danger); color: #fff; }
+.dictmic.on::after { content: ""; position: absolute; inset: -6px; border-radius: 50%; border: 2px solid var(--danger); opacity: .5; animation: micpulse 1.4s ease-out infinite; }
+@keyframes micpulse { from { transform: scale(.9); opacity: .6; } to { transform: scale(1.25); opacity: 0; } }
+.dictarea { min-height: 150px; font-size: 17px; line-height: 1.5; }
+.dicthint { display: flex; gap: 14px; align-items: flex-start; padding: 14px 16px; border-radius: 14px; background: var(--surface-2); }
+.dicthint .ic { flex: none; width: 26px; height: 26px; color: var(--accent); margin-top: 2px; }
+.dicthint p { margin: 0; font-size: 15px; line-height: 1.5; }
+@media (prefers-reduced-motion: reduce) { .dictmic.on::after { animation: none; } }
+/* Dunkel: schwarze Tinte bleibt im Werkzeugleisten-Knopf sichtbar */
+:root[data-theme="dark"] .swatch::before { box-shadow: inset 0 0 0 1.5px rgba(255,255,255,.35); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .swatch::before { box-shadow: inset 0 0 0 1.5px rgba(255,255,255,.35); } }
+:root[data-theme="dark"] .swatch.on { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--sw) 60%, #fff); }

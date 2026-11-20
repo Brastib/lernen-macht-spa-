@@ -1,5 +1,6 @@
 // Schulalltag: Stundenplan, Prüfungen (mit Countdown und Lernerinnerung), Noten mit Schnitt.
 import * as db from './db.js';
+import { micButton } from './speech.js';
 import { $, h, icon, toast, plural, sheet, menu, confirmSheet } from './ui.js';
 
 const DAY = 86400000;
@@ -186,7 +187,7 @@ export async function editExam(ex, { subjects, after }) {
     body.append(
       h('div.fieldgrid', null, h('div', null, h('label.fieldlabel', { for: 'exSubj', text: 'Fach' }), subj), h('div', null, h('label.fieldlabel', { for: 'exKind', text: 'Art' }), kind)),
       h('label.fieldlabel', { for: 'exDate', text: 'Wann' }), h('div.datewrap', null, date),
-      h('label.fieldlabel', { for: 'exTopic', text: 'Thema' }), topic,
+      h('label.fieldlabel', { for: 'exTopic', text: 'Thema' }), h('div.micwrap', null, topic, micButton(topic)),
       h('label.fieldlabel', { for: 'exLearn', text: 'Lernerinnerung' }), learn,
       h('div.dlgactions', null,
         isNew ? null : h('button.btn.danger', { text: 'Löschen', on: { click: () => close('delete') } }),

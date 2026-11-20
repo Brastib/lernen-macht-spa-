@@ -156,6 +156,41 @@ async function stampName() {
   strokes.push(st); undo.push({ type: 'add', stroke: st }); redo = []; changed(); redrawInk(); updateToolbar();
   toast('Name und Datum stehen oben rechts. Mit dem Lasso kannst du sie verschieben.', 3500);
 }
+// ---------- Vorlesen und Diktieren ----------
+$('edSpeak').addEventListener('click', (e) => {
+  menu(e.currentTarget, [
+    { label: 'Seite vorlesen', icon: 'speak', onClick: speakPage },
+    { label: 'Diktieren: Text einfügen', icon: 'mic', onClick: dictateText },
+  ]);
+});
+async function speakPage() {
+  finishStroke(); commitText();
+  const own = strokes.filter((x) => x.tool === 'text').sort((a, b) => a.pts[1] - b.pts[1] || a.pts[0] - b.pts[0]).map((x) => x.text);
+  let ocr = page.ocr;
+  if (page.kind !== 'blank' && ocr == null) {
+    busy(true, 'Text auf der Seite wird erkannt …');
+    try { const { ocrPages } = await import('./ocr.js'); await ocrPages([page], (t) => { const b = $('busyText'); if (b) b.textContent = t; }); ocr = page.ocr; }
+    catch (err) { toast('Texterkennung fehlgeschlagen: ' + err.message, 4000); }
+    busy(false);
+  }
+  const text = [ocr, ...own].filter(Boolean).join('\n\n');
+  const { readAloud } = await import('./speech.js');
+  readAloud(text, { title: 'Seite vorlesen', emptyHint: page.kind === 'blank' ? 'Auf dieser Seite gibt es noch keinen getippten Text. Handschrift kann die App nicht vorlesen.' : 'Auf dieser Seite wurde kein gedruckter Text gefunden. Handschrift kann die App nicht vorlesen.' });
+}
+async function dictateText() {
+  finishStroke(); commitText();
+  const { dictate } = await import('./speech.js');
+  const text = await dictate({ title: 'Diktieren' });
+  if (!text) return;
+  const sc = $('edScroll').getBoundingClientRect(), pr = $('edPage').getBoundingClientRect();
+  const k = pr.width / PAGE_W, H = pageHeight(page);
+  const x = Math.max(15 * MM, Math.min(PAGE_W - 80 * MM, (sc.left + 40 - pr.left) / k));
+  const y = Math.max(12 * MM, Math.min(H - 30 * MM, (sc.top + sc.height * 0.3 - pr.top) / k));
+  const st = { tool: 'text', color, size: SIZES.text[sizeIdx] || 18, text, pts: [x, y, 0, x, y + 24, 0] };
+  fitText(st);
+  strokes.push(st); undo.push({ type: 'add', stroke: st }); redo = []; changed(); redrawInk(); updateToolbar();
+  toast('Text eingefügt. Mit dem Lasso kannst du ihn verschieben.', 3000);
+}
 $('edZoomIn').addEventListener('click', () => setZoom(zoom * 1.25));
 $('edZoomOut').addEventListener('click', () => setZoom(zoom / 1.25));
 $('edFinger').addEventListener('click', () => {

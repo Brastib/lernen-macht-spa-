@@ -1,5 +1,6 @@
 // Hausaufgaben pro Fach: kurze Liste mit Datum, abhaken wenn erledigt.
 import * as db from './db.js';
+import { micButton } from './speech.js';
 import { h, icon, toast, sheet } from './ui.js';
 import { syncHomeworkReminder, homeworkReminderOf } from './reminders.js';
 
@@ -35,7 +36,7 @@ export async function editHomework(item, { subjects, after }) {
       ...[['Morgen', 1], ['In 2 Tagen', 2], ['Nächste Woche', 7]].map(([l, n]) =>
         h('button.pchip.small', { text: l, on: { click: () => { date.value = iso(new Date(Date.now() + n * DAY)); } } })));
     let subjectId = item.subjectId || (subjects && subjects[0] && subjects[0].id);
-    body.append(h('label.fieldlabel', { for: 'hwText', text: 'Aufgabe' }), text);
+    body.append(h('label.fieldlabel', { for: 'hwText', text: 'Aufgabe' }), h('div.micwrap', null, text, micButton(text)));
     if (subjects && !item.subjectId) {
       const sel = h('select.field', { id: 'hwSubj', on: { change: (e) => { subjectId = e.target.value; } } },
         ...subjects.map((s) => h('option', { value: s.id, text: s.name })));
