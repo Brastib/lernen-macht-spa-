@@ -587,6 +587,10 @@ async function searchFlow() {
 
 // ---------- Texterkennung ----------
 async function ocrFlow(list) {
+  if (document.documentElement.dataset.artifact) {
+    toast('Texterkennung geht nur in der eigenen App unter brastib.github.io/lernen-macht-spa-, nicht in dieser Testversion.', 5000);
+    return;
+  }
   const todo = list.filter(needsOcr);
   if (!todo.length) { toast(list.some((p) => p.kind !== 'blank') ? 'Text ist schon erkannt' : 'Keine Scans oder PDF-Seiten'); return; }
   const ok = await confirmSheet('Text erkennen?', `${plural(todo.length, 'Seite wird', 'Seiten werden')} gelesen, damit die Suche Wörter darauf findet. Das dauert etwa 5 bis 15 Sekunden pro Seite und läuft nur auf diesem Gerät. Gedruckter Text klappt gut, Handschrift kaum.`, 'Starten', false);
