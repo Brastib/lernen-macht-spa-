@@ -1,6 +1,6 @@
 // Hauptteil: Bibliothek mit Fächern, Büchern und Seiten.
 import * as db from './db.js';
-const APP_VERSION = '17';   // gleich wie VERSION in sw.js
+const APP_VERSION = '18';   // gleich wie VERSION in sw.js
 import { openEditor } from './editor.js';
 import { renderPage, PAPERS } from './paper.js';
 import { detectPage, defaultCorners } from './scanner.js';
@@ -10,6 +10,7 @@ import { $, h, icon, toast, busy, kb, fmtBytes, plural, sheet, confirmSheet, pro
 import { renderDeck, newDeckFlow, startStudy, dueCount, addCardsFlow } from './cards.js';
 import { playerCard, profileSheet } from './game.js';
 import { renderKit, TABS as KIT_TABS, focusWatch } from './kit.js';
+import { greeting, applyTheme, themeSheet, focusPill, weekCard } from './dash.js';
 import { renderTimetable, renderExams, renderGrades, nowCard, examCard, subjectSchoolBox } from './school.js';
 import { editHomework, hwList, sortHw } from './homework.js';
 import { importPdf, exportPdf } from './pdfio.js';
@@ -73,7 +74,9 @@ const btn = (label, ic, onClick, cls = '') =>
 const iconBtn = (ic, label, onClick) =>
   h('button.btn.round', { 'aria-label': label, title: label, on: { click: onClick } }, icon(ic));
 
+let lastView = null;   // Startseite nur beim Hinkommen einblenden, nicht bei jedem Abhaken
 async function render() {
+  if (nav.view !== 'library') lastView = nav.view;
   setSelecting(false);
   window.scrollTo(0, 0);
   if (nav.view === 'library') return renderLibrary();
@@ -93,8 +96,9 @@ function go(n) { nav = n; render(); }
 async function renderLibrary() {
   const [subjects, books, all] = await Promise.all([db.listSubjects(), db.listAllBooks(), db.listAllPages()]);
   const inbox = all.filter((p) => p.bookId === INBOX).sort((a, b) => a.index - b.index);
+  const greet = greeting();
   setHeader({
-    eyebrow: 'Lern-App', title: 'Bibliothek',
+    eyebrow: greet.eyebrow, title: greet.title,
     meta: `${plural(subjects.length, 'Fach', 'Fächer')} · ${plural(all.length, 'Seite', 'Seiten')}`,
     actions: [
       iconBtn('search', 'Suchen', () => searchFlow()),
@@ -103,6 +107,8 @@ async function renderLibrary() {
         { label: 'Sicherung laden', icon: 'restore', onClick: () => $('fileBackup').click() },
         'sep',
         { label: 'Text in allen Scans erkennen', icon: 'search', onClick: async () => ocrFlow(await db.listAllPages()) },
+        'sep',
+        { label: 'Darstellung (hell/dunkel)', icon: 'moon', onClick: () => themeSheet() },
       ])),
       btn('Notiz', 'pen', () => quickNote()),
       btn('Fach', 'plus', () => addSubjectFlow()),
@@ -113,9 +119,14 @@ async function renderLibrary() {
 
   const view = $('view');
   view.textContent = '';
+  view.classList.toggle('enter', lastView !== 'library');
+  lastView = 'library';
   const banner = await dueBanner({ go });
   if (banner) view.append(banner);
+  const fp = focusPill(go);
+  if (fp) view.append(fp);
   if (subjects.length) view.append(h('section.dashrow', null, await nowCard({ go, subjects }), await examCard({ go, subjects })));
+  if (subjects.length) view.append(await weekCard({ go, subjects, after: render }));
   if (subjects.length) await todaySection(view, subjects);
   if (!subjects.length) {
     view.append(h('section.empty', null,
@@ -125,10 +136,15 @@ async function renderLibrary() {
       presetChips([], () => render())));
   } else {
     const grid = h('div.subjects');
+    const [hwAll, exAll] = await Promise.all([db.listHomework(), db.listExams()]);
+    const todayIso = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
     for (const s of subjects) {
       const sb = books.filter((b) => b.subjectId === s.id);
       const n = all.filter((p) => sb.some((b) => b.id === p.bookId)).length;
+      const nHw = hwAll.filter((x) => x.subjectId === s.id && !x.done).length;
+      const nEx = exAll.filter((x) => x.subjectId === s.id && x.date >= todayIso).length;
       grid.append(h('button.subject', { style: { '--c': s.color }, on: { click: () => go({ view: 'subject', subject: s }) } },
+        (nHw || nEx) ? h('span.sbadges', null, nEx ? h('em.sbadge.ex', { text: nEx > 1 ? `${nEx} Prüfungen` : 'Prüfung' }) : null, nHw ? h('em.sbadge', { text: `${nHw} HA` }) : null) : null,
         h('span.mono', { text: s.name.slice(0, 2) }),
         h('span.sname', { text: s.name }),
         h('span.smeta', { text: `${plural(sb.length, 'Buch', 'Bücher')} · ${plural(n, 'Seite', 'Seiten')}` })));
@@ -777,6 +793,7 @@ db.askPersistent();
 render();
 // Erinnerungen prüfen, solange die App offen ist (Hinweis + Mitteilung, falls erlaubt)
 focusWatch();
+applyTheme();
 startReminderWatch(() => {
   if ((nav.view === 'library' || nav.view === 'reminders') && !document.querySelector('.dlgscrim')) render();
 });

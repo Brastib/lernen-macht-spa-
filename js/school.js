@@ -153,7 +153,9 @@ export async function nowCard({ go, subjects }) {
         h('span', { text: [x.cell.room, `${tt.periods[x.p].s}–${tt.periods[x.p].e}`, extra].filter(Boolean).join(' · ') }));
     };
     const whenNext = next && (next.offset === 0 ? `in ${next.s - minute} min` : next.offset === 1 ? 'morgen' : DAYS[next.day]);
-    const nowB = now ? block('Jetzt', now, `noch ${now.e - minute} min`) : h('div.nowblock.free', null, h('small', { text: 'Jetzt' }), h('b', { text: next && next.offset === 0 ? 'Pause' : 'Kein Unterricht' }));
+    const nowB0 = now && block('Jetzt', now, `noch ${now.e - minute} min`);
+    if (nowB0) nowB0.append(h('i.nowprog', { style: { '--p': String(Math.min(1, Math.max(0, (minute - now.s) / Math.max(1, now.e - now.s)))) } }));
+    const nowB = now ? nowB0 : h('div.nowblock.free', null, h('small', { text: 'Jetzt' }), h('b', { text: next && next.offset === 0 ? 'Pause' : 'Kein Unterricht' }));
     el.append(nowB, next ? block('Als Nächstes', next, whenNext) : h('div.nowblock.free', null, h('small', { text: 'Als Nächstes' }), h('b', { text: '–' })),
       h('button.icbtn.dashmore', { 'aria-label': 'Stundenplan', on: { click: () => go({ view: 'timetable' }) } }, icon('grid')));
   };
