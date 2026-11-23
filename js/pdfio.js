@@ -30,7 +30,7 @@ function pdfLib() {
 }
 
 // PDF-Datei in ein Buch übernehmen. onProgress(seite, gesamt)
-export async function importPdf(file, bookId, onProgress = () => {}, { autoClean = true } = {}) {
+export async function importPdf(file, bookId, onProgress = () => {}, { clean: mode = 'auto' } = {}) {
   let nClean = 0;
   const lib = await pdfLib();
   const doc = await lib.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
@@ -48,7 +48,7 @@ export async function importPdf(file, bookId, onProgress = () => {}, { autoClean
     await page.render({ canvasContext: ctx, viewport: vp }).promise;
     // Eingescannte PDF-Seiten automatisch säubern, das Original bleibt gespeichert
     let clean = null;
-    if (autoClean && looksScanned(c)) {
+    if (mode === 'all' || (mode === 'auto' && looksScanned(c))) {
       const cc = document.createElement('canvas'); cc.width = c.width; cc.height = c.height; cc.getContext('2d').drawImage(c, 0, 0);
       clean = cleanCanvas(cc);
     }

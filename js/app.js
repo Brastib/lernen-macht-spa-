@@ -1,6 +1,6 @@
 // Hauptteil: Bibliothek mit Fächern, Büchern und Seiten.
 import * as db from './db.js';
-const APP_VERSION = '42';   // gleich wie VERSION in sw.js
+const APP_VERSION = '43';   // gleich wie VERSION in sw.js
 import { openEditor } from './editor.js';
 import { renderPage, PAPERS } from './paper.js';
 import { detectPage, defaultCorners } from './scanner.js';
@@ -443,6 +443,7 @@ async function renderBook() {
       if (ok) { await db.deleteBook(b.id); pages.forEach((p) => dropThumb(p.id)); toast('Gelöscht'); go({ view: 'subject', subject: s }); }
     } },
   ])));
+  if (pages.some((p) => p.kind !== 'blank' && !p.cleaned)) actions.push(btn('Säubern', 'auto', () => cleanFlow(pages)));
   if (pages.length) {
     actions.push(btn('Auswählen', 'select', () => setSelecting(!selecting)));
     actions.push(btn('Lesen', 'read', () => openBook(0)));
@@ -548,7 +549,7 @@ function toggleSel(id) {
 function updateSel() {
   const n = selected.size;
   $('selCount').textContent = n ? plural(n, 'Seite', 'Seiten') + ' ausgewählt' : 'Seiten antippen';
-  for (const id of ['selLeft', 'selRight', 'selMove', 'selDelete', 'selPdf']) $(id).disabled = !n;
+  for (const id of ['selLeft', 'selRight', 'selMove', 'selDelete', 'selPdf', 'selClean']) $(id).disabled = !n;
 }
 async function shift(d) {
   const ids = pages.map((p) => p.id);
@@ -568,6 +569,7 @@ $('selLeft').addEventListener('click', () => shift(-1));
 $('selRight').addEventListener('click', () => shift(1));
 $('selDone').addEventListener('click', () => setSelecting(false));
 $('selPdf').addEventListener('click', () => pdfExportFlow(pages, nav.book.title));
+$('selClean').addEventListener('click', () => cleanFlow(pages.filter((p) => selected.has(p.id))));
 $('selDelete').addEventListener('click', async () => {
   const n = selected.size;
   const ok = await confirmSheet(`${plural(n, 'Seite', 'Seiten')} löschen?`, 'Die Seiten werden von diesem Gerät gelöscht. Das lässt sich nicht rückgängig machen.');
@@ -805,9 +807,15 @@ let pdfTarget = INBOX;
 $('filePdf').addEventListener('change', async (e) => {
   const f = e.target.files[0]; e.target.value = '';
   if (!f) return;
+  const fix = await sheet('PDF verbessern?', (body, close) => body.append(
+    h('p.dlgtext', { text: 'Soll ich die Seiten scharf machen, schiefe Seiten gerade drehen und das Papier weiß machen? Das Original bleibt gespeichert. Du kannst es später zurückholen.' }),
+    h('div.dlgactions', null,
+      h('button.btn', { text: 'Nein, so lassen', on: { click: () => close('no') } }),
+      h('button.btn.primary', { text: 'Ja, verbessern', on: { click: () => close('yes') } }))));
+  if (!fix) return;
   busy(true, 'PDF wird geöffnet …');
   try {
-    const added = await importPdf(f, pdfTarget, (i, n) => { $('busyText').textContent = `PDF wird übernommen … Seite ${i} von ${n}`; });
+    const added = await importPdf(f, pdfTarget, (i, n) => { $('busyText').textContent = `PDF wird ${fix === 'yes' ? 'übernommen und verbessert' : 'übernommen'} … Seite ${i} von ${n}`; }, { clean: fix === 'yes' ? 'all' : 'none' });
     busy(false);
     toast(`${plural(added.length, 'Seite', 'Seiten')} aus „${f.name}“ übernommen` + (added.cleaned ? `, ${added.cleaned === added.length ? 'alle' : added.cleaned} gesäubert` : ''), 3500);
     render();

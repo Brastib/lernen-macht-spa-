@@ -317,7 +317,7 @@ export function flatten(canvas) {
   return canvas;
 }
 
-// Schräglage der Textzeilen finden (bis ±5°) und gerade drehen
+// Schräglage der Textzeilen finden (bis ±20°) und gerade drehen
 export function skewAngle(canvas) {
   const W = 700, f = Math.min(1, W / canvas.width);
   const w = Math.round(canvas.width * f), h = Math.round(canvas.height * f);
@@ -327,9 +327,15 @@ export function skewAngle(canvas) {
   const d = x.getImageData(0, 0, w, h).data;
   const pts = [];
   const m = Math.round(w * 0.05);
+  // Schwelle passt sich an: auch blasse oder unscharfe Schrift zählt
+  const hist = new Uint32Array(256); let tot = 0;
+  for (let i = 0; i < d.length; i += 4) { hist[Math.round(0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2])]++; tot++; }
+  const pct = (q) => { let acc = 0; for (let v = 0; v < 256; v++) { acc += hist[v]; if (acc >= tot * q) return v; } return 255; };
+  const paper = pct(0.6), ink = pct(0.01);
+  const thr = Math.min(paper - 25, Math.max(110, ink + (paper - ink) * 0.45));
   for (let yy = m; yy < h - m; yy++) for (let xx = m; xx < w - m; xx++) {
     const i = (yy * w + xx) * 4;
-    if (0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2] < 110) pts.push(xx, yy);
+    if (0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2] < thr) pts.push(xx, yy);
   }
   const n = pts.length / 2;
   if (n < 400 || n > w * h * 0.25) return 0;
@@ -340,8 +346,9 @@ export function skewAngle(canvas) {
     return s;
   };
   let best = 0, bs = score(0);
-  for (let a = -5; a <= 5.001; a += 0.5) { const sc = score(a); if (sc > bs) { bs = sc; best = a; } }
-  for (let a = best - 0.45; a <= best + 0.451; a += 0.15) { const sc = score(a); if (sc > bs) { bs = sc; best = a; } }
+  for (let a = -20; a <= 20.001; a += 1) { const sc = score(a); if (sc > bs) { bs = sc; best = a; } }
+  for (let a = best - 0.9; a <= best + 0.901; a += 0.3) { const sc = score(a); if (sc > bs) { bs = sc; best = a; } }
+  for (let a = best - 0.24; a <= best + 0.241; a += 0.08) { const sc = score(a); if (sc > bs) { bs = sc; best = a; } }
   return Math.abs(best) < 0.25 ? 0 : best;
 }
 export function deskew(canvas) {
@@ -351,8 +358,8 @@ export function deskew(canvas) {
   const out = document.createElement('canvas'); out.width = w; out.height = h;
   const x = out.getContext('2d');
   x.fillStyle = '#fff'; x.fillRect(0, 0, w, h);
-  // leicht vergrößern, damit keine weißen Ecken entstehen
-  const k = 1 + Math.abs(Math.sin(r)) * Math.max(w / h, h / w);
+  // bei kleinen Winkeln leicht vergrößern (keine weißen Ecken), bei großen nicht (sonst fehlt Text am Rand)
+  const k = Math.abs(a) <= 3 ? 1 + Math.abs(Math.sin(r)) * Math.max(w / h, h / w) : 1;
   x.translate(w / 2, h / 2); x.rotate(r); x.scale(k, k);
   x.imageSmoothingQuality = 'high';
   x.drawImage(canvas, -w / 2, -h / 2);
@@ -360,13 +367,13 @@ export function deskew(canvas) {
 }
 
 // Schärfen (Unscharf maskieren auf der Helligkeit)
-export function sharpen(canvas, amount = 0.6) {
+export function sharpen(canvas, amount = 0.6, rad = 1) {
   const w = canvas.width, h = canvas.height;
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
   const img = ctx.getImageData(0, 0, w, h), d = img.data;
   const L = new Float32Array(w * h);
   for (let i = 0, j = 0; j < L.length; i += 4, j++) L[j] = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
-  const B = boxBlur(L, w, h, 1);
+  const B = boxBlur(L, w, h, rad);
   for (let i = 0, j = 0; j < L.length; i += 4, j++) {
     const diff = (L[j] - B[j]) * amount;
     if (diff > -2 && diff < 2) continue;
@@ -397,7 +404,7 @@ export function looksScanned(canvas) {
 }
 // Komplett säubern: gerade drehen (optional), Schatten weg, Kontrast, schärfen
 export function cleanCanvas(canvas, { straighten = true } = {}) {
-  return sharpen(enhance(flatten(straighten ? deskew(canvas) : canvas), 'color'), 0.5);
+  return sharpen(sharpen(enhance(flatten(straighten ? deskew(canvas) : canvas), 'color'), 0.45, 2), 0.55, 1);
 }
 
 // ---------- Verkleinern ----------
