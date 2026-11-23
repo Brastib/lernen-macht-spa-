@@ -2343,3 +2343,24 @@ html.fxopen, html.fxopen body, html:has(> body > .gamefx), html:has(> body > .ga
 .tdbtn.go > svg { background: rgba(255,255,255,.2); color: #fff; }
 .tdbtn:disabled { opacity: .5; }
 .bdhint { min-height: 1.4em; }
+/* Malraten zu zweit: Maler entscheidet */
+.drjudge .drans { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 56px; }
+.drjudge .drans svg { width: 22px; height: 22px; flex: none; }
+.drans.drok { background: color-mix(in srgb, #2fbf71 22%, var(--surface)); border-color: #2fbf71; }
+.drans.drno { background: color-mix(in srgb, #e0483e 14%, var(--surface)); border-color: #e0483e; }
+.drans.drpeek { font-size: 14px; user-select: none; -webkit-user-select: none; touch-action: none; }
+.drwrong, .drjudgehint { color: var(--muted); font-size: 13px; text-align: center; overflow-wrap: anywhere; }
+@media (max-aspect-ratio: 1/1) { .drjudge { grid-template-columns: repeat(3, minmax(0, 1fr)); } .drjudge .drwrong { grid-column: 1 / -1; } }
+/* Billard: Zielen, Kraft, Mine */
+.plbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; padding: 8px; border-radius: 18px; background: var(--surface); box-shadow: 0 0 0 1px var(--line); }
+.plbtn { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; }
+.plbtn svg { width: 20px; height: 20px; }
+.plnudge { width: 48px; justify-content: center; padding: 0; }
+.plpowl { display: flex; align-items: center; gap: 8px; flex: 1 1 160px; min-width: 140px; }
+.plpowl small { color: var(--muted); font-size: 13px; }
+.plpow { flex: 1; min-width: 0; accent-color: var(--accent); height: 32px; }
+.plmine { min-width: 70px; }
+.plmine.low b { color: #e0483e; }
+.plbtn.glow { box-shadow: 0 0 0 2px #e0483e; animation: plglow 1s ease-in-out infinite alternate; }
+@keyframes plglow { from { box-shadow: 0 0 0 2px rgba(224,72,62,.4); } to { box-shadow: 0 0 0 3px #e0483e; } }
+.plshot { min-height: 44px; min-width: 96px; }

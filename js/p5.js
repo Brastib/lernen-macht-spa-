@@ -21,6 +21,33 @@ const toWorld = (C, g, e) => { const r = C.cv.getBoundingClientRect(); return [(
 const BWD = 1000, BHT = 520, BRAD = 13, PR = 25;
 const POCKETS = [[0, 0], [BWD / 2, -4], [BWD, 0], [0, BHT], [BWD / 2, BHT + 4], [BWD, BHT]];
 const BCOL = ['#f2c230', '#2f7cf6', '#e0483e', '#a46bff', '#ff9a3c', '#2fbf71', '#8b2e3c', '#21b8c9', '#d4a017'];
+// Bleistift von der Seite: Graphitspitze (nutzt sich ab), Holzkegel, sechseckiger Schaft, Metallring, Radiergummi
+function drawPencil(x, tx, ty, ang, lead, lenF, ink, shake = 0) {
+  x.save(); x.translate(tx, ty + shake); x.rotate(ang + Math.PI);   // +x zeigt vom Ball weg nach hinten
+  const W = 7, CONE = 30, BODY = 300 * lenF, x0 = (1 - lead) * 13, wAt = (q) => W * q / CONE;
+  x.lineJoin = 'round'; x.lineCap = 'round';
+  x.fillStyle = 'rgba(0,0,0,.14)'; x.beginPath(); x.rect(CONE, W - 1, BODY, 6); x.fill();
+  // Holzkegel
+  x.fillStyle = '#efd2a4'; x.beginPath(); x.moveTo(x0, -wAt(x0)); x.lineTo(CONE, -W); x.lineTo(CONE, W); x.lineTo(x0, wAt(x0)); x.closePath(); x.fill();
+  x.strokeStyle = ink; x.lineWidth = 1.6; x.stroke();
+  // Graphit
+  const gl = x0 + 9; x.fillStyle = '#3a3d45'; x.beginPath(); x.moveTo(x0, -wAt(x0)); x.lineTo(gl, -wAt(gl)); x.lineTo(gl, wAt(gl)); x.lineTo(x0, wAt(x0)); x.closePath(); x.fill(); x.stroke();
+  if (lead > 0.8) { x.fillStyle = 'rgba(255,255,255,.35)'; x.beginPath(); x.moveTo(x0 + 2, -0.6); x.lineTo(gl - 1, -wAt(gl) + 0.8); x.lineTo(gl - 1, -0.2); x.closePath(); x.fill(); }
+  // gezackte Kante Holz / Lack
+  x.fillStyle = '#f4c430'; x.beginPath(); x.moveTo(CONE + 6, -W); for (let k = 0; k <= 6; k++) x.lineTo(CONE + (k % 2 ? 0 : 5), -W + k * W * 2 / 6); x.lineTo(CONE + 6, W); x.closePath(); x.fill();
+  // Schaft mit drei Flächen
+  x.fillStyle = '#f4c430'; x.fillRect(CONE + 5, -W, BODY - 5, W * 2);
+  x.fillStyle = '#fbe07a'; x.fillRect(CONE + 5, -W, BODY - 5, W * 0.62);
+  x.fillStyle = '#d8a31c'; x.fillRect(CONE + 5, W * 0.38, BODY - 5, W * 0.62);
+  x.strokeStyle = 'rgba(120,80,0,.45)'; x.lineWidth = 1; x.beginPath(); x.moveTo(CONE + 5, -W * 0.38); x.lineTo(CONE + BODY, -W * 0.38); x.moveTo(CONE + 5, W * 0.38); x.lineTo(CONE + BODY, W * 0.38); x.stroke();
+  x.strokeStyle = ink; x.lineWidth = 1.8; x.beginPath(); x.moveTo(CONE, -W); x.lineTo(CONE + BODY, -W); x.moveTo(CONE, W); x.lineTo(CONE + BODY, W); x.stroke();
+  x.save(); x.translate(CONE + BODY * 0.55, 0); if (Math.cos(ang) > 0) x.rotate(Math.PI); x.fillStyle = '#26262b'; x.font = `700 9px ${FONT}`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('HB  KRITZEL', 0, 0.5); x.restore();
+  // Metallring und Radiergummi
+  const F = CONE + BODY; x.fillStyle = '#c9ccd3'; x.fillRect(F, -W - 0.5, 16, W * 2 + 1); x.strokeStyle = ink; x.lineWidth = 1.4; x.strokeRect(F, -W - 0.5, 16, W * 2 + 1);
+  x.strokeStyle = '#8a8f98'; x.lineWidth = 1; x.beginPath(); [4, 8, 12].forEach((k) => { x.moveTo(F + k, -W); x.lineTo(F + k, W); }); x.stroke();
+  x.fillStyle = '#f2a0a8'; x.beginPath(); x.roundRect(F + 16, -W + 0.5, 16, W * 2 - 1, [0, 5, 5, 0]); x.fill(); x.strokeStyle = ink; x.lineWidth = 1.4; x.stroke();
+  x.restore();
+}
 export function pool(fx, A, B) {
   return new Promise((resolve) => {
     const dark = isDark(), ink = inkOf(dark), solo = !B, P = [A, B].filter(Boolean);
@@ -36,9 +63,21 @@ export function pool(fx, A, B) {
     const stats = h('div.hsstats');
     const turnChip = h('div.hsturn');
     const hud = h('div.hshud', null, turnChip, stats);
-    const hint = h('p.hshint', { text: 'Irgendwo hinlegen und nach hinten ziehen wie eine Schleuder. Die Linie zeigt, wohin die Kugel rollt. Goldene Stern-Kugel = 3 Punkte.' });
+    const hint = h('p.hshint', { text: 'Tippe oder zieh dorthin, wohin die Weiße rollen soll. Mit den Pfeilen fein zielen, Kraft einstellen, dann Stoß. Goldene Stern-Kugel = 3 Punkte.' });
     const host = h('div.hsarea');
-    fx.stage.append(h('div.hswrap', null, hud, hint, host));
+    // Zielen: Richtung per Finger, feine Pfeile, Kraftregler, Stoß. Die Bleistiftmine nutzt sich ab und muss ab und zu gespitzt werden.
+    let ang = 0, power = 0.55, thrust = 0, sharpT = 0, shavings = [];
+    const lead = P.map(() => 1), plen = P.map(() => 1);
+    const powEl = h('input.plpow', { type: 'range', min: '5', max: '100', value: '55', 'aria-label': 'Kraft' });
+    powEl.addEventListener('input', () => { power = +powEl.value / 100; });
+    const leadEl = h('b', { text: '100 %' });
+    const sharpBtn = h('button.btn.plbtn', { on: { click: () => sharpen() } }, icon('pen'), h('span', { text: 'Spitzen' }));
+    const nudge = (d) => h('button.btn.plbtn.plnudge', { 'aria-label': d < 0 ? 'Fein nach links' : 'Fein nach rechts', on: { click: () => { if (!moving) ang += d; } } }, icon(d < 0 ? 'turnl' : 'turnr'));
+    const bar = h('div.plbar', null, nudge(-0.012), nudge(0.012),
+      h('label.plpowl', null, h('small', { text: 'Kraft' }), powEl),
+      h('span.hsstat.plmine', null, h('small', { text: 'Mine' }), leadEl), sharpBtn,
+      h('button.btn.primary.plshot', { text: 'Stoß!', on: { click: () => shoot() } }));
+    fx.stage.append(h('div.hswrap', null, hud, hint, host, bar));
     const C = canvasBox(host), x = C.x;
     let aim = null, moving = false, potted = [], foul = false, touched = false, msg = '', msgT = 0, over = false, raf = 0, last = 0;
     const updHud = () => {
@@ -48,16 +87,33 @@ export function pool(fx, A, B) {
     };
     updHud();
     let g = fit(C, BWD + 80, BHT + 80);
-    C.cv.addEventListener('pointerdown', (e) => { if (moving || over) return; e.preventDefault(); const p = toWorld(C, g, e); aim = { id: e.pointerId, from: p, to: p }; try { C.cv.setPointerCapture(e.pointerId); } catch (er) { /* egal */ } });
-    C.cv.addEventListener('pointermove', (e) => { if (aim && aim.id === e.pointerId) aim.to = toWorld(C, g, e); });
-    C.cv.addEventListener('pointerup', (e) => {
-      if (!aim || aim.id !== e.pointerId) return;
-      const dx = aim.from[0] - aim.to[0], dy = aim.from[1] - aim.to[1], L = Math.hypot(dx, dy); aim = null;
-      if (L < 14) return;
-      const sp = Math.min(1, L / 280) * 1500; cue.vx = dx / L * sp; cue.vy = dy / L * sp;
-      moving = true; potted = []; foul = false; touched = false; shots++; hint.remove(); updHud();
-    });
-    C.cv.addEventListener('pointercancel', () => { aim = null; });
+    queueMicrotask(() => updLead());
+    const toTable = (e) => { const p = toWorld(C, g, e); return [p[0] - 40, p[1] - 40]; };
+    const point = (e) => { const [px, py] = toTable(e); if (Math.hypot(px - cue.x, py - cue.y) > 4) ang = Math.atan2(py - cue.y, px - cue.x); };
+    C.cv.addEventListener('pointerdown', (e) => { if (moving || over || sharpT > 0) return; e.preventDefault(); aim = { id: e.pointerId }; point(e); try { C.cv.setPointerCapture(e.pointerId); } catch (er) { /* egal */ } });
+    C.cv.addEventListener('pointermove', (e) => { if (aim && aim.id === e.pointerId && !moving) point(e); });
+    const endAim = () => { aim = null; }; C.cv.addEventListener('pointerup', endAim); C.cv.addEventListener('pointercancel', endAim);
+    const updLead = () => { const l = lead[turn]; leadEl.textContent = `${Math.round(l * 100)} %`; leadEl.parentElement.classList.toggle('low', l < 0.35); sharpBtn.classList.toggle('glow', l < 0.35); };
+    function shoot() {
+      if (moving || over || sharpT > 0 || thrust > 0) return;
+      const l = lead[turn], blunt = l < 0.12;
+      const wob = l < 0.35 ? (0.35 - l) * 0.3 * (R() * 2 - 1) : 0;   // stumpfe Mine: Stoß wird ungenau
+      const sp = (0.12 + power * 0.88) * 1500 * (blunt ? 0.45 : 1), a = ang + wob;
+      lead[turn] = Math.max(0, l - (0.03 + power * 0.13));
+      thrust = 0.14;
+      setTimeout(() => {
+        cue.vx = Math.cos(a) * sp; cue.vy = Math.sin(a) * sp;
+        moving = true; potted = []; foul = false; touched = false; shots++; hint.remove(); updHud();
+        if (blunt) { msg = 'Mine stumpf! Spitzen!'; msgT = 1.3; } else if (lead[turn] < 0.35 && l >= 0.35) { msg = 'Die Mine wird stumpf …'; msgT = 1.2; }
+      }, 140);
+      updLead();
+    }
+    function sharpen() {
+      if (moving || over || sharpT > 0 || lead[turn] > 0.97) return;
+      sharpT = 1.1; msg = 'Spitz, spitz …'; msgT = 1;
+    }
+    const onKey = (e) => { if (e.code === 'ArrowLeft') ang -= 0.012; else if (e.code === 'ArrowRight') ang += 0.012; else if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); shoot(); } };
+    document.addEventListener('keydown', onKey); fx.signal.addEventListener('abort', () => document.removeEventListener('keydown', onKey), { once: true });
     const cleanup = () => { cancelAnimationFrame(raf); C.ro.disconnect(); };
     fx.signal.addEventListener('abort', cleanup);
     const nearPocket = (b) => POCKETS.some(([px, py]) => Math.hypot(b.x - px, b.y - py) < PR + 14);
@@ -100,21 +156,11 @@ export function pool(fx, A, B) {
         else if (val) { msg = `+${val} für ${P[turn].name}, nochmal!`; msgT = 1.3; }
         else { turn = 1 - turn; msg = `${P[turn].name} ist dran`; msgT = 1.1; }
       }
-      updHud();
+      updHud(); updLead();
       if (balls.every((b) => !b.n || b.in)) {
         over = true; msg = 'Tisch leer!'; msgT = 9;
         setTimeout(() => { cleanup(); resolve(solo ? { score: shots } : { w: pts[0] > pts[1] ? 0 : pts[1] > pts[0] ? 1 : null, detail: `${pts[0]} : ${pts[1]} Punkte` }); }, 1400);
       }
-    }
-    // Vorschau: wo trifft die Weiße zuerst?
-    function predict(dx, dy) {
-      let px = cue.x, py = cue.y;
-      for (let k = 0; k < 900; k++) {
-        px += dx * 2; py += dy * 2;
-        if (px < BRAD || px > BWD - BRAD || py < BRAD || py > BHT - BRAD) return { x: px, y: py };
-        for (const b of balls) if (b !== cue && !b.in && Math.hypot(b.x - px, b.y - py) < BRAD * 2) return { x: px, y: py, b };
-      }
-      return { x: px, y: py };
     }
     function drawBall(b) {
       if (b.in) return;
@@ -134,6 +180,13 @@ export function pool(fx, A, B) {
       if (fx.signal.aborted) return;
       const dt = Math.min(0.033, last ? (t - last) / 1000 : 0); last = t;
       if (moving) physics(dt);
+      if (thrust > 0) thrust = Math.max(0, thrust - dt);
+      if (sharpT > 0) {
+        sharpT -= dt; const ux = Math.cos(ang), uy = Math.sin(ang);
+        if (Math.random() < 0.5) shavings.push({ x: cue.x - ux * (BRAD + 40) + (Math.random() - 0.5) * 20, y: cue.y - uy * (BRAD + 40) + (Math.random() - 0.5) * 20, vx: (Math.random() - 0.5) * 120, vy: (Math.random() - 0.5) * 120, r: Math.random() * 6, t: 0 });
+        if (sharpT <= 0) { sharpT = 0; lead[turn] = 1; plen[turn] -= 0.05; msg = 'Frisch gespitzt!'; msgT = 1; if (plen[turn] < 0.5) { plen[turn] = 1; msg = 'Stift aufgebraucht: ein neuer!'; msgT = 1.4; } updLead(); }
+      }
+      shavings.forEach((q) => { q.t += dt * 0.8; q.x += q.vx * dt; q.y += q.vy * dt; q.r += dt * 3; }); shavings = shavings.filter((q) => q.t < 1);
       msgT = Math.max(0, msgT - dt);
       g = fit(C, BWD + 80, BHT + 80);
       x.setTransform(C.dpr, 0, 0, C.dpr, 0, 0); paper(x, C.cw, C.ch, dark, 20 * g.U, g.ox, g.oy);
@@ -147,24 +200,15 @@ export function pool(fx, A, B) {
       x.strokeStyle = ink; x.lineWidth = 2.4; prect(x, 0, 0, BWD, BHT, 4, 0.8); x.stroke();
       x.globalAlpha = 0.35; x.lineWidth = 1.5; pline(x, 250, 8, 250, BHT - 8, 5, 0.6); x.beginPath(); x.arc(250, BHT / 2, 70, Math.PI / 2, Math.PI * 1.5); x.stroke(); x.globalAlpha = 1;
       for (const [px, py] of POCKETS) { x.fillStyle = '#121418'; pcirc(x, px, py, PR, px + py, 0.08); x.fill(); x.strokeStyle = ink; x.lineWidth = 2; x.stroke(); }
-      // Zielen
-      if (aim && !moving) {
-        const dx = aim.from[0] - aim.to[0], dy = aim.from[1] - aim.to[1], L = Math.hypot(dx, dy), k = Math.min(1, L / 280);
-        if (L > 14) {
-          const ux = dx / L, uy = dy / L, hit = predict(ux, uy);
-          x.strokeStyle = P[turn].color; x.lineWidth = 2.5; x.setLineDash([3, 8]); x.lineCap = 'round'; x.beginPath(); x.moveTo(cue.x, cue.y); x.lineTo(hit.x, hit.y); x.stroke(); x.setLineDash([]);
-          x.strokeStyle = ink; x.globalAlpha = 0.5; x.lineWidth = 1.5; x.beginPath(); x.arc(hit.x, hit.y, BRAD, 0, Math.PI * 2); x.stroke(); x.globalAlpha = 1;
-          if (hit.b) { const nx = hit.b.x - hit.x, ny = hit.b.y - hit.y, nl = Math.hypot(nx, ny) || 1; x.strokeStyle = ink; x.globalAlpha = 0.6; x.setLineDash([6, 6]); x.beginPath(); x.moveTo(hit.b.x, hit.b.y); x.lineTo(hit.b.x + nx / nl * 90, hit.b.y + ny / nl * 90); x.stroke(); x.setLineDash([]); x.globalAlpha = 1; }
-          // Bleistift als Queue
-          const back = 22 + k * 90, sx = cue.x - ux * back, sy = cue.y - uy * back, ex = sx - ux * 380, ey = sy - uy * 380;
-          x.lineCap = 'butt'; x.strokeStyle = ink; x.lineWidth = 14; x.beginPath(); x.moveTo(sx - ux * 30, sy - uy * 30); x.lineTo(ex, ey); x.stroke();
-          x.strokeStyle = '#f4c430'; x.lineWidth = 10; x.stroke();
-          x.strokeStyle = '#f1d7b0'; x.lineWidth = 10; x.beginPath(); x.moveTo(sx, sy); x.lineTo(sx - ux * 30, sy - uy * 30); x.stroke();
-          x.strokeStyle = ink; x.lineWidth = 4; x.beginPath(); x.moveTo(sx, sy); x.lineTo(sx - ux * 8, sy - uy * 8); x.stroke();
-          x.strokeStyle = '#f2a0a8'; x.lineWidth = 12; x.beginPath(); x.moveTo(ex, ey); x.lineTo(ex - ux * 20, ey - uy * 20); x.stroke();
-          x.lineCap = 'round';
-        }
+      // Bleistift als Queue (keine Bahn-Vorschau, nur ein kurzer Richtungsstrich)
+      if (!moving && !over && !cue.in) {
+        const ux = Math.cos(ang), uy = Math.sin(ang);
+        x.strokeStyle = P[turn].color; x.globalAlpha = 0.7; x.lineWidth = 2.5; x.setLineDash([3, 7]); x.lineCap = 'round';
+        x.beginPath(); x.moveTo(cue.x + ux * (BRAD + 4), cue.y + uy * (BRAD + 4)); x.lineTo(cue.x + ux * (BRAD + 46), cue.y + uy * (BRAD + 46)); x.stroke(); x.setLineDash([]); x.globalAlpha = 1;
+        const back = thrust > 0 ? 3 + thrust / 0.14 * 10 : 8 + power * 60;
+        drawPencil(x, cue.x - ux * (BRAD + back), cue.y - uy * (BRAD + back), ang, lead[turn], plen[turn], ink, sharpT > 0 ? Math.sin(t / 30) * 1.5 : 0);
       }
+      shavings.forEach((q) => { x.save(); x.translate(q.x, q.y); x.rotate(q.r); x.globalAlpha = Math.max(0, 1 - q.t); x.fillStyle = '#e8c79a'; x.strokeStyle = '#c4462f'; x.lineWidth = 1.2; x.beginPath(); x.arc(0, 0, 6, 0, Math.PI); x.fill(); x.stroke(); x.restore(); });
       balls.forEach(drawBall);
       x.setTransform(C.dpr, 0, 0, C.dpr, 0, 0);
       if (msgT > 0) { x.save(); x.globalAlpha = Math.min(1, msgT * 3); banner(x, C.cw, C.ch, dark, msg, 8); x.restore(); }

@@ -146,13 +146,13 @@ function raceRun(fx, A, B, track, R) {
         const alt = solo ? ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'] : null;
         const on = (k) => K.keys.has(ks[k]) || (alt && K.keys.has(alt[k]));
         const [j, dist] = nearest(c); const off = dist > ROAD / 2;
-        const maxV = off ? 150 : 430, acc = on(0) ? 420 : 0, brk = on(1) ? (c.v > 0 ? 600 : 220) : 0;
-        c.v += (acc - brk) * dt; c.v -= c.v * (off ? 2.4 : 0.6) * dt; c.v = Math.max(-120, Math.min(maxV, c.v));
+        const maxV = off ? 110 : 290, acc = on(0) ? 260 : 0, brk = on(1) ? (c.v > 0 ? 500 : 180) : 0;
+        c.v += (acc - brk) * dt; c.v -= c.v * (off ? 2.4 : 0.6) * dt; c.v = Math.max(-90, Math.min(maxV, c.v));
         const steer = (on(3) ? 1 : 0) - (on(2) ? 1 : 0);
-        c.a += steer * dt * 2.9 * Math.max(-1, Math.min(1, c.v / 160));
+        c.a += steer * dt * 2.6 * Math.max(-1, Math.min(1, c.v / 120));
         c.x += Math.cos(c.a) * c.v * dt; c.y += Math.sin(c.a) * c.v * dt;
         { const nx = Math.max(22, Math.min(RW - 22, c.x)), ny = Math.max(22, Math.min(RH - 22, c.y)); if (nx !== c.x || ny !== c.y) c.v *= 0.5; c.x = nx; c.y = ny; }
-        if (Math.abs(steer) && Math.abs(c.v) > 280 && R() < 0.5) c.skid.push([c.x, c.y, 1]);
+        if (Math.abs(steer) && Math.abs(c.v) > 220 && R() < 0.5) c.skid.push([c.x, c.y, 1]);
         // Fortschritt: über Start/Ziel nur vorwärts zählen
         let d = j - c.idx; if (d > n / 2) d -= n; if (d < -n / 2) d += n;
         c.prog += d; c.idx = j;
