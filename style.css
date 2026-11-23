@@ -1888,7 +1888,7 @@ body:has(.gamefx) .toast { z-index: 430; }
 .arprev { width: 100%; max-width: 280px; aspect-ratio: 440 / 400; height: auto; border-radius: 14px; background-color: #fbfaf5; background-image: linear-gradient(rgba(70,120,210,.12) 1px, transparent 1px), linear-gradient(90deg, rgba(70,120,210,.12) 1px, transparent 1px); background-size: 16px 16px; }
 :root[data-theme="dark"] .arprev { background-color: #1b1f28; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .arprev { background-color: #1b1f28; } }
-.arbtns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; width: 100%; }
+.arbtns { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; width: 100%; }
 .arbtns .btn { justify-content: center; gap: 6px; padding: 0 10px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .arbtns .btn .ic { width: 18px; height: 18px; }
 .arhint { text-align: center; max-width: 560px; }
@@ -1928,3 +1928,10 @@ body:has(.gamefx) .toast { z-index: 430; }
 .wimg .ic { width: 28px; height: 28px; color: #1d1d1f; }
 .wtile b { font-size: 14px; overflow-wrap: anywhere; }
 .wtile small { font-size: 12px; color: var(--muted); line-height: 1.3; }
+.paintpin { position: absolute; width: 20px; height: 20px; margin: -10px 0 0 -10px; border-radius: 50%; background: #25a865; box-shadow: 0 0 0 4px rgba(37,168,101,.28); pointer-events: none; z-index: 2; }
+.paintpin[hidden] { display: none; }
+.paintgriplbl.pin { color: #1f8f55; }
+.paintmode { margin: 10px auto 0; width: min(360px, 100%); }
+.paintmode button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.paintmode button .ic { width: 16px; height: 16px; }
+.skinpad.pinning .skincv { cursor: copy; }

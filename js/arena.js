@@ -49,11 +49,20 @@ const loadImg = (url) => new Promise((r) => { const im = new Image(); im.onload 
 
 async function editFigure(p) {
   const f = getFighter(p);
-  const r = await paintSheet({ title: `Kämpfer für ${p.name}`, color: p.color, old: f.fig && f.fig.url, min: 0.55, saveLabel: 'Kämpfer sichern', removeLabel: 'Standard-Figur',
-    ghost: defFigure('#000', true).url,
-    text: 'Mal dein Strichmännchen. Es schaut nach rechts. Die Beine unten bewegen sich beim Laufen, den Waffenarm bekommt es automatisch. Die Figur muss mindestens bis zur gestrichelten Linie reichen.' });
+  const r = await paintSheet({ title: `Kämpfer für ${p.name}`, color: p.color, old: f.fig && f.fig.url, oldPin: f.fig && f.fig.pin, min: 0.55, saveLabel: 'Kämpfer sichern', removeLabel: 'Standard-Figur',
+    ghost: defFigure('#000', true).url, pin: { label: 'Schulter', button: 'Schulter setzen' },
+    text: 'Mal dein Strichmännchen. Es schaut nach rechts. Die Beine unten bewegen sich beim Laufen. Mit „Schulter setzen“ tippst du an, wo der Waffenarm sitzen soll. Die Figur muss mindestens bis zur gestrichelten Linie reichen.' });
   if (r === 'remove') return setPart(p, 'fig', null);
-  if (r) return setPart(p, 'fig', { url: r.url, w: r.w, h: r.h });
+  if (r) return setPart(p, 'fig', { url: r.url, w: r.w, h: r.h, pin: r.pin });
+  return false;
+}
+async function editArm(p) {
+  const f = getFighter(p);
+  const r = await paintSheet({ title: `Arm für ${p.name}`, color: p.color, old: f.arm && f.arm.url, oldGrip: f.arm && f.arm.grip, grip: [0.22, 0.5], gripLabel: 'Schulter', farLabel: 'Hand', min: 0.15, gripHint: 'Fang an der Schulter an (beim roten Punkt).',
+    saveLabel: 'Arm sichern', removeLabel: 'Automatischer Arm', small: 'Noch zu kurz. Mal den Arm mindestens bis zum gestrichelten Kreis.', empty: 'Fang an der Schulter an (roter Punkt) und mal nach rechts bis zur Hand.',
+    text: 'Mal den Waffenarm von der Schulter (roter Punkt) nach rechts. Wo der Strich am weitesten weg endet, ist die Hand (blau). Dort hält die Figur die Waffe. Im Kampf schwingt und zielt der Arm.' });
+  if (r === 'remove') return setPart(p, 'arm', null);
+  if (r) return setPart(p, 'arm', { url: r.url, w: r.w, h: r.h, grip: r.grip, hand: r.muzzle });
   return false;
 }
 async function editWeapon(p) {
@@ -92,6 +101,19 @@ function chooseWeapon(p) {
 }
 
 async function makeFighter(p, side) {
+  const F = await makeFighter0(p, side), f = getFighter(p), fig = f.fig || defFigure(p.color);
+  if (fig.pin) F.sh = [-F.fw / 2 + fig.pin[0] * F.fw, -F.fh + fig.pin[1] * F.fh];
+  if (f.arm) {
+    const im = await loadImg(f.arm.url);
+    if (im) {
+      const kf = FIG_H / (fig.h * S), aw = f.arm.w * S * kf, ah = f.arm.h * S * kf;
+      const dx = (f.arm.hand[0] - f.arm.grip[0]) * aw, dy = (f.arm.hand[1] - f.arm.grip[1]) * ah;
+      Object.assign(F, { armImg: im, aw, ah, agrip: f.arm.grip, armLen: Math.max(12, Math.hypot(dx, dy)), armAng0: Math.atan2(dy, dx) });
+    }
+  }
+  return F;
+}
+async function makeFighter0(p, side) {
   const f = getFighter(p);
   const fig = f.fig || defFigure(p.color), weap = f.weap && (f.weap.url || PRESETS[f.weap.preset]) ? f.weap : { preset: 'sword' };
   if (weap.preset) {
@@ -99,7 +121,7 @@ async function makeFighter(p, side) {
     const img = await loadImg(fig.url);
     const st = { kind: P.kind, pellets: 1, spread: 0.03, life: 3, grav: 260, weight: 0.3, ...P.st };
     if (P.kind === 'melee') st.len = st.reach / (S * KW);
-    return fighterObj(p, side, fig, img, im.img, st, P.kind, { ww: im.ww, wh: im.wh, grip: im.grip, wang0: 0, mdx: im.mdx, mdy: im.mdy, wname: P.name });
+    return fighterObj(p, side, fig, img, im.img, st, P.kind, { anim: weap.preset, ww: im.ww, wh: im.wh, grip: im.grip, wang0: 0, mdx: im.mdx, mdy: im.mdy, wname: P.name });
   }
   const [img, wimg] = await Promise.all([loadImg(fig.url), loadImg(weap.url)]);
   const kind = weap.kind || 'melee';
@@ -107,12 +129,12 @@ async function makeFighter(p, side) {
   const ww = weap.w * S * KW, wh = weap.h * S * KW, grip = weap.grip || [0, 1];
   const mz = weap.muzzle || [1, 0];
   const mdx = (mz[0] - grip[0]) * ww, mdy = (mz[1] - grip[1]) * wh;
-  return fighterObj(p, side, fig, img, wimg, st, kind, { ww, wh, grip, wang0: kind === 'gun' ? 0 : ((weap.info && weap.info.ang) || -Math.PI / 4), mdx, mdy, wname: kind === 'gun' ? 'Eigene Schusswaffe' : 'Eigene Waffe' });
+  return fighterObj(p, side, fig, img, wimg, st, kind, { anim: kind, ww, wh, grip, wang0: kind === 'gun' ? 0 : ((weap.info && weap.info.ang) || -Math.PI / 4), mdx, mdy, wname: kind === 'gun' ? 'Eigene Schusswaffe' : 'Eigene Waffe' });
 }
 function fighterObj(p, side, fig, img, wimg, st, kind, w) {
   const fw = Math.min(170, Math.max(40, FIG_H * fig.w / fig.h));
   return {
-    p, img, wimg, st, kind, fw, fh: FIG_H, hip: fig.hip || 0.6, bw: Math.max(36, Math.min(100, fw * 0.6)), ...w, mlen: Math.hypot(w.mdx, w.mdy), floor: GROUND,
+    p, img, wimg, st, kind, fw, fh: FIG_H, hip: fig.hip || 0.6, sh: [fw * 0.04, -FIG_H * 0.66], armLen: FIG_H * 0.27, wspin: 0, woff: 0, wlift: 0, bw: Math.max(36, Math.min(100, fw * 0.6)), ...w, mlen: Math.hypot(w.mdx, w.mdy), floor: GROUND,
     x: 0, y: GROUND, vx: 0, vy: 0, face: side ? -1 : 1, hp: 100, cd: 0.6 + Math.random() * 0.4, swing: -1, hit: false, hurt: 0, ko: false, rot: 0, tapCd: 0,
     jumpT: 1 + Math.random() * 2, t: Math.random() * 10, leg: 0, land: 0, wasAir: false, dustT: 0, recoil: 0, aim: 0, ammo: st.mag || 0, reloadT: 0, flash: 0, koT: 0, cheer: 0, dodge: new Set(),
   };
@@ -128,12 +150,65 @@ function swingAngle(k) {
 }
 // Lage von Schulter, Hand und Waffenwinkel (in Blickrichtung rechts, relativ zu den Füßen)
 function armPose(f) {
-  const sh = [f.fw * 0.04, -f.fh * 0.66], len = f.fh * 0.27;
+  const sh = f.sh, len = f.armLen;
   let phi, a;
   if (f.kind === 'gun') { phi = f.aim - f.recoil * 0.45; a = phi * 0.85; }
   else { phi = swingAngle(f.ko ? -1 : f.swing); a = Math.max(-1.6, Math.min(1.1, phi * 0.55 + 0.35)); }
   if (f.ko) { a = 1.3; phi = 1.6; }
-  return { sh, hand: [sh[0] + Math.cos(a) * len, sh[1] + Math.sin(a) * len], phi };
+  if (f.armA != null) a = f.armA;
+  return { sh, a, hand: [sh[0] + Math.cos(a) * len, sh[1] + Math.sin(a) * len], phi: phi + (f.wspin || 0) };
+}
+
+// Eigene Vorschau-Animation für jede Waffe im Auswahlbildschirm
+function previewAnim(F, dt) {
+  const T = F.t, id = F.anim;
+  F.recoil = Math.max(0, F.recoil - dt * 6); F.flash = Math.max(0, F.flash - dt * 8);
+  F.wspin = 0; F.woff = 0; F.wlift = 0; F.armA = null;
+  const every = (p, off = 0) => ((T + off) % p) < dt;
+  const swingLoop = (period, speed = 1) => { if (F.swing < 0 && every(period)) F.swing = 0; if (F.swing >= 0) { F.swing += dt / (F.st.swing / speed); if (F.swing >= 1) F.swing = -1; } };
+  if (id === 'dagger') {               // schnelle Stiche nach vorn
+    const k = (T * 2.2) % 1, st = k < 0.25 ? Math.sin(k / 0.25 * Math.PI) : 0;
+    F.swing = -1; F.armA = 0.15 - st * 0.1; F.woff = st * 22; F.wspin = 1.05 + 0.1;
+  } else if (id === 'short') swingLoop(1.1, 1.3);
+  else if (id === 'sword') swingLoop(1.8);
+  else if (id === 'long') {            // großer Schlag, dann Waffe über dem Kopf kreisen lassen
+    const k = T % 3.2;
+    if (k < 1.6) { F.swing = -1; F.armA = -0.75; F.wspin = 1.05 + k / 1.6 * Math.PI * 2 - 0.75; }
+    else swingLoop(3.2, 0.9);
+  } else if (id === 'g17') {           // Pistole in der Hand drehen, dann zielen
+    const k = T % 2.6;
+    F.aim = 0;
+    if (k < 0.8) { F.armA = 0.5; F.wspin = (k / 0.8) * Math.PI * 2; }
+    else if (every(2.6, 1.4)) { F.recoil = 1; F.flash = 1; }
+  } else if (id === 'g18' || id === 'uzi' || id === 'mp5' || id === 'ak') {   // Feuerstoß, dann kurz absetzen
+    const per = id === 'ak' ? 2.4 : 2;
+    const k = T % per, burst = k < 0.7;
+    F.aim = burst ? -0.05 : Math.sin(T * 1.5) * 0.06 + 0.25;
+    if (id === 'uzi') F.wspin = burst ? -0.5 : 0;   // seitlich gekippt
+    if (burst && every(F.st.rate * 1.2)) { F.recoil = 0.6; F.flash = 1; }
+  } else if (id === 'm14') {           // ruhig zielen, ein schwerer Schuss
+    F.aim = -0.1 + Math.sin(T * 0.8) * 0.02;
+    if (every(2.4)) { F.recoil = 1.4; F.flash = 1; }
+  } else if (id === 'shot') {          // Schuss, dann durchladen (Pumpe)
+    const k = T % 2.2;
+    F.aim = 0;
+    if (every(2.2)) { F.recoil = 1.4; F.flash = 1; }
+    if (k > 0.5 && k < 1.1) F.woff = -Math.sin((k - 0.5) / 0.6 * Math.PI) * 14;
+  } else if (id === 'dshot') {         // Schuss, dann aufklappen und schließen
+    const k = T % 2.6;
+    F.aim = 0;
+    if (every(2.6)) { F.recoil = 1.4; F.flash = 1; }
+    if (k > 0.6 && k < 1.6) { F.armA = 0.7; F.wspin = Math.sin((k - 0.6) / 1 * Math.PI) * 0.9 + 0.6; }
+  } else if (id === 'rpg') {           // schultern, zielen, Rakete abfeuern
+    const k = T % 3;
+    F.aim = k < 0.8 ? 0.6 - k / 0.8 * 0.75 : -0.15;
+    if (every(3, 1.6)) { F.recoil = 1.6; F.flash = 1; }
+  } else if (id === 'nade') {          // Granate hochwerfen und fangen
+    const k = (T % 1.4) / 1.4;
+    F.armA = -0.6 - Math.sin(k * Math.PI) * 0.4;
+    F.wlift = -Math.sin(k * Math.PI) * 42; F.wspin = k * Math.PI * 2;
+  } else if (F.kind === 'gun') { F.aim = Math.sin(T * 1.3) * 0.12; if (every(2.2)) { F.recoil = 1; F.flash = 1; } }
+  else swingLoop(2.4);
 }
 
 export function arena(fx, A, B) {
@@ -157,8 +232,9 @@ export function arena(fx, A, B) {
           cv,
           h('div.paintstats', null, ...statBars(F.st)),
           h('div.arbtns', null,
-            h('button.btn', { on: { click: async () => { if (await editFigure(p)) drawPrep(); } } }, icon('pen'), f.fig ? 'Figur ändern' : 'Figur malen'),
-            h('button.btn', { on: { click: async () => { const r = await chooseWeapon(p); if (r === 'own') await editWeapon(p); if (r) drawPrep(); } } }, icon('sword'), 'Waffe wählen')));
+            h('button.btn', { title: 'Figur malen', on: { click: async () => { if (await editFigure(p)) drawPrep(); } } }, icon('pen'), 'Figur'),
+            h('button.btn', { title: 'Arm malen', on: { click: async () => { if (await editArm(p)) drawPrep(); } } }, icon('edit'), f.arm ? 'Arm ✓' : 'Arm'),
+            h('button.btn', { on: { click: async () => { const r = await chooseWeapon(p); if (r === 'own') await editWeapon(p); if (r) drawPrep(); } } }, icon('sword'), 'Waffe')));
       });
       if (fx.signal.aborted) return;
       prep.replaceChildren(
@@ -172,8 +248,7 @@ export function arena(fx, A, B) {
         const dt = Math.min(0.05, (now - lastP) / 1000); lastP = now;
         for (const F of made) {
           F.t += dt;
-          if (F.kind === 'gun') { F.aim = Math.sin(F.t * 1.3) * 0.12; F.recoil = Math.max(0, F.recoil - dt * 5); if ((F.t % 2.2) < dt) F.recoil = 1; }
-          else { if (F.swing < 0 && (F.t % 2.4) < dt) F.swing = 0; if (F.swing >= 0) { F.swing += dt / F.st.swing; if (F.swing >= 1) F.swing = -1; } }
+          previewAnim(F, dt);
           renderPreview(F.cv, F);
         }
         prevRaf = requestAnimationFrame(anim);
@@ -562,7 +637,7 @@ export function arena(fx, A, B) {
       let sy = 1 + breathe - f.land * 0.16, sxs = 1 - breathe * 0.5 + f.land * 0.12;
       if (air && !f.ko) { sy += 0.05; sxs -= 0.04; }
       const lean = f.ko ? 0 : f.hurt > 0 ? -0.3 : Math.max(-0.14, Math.min(0.16, f.vx * f.face / 1400)) + (f.swing > 0.3 && f.swing < 0.62 ? 0.12 : 0);
-      const { sh, hand, phi } = armPose(f);
+      const { sh, hand, phi, a: armA } = armPose(f);
       const iw = f.img ? f.img.naturalWidth : 1, ih = f.img ? f.img.naturalHeight : 1, hip = f.hip;
       const legA = air && !f.ko ? 0.45 : Math.sin(f.leg) * 0.55, legB = air && !f.ko ? -0.6 : -Math.sin(f.leg) * 0.55;
       c.save();
@@ -585,16 +660,17 @@ export function arena(fx, A, B) {
         c.drawImage(f.img, 0, 0, iw, hip * ih, -f.fw / 2, -f.fh * hip, f.fw, f.fh * hip);
         // Waffenarm
         c.translate(0, f.fh * (1 - hip));
-        c.strokeStyle = f.p.color; c.lineWidth = 5; c.lineCap = 'round';
-        c.beginPath(); c.moveTo(sh[0], sh[1]); c.lineTo(hand[0], hand[1]); c.stroke();
+        if (f.armImg) { c.save(); c.translate(sh[0], sh[1]); c.rotate(armA - f.armAng0); c.drawImage(f.armImg, -f.agrip[0] * f.aw, -f.agrip[1] * f.ah, f.aw, f.ah); c.restore(); }
+        else { c.strokeStyle = f.p.color; c.lineWidth = 5; c.lineCap = 'round'; c.beginPath(); c.moveTo(sh[0], sh[1]); c.lineTo(hand[0], hand[1]); c.stroke(); }
         // Schwung-Spur
         if (!preview && f.kind !== 'gun' && f.swing > 0.3 && f.swing < 0.68) {
           c.save(); c.globalAlpha = 0.18; c.fillStyle = f.p.color; c.shadowBlur = 0;
           c.beginPath(); c.moveTo(hand[0], hand[1]); c.arc(hand[0], hand[1], f.st.reach, swingAngle(0.3), phi); c.closePath(); c.fill(); c.restore();
         }
-        c.translate(hand[0], hand[1]);
+        c.translate(hand[0], hand[1] + (f.wlift || 0));
         c.save();
         c.rotate(phi - f.wang0);
+        if (f.woff) c.translate(f.woff, 0);
         if (f.wimg) c.drawImage(f.wimg, -f.grip[0] * f.ww, -f.grip[1] * f.wh, f.ww, f.wh);
         c.restore();
         // Mündungsfeuer
