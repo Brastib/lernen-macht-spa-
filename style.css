@@ -2238,3 +2238,50 @@ html.fxopen, html.fxopen body, html:has(> body > .gamefx), html:has(> body > .ga
   .blkbtn { min-height: 70px; }
 }
 .hshint { margin: 0; padding: 0 4px; font-size: 14px; color: var(--muted); text-align: center; overflow-wrap: anywhere; }
+
+/* ---------- Paket 4: Schiffe versenken, Papierpanzer, Kritzelgolf, Malraten ---------- */
+.bsspacer { flex: 1 1 auto; }
+.bswrap { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 10px; padding: 10px 16px calc(env(safe-area-inset-bottom) + 12px); }
+.bshint { margin: 0; font-size: 15px; color: var(--muted); text-align: center; overflow-wrap: anywhere; min-height: 1.4em; }
+.bsplace { position: relative; flex: 1; min-height: 0; display: flex; }
+.bsboards { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); gap: 12px; }
+.bsbig, .bssmall { position: relative; display: flex; min-width: 0; min-height: 0; }
+.bslegend { display: flex; gap: 8px; flex-wrap: wrap; }
+.hshud .pkchip small { color: var(--muted); font-size: 13px; white-space: nowrap; }
+@media (max-aspect-ratio: 1/1) { .bsboards { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1.7fr) minmax(0, 1fr); } }
+.tkhud { justify-content: space-between; }
+.tkhp { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 0 1 220px; padding: 2px 6px; border-radius: 10px; }
+.tkhp.on { box-shadow: 0 0 0 2px var(--accent); }
+.tkbar { display: block; height: 10px; border-radius: 6px; background: var(--plot-grid2); box-shadow: inset 0 0 0 1px var(--line); overflow: hidden; }
+.tkbar i { display: block; height: 100%; border-radius: 6px; transition: width .4s ease; }
+.tkwind { font: 700 16px 'Noteworthy', 'Marker Felt', system-ui, sans-serif; white-space: nowrap; color: var(--muted); }
+.tkfield { position: relative; flex: 1; min-height: 0; display: flex; }
+.tkctrl { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 12px; border-radius: 18px; background: var(--surface); box-shadow: 0 0 0 1px var(--line); }
+.tklab { display: grid; grid-template-columns: auto 44px; grid-template-rows: auto auto; align-items: center; gap: 2px 8px; flex: 1 1 180px; min-width: 0; }
+.tklab small { color: var(--muted); font-size: 12px; }
+.tklab b { text-align: right; font: 800 16px 'Noteworthy', 'Marker Felt', system-ui, sans-serif; }
+.tkrange { grid-column: 1 / -1; width: 100%; accent-color: var(--pc, var(--accent)); min-height: 30px; }
+.tkweap { flex: 0 1 auto; }
+.tkfire { min-height: 52px; padding: 0 22px; font-size: 17px; background: var(--pc, var(--accent)); }
+.tkfire .ic { width: 22px; height: 22px; }
+.tkctrl :disabled { opacity: .45; }
+.glftools button { display: inline-flex; align-items: center; gap: 6px; }
+.glftools button .ic { width: 18px; height: 18px; }
+.drwrap .drtools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.drcol { width: 36px; height: 36px; border-radius: 50%; background: var(--c); border: 3px solid var(--surface); box-shadow: 0 0 0 1px var(--line); flex: none; }
+.drcol.on { box-shadow: 0 0 0 3px var(--accent); }
+.drbtn { display: inline-flex; align-items: center; gap: 6px; }
+.drmain { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(180px, 240px); gap: 12px; }
+.drboard { position: relative; display: flex; min-width: 0; min-height: 0; }
+.drsideans { display: flex; flex-direction: column; gap: 8px; min-width: 0; min-height: 0; }
+.drwho { display: block; }
+.dranswers { display: grid; grid-template-columns: 1fr; gap: 6px; overflow-y: auto; min-height: 0; }
+.drans { min-height: 44px; padding: 6px 10px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface); color: var(--text); font: 700 16px/1.2 'Noteworthy', 'Marker Felt', system-ui, sans-serif; overflow-wrap: anywhere; transition: transform .08s ease, background .15s ease; }
+.drans:active { transform: scale(.97); }
+.drans.ok { background: color-mix(in srgb, #2fbf71 30%, var(--surface)); border-color: #2fbf71; }
+.drans.bad { background: color-mix(in srgb, #e0483e 20%, var(--surface)); border-color: #e0483e; text-decoration: line-through; opacity: .7; }
+.drsideans.locked .drans:not(.bad) { opacity: .5; }
+@media (max-aspect-ratio: 1/1) { .drmain { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; } .dranswers { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.gseg.glftools { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.tkhp { flex: 1 1 160px; max-width: 280px; }
+.tkhp .pkchip { max-width: 100%; }
