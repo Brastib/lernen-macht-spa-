@@ -47,6 +47,12 @@ export function applyAmmo(st, ammo = 'bullet', n = 1) {
   if (n > 1) o.dmg = o.dmg * (1.35 / n);
   return o;
 }
+// Größe der gemalten Figur: Standard (0,4 × 0,6 der Malfläche) = 1. Größer gemalt = mehr Leben, aber auch größer im Kampf.
+export const figSize = (fig) => Math.max(0.35, Math.min(3.2, ((fig && fig.w) || 0.4) * ((fig && fig.h) || 0.6) / 0.24));
+export const figHP = (fig) => (fig && !fig.def ? Math.round(Math.max(60, Math.min(180, 100 * Math.sqrt(figSize(fig))))) : 100);
+const figScale = (fig) => (fig && !fig.def ? Math.max(0.84, Math.min(1.2, Math.pow(figSize(fig), 0.25))) : 1);
+// Schild: größer gemalt = hält mehr Treffer
+export const shieldHits = (r) => Math.max(2, Math.min(25, Math.round(2 + 30 * (r.w || 0.3) * (r.h || 0.3))));
 const arsenal = () => store.get('gArsenal', []);
 function saveArsenal(list) { return store.set('gArsenal', list); }
 
@@ -72,7 +78,7 @@ async function editFigure(p) {
   const f = getFighter(p);
   const r = await paintSheet({ title: `Kämpfer für ${p.name}`, color: p.color, old: f.fig && f.fig.url, oldPin: f.fig && f.fig.pin, min: 0.55, saveLabel: 'Kämpfer sichern', removeLabel: 'Standard-Figur',
     ghost: defFigure('#000', true).url, pin: { label: 'Schulter', button: 'Schulter setzen' },
-    text: 'Mal dein Strichmännchen. Es schaut nach rechts. Die Beine unten bewegen sich beim Laufen. Mit „Schulter setzen“ tippst du an, wo der Waffenarm sitzen soll. Die Figur muss mindestens bis zur gestrichelten Linie reichen.' });
+    text: 'Mal dein Strichmännchen. Es schaut nach rechts. Die Beine unten bewegen sich beim Laufen. Mit „Schulter setzen“ tippst du an, wo der Waffenarm sitzen soll. Größer gemalt heißt mehr Leben, aber auch leichter zu treffen. Die Figur muss mindestens bis zur gestrichelten Linie reichen.' });
   if (r === 'remove') return setPart(p, 'fig', null);
   if (r) return setPart(p, 'fig', { url: r.url, w: r.w, h: r.h, pin: r.pin });
   return false;
@@ -104,6 +110,64 @@ async function editWeapon(p, fresh = false) {
   if (!fin) return false;
   return setPart(p, 'weap', fin);
 }
+// Schild: selbst gemalt, hält eine einstellbare Zahl Treffer, dann geht er kaputt
+async function editShield(p) {
+  const f = getFighter(p);
+  const r = await paintSheet({ title: `Schild für ${p.name}`, color: '#1d1d1f', old: f.shield && f.shield.url, min: 0.3, saveLabel: 'Weiter', removeLabel: 'Kein Schild',
+    small: 'Noch zu klein. Mal den Schild mindestens bis zum gestrichelten Kreis.', empty: 'Mal einen Schild, zum Beispiel rund oder eckig.',
+    text: 'Mal einen Schild. Die Figur hält ihn vor sich. Er fängt Schüsse und Schläge von vorn ab, bis er kaputt ist. Je größer du ihn malst, desto mehr hält er aus.' });
+  if (r === 'remove') return setPart(p, 'shield', null);
+  if (!r) return false;
+  const auto = shieldHits(r);
+  const v = await sliderSheet('Schild fertig', [{ k: 'hits', label: 'Hält so viele Treffer', min: 1, max: 40, step: 1, val: auto, fmt: (x) => `${x} Treffer` + (x === auto ? ' (aus deiner Zeichnung)' : '') }],
+    `Aus deiner Zeichnung: ${auto} Treffer. Größer gemalt heißt mehr Treffer und deckt mehr ab. Raketen und Granaten zählen doppelt. Mit dem Regler kannst du es noch ändern.`);
+  if (!v) return false;
+  return setPart(p, 'shield', { url: r.url, w: r.w, h: r.h, hits: v.hits });
+}
+// Schieberegler-Dialog: rows = [{k, label, min, max, step, val, fmt}]
+function sliderSheet(title, rows, note, reset) {
+  return import('./ui.js').then(({ sheet }) => sheet(title, (body, close) => {
+    const vals = {};
+    const els = rows.map((r) => {
+      vals[r.k] = r.val;
+      const out = h('b.tuneval', { text: r.fmt(r.val) });
+      const inp = h('input.slider', { type: 'range', min: String(r.min), max: String(r.max), step: String(r.step), value: String(r.val), 'aria-label': r.label,
+        on: { input: (e) => { vals[r.k] = +e.target.value; out.textContent = r.fmt(vals[r.k]); } } });
+      return h('div.tunerow', null, h('div.tunehead', null, h('span', { text: r.label }), out), inp);
+    });
+    body.append(...els, note ? h('p.calm.tunenote', { text: note }) : null,
+      h('div.dlgactions', null,
+        reset ? h('button.btn', { text: 'Normal', on: { click: () => close('reset') } }) : null,
+        h('button.btn', { text: 'Abbrechen', on: { click: () => close(null) } }),
+        h('button.btn.primary', { text: 'Fertig', on: { click: () => close(vals) } })));
+  }));
+}
+const r1 = (x) => Math.round(x * 10) / 10;
+// Werte der Waffe frei einstellen (für fertige und gemalte Waffen)
+async function tuneWeapon(p, F) {
+  const f = getFighter(p);
+  const weap = f.weap && (f.weap.url || PRESETS[f.weap.preset]) ? f.weap : { preset: 'sword' };
+  const st = F.base || F.st, t = weap.tune || {};
+  const val = (k, d) => (t[k] != null ? t[k] : d);
+  const rows = F.kind === 'gun' ? [
+    { k: 'dmg', label: 'Schaden pro Treffer', min: 0.5, max: 40, step: 0.5, val: r1(val('dmg', st.dmg)), fmt: (x) => String(x) },
+    { k: 'rps', label: 'Schüsse pro Sekunde', min: 0.2, max: 15, step: 0.1, val: r1(val('rps', 1 / st.rate)), fmt: (x) => String(x) },
+    { k: 'mag', label: 'Munition im Magazin', min: 1, max: 99, step: 1, val: Math.round(val('mag', st.mag)), fmt: (x) => String(x) },
+    { k: 'reload', label: 'Nachladen (Sekunden)', min: 0.2, max: 6, step: 0.1, val: r1(val('reload', st.reload)), fmt: (x) => x + ' s' },
+    { k: 'speed', label: 'Tempo der Schüsse', min: 200, max: 2200, step: 50, val: Math.round(val('speed', st.speed) / 50) * 50, fmt: (x) => String(x) },
+  ] : [
+    { k: 'dmg', label: 'Schaden pro Schlag', min: 1, max: 60, step: 0.5, val: r1(val('dmg', st.dmg)), fmt: (x) => String(x) },
+    { k: 'reach', label: 'Reichweite', min: 30, max: 260, step: 2, val: Math.round(val('reach', st.reach)), fmt: (x) => String(x) },
+    { k: 'swing', label: 'Dauer eines Schlags (Sekunden)', min: 0.1, max: 1.4, step: 0.02, val: Math.round(val('swing', st.swing) * 50) / 50, fmt: (x) => x.toFixed(2) + ' s' },
+  ];
+  const v = await sliderSheet(`Werte: ${F.wname}`, rows, 'Nur für euch zum Spaß. Die Werte gelten für diese Waffe, bis ihr eine andere nehmt.', !!weap.tune);
+  if (!v) return false;
+  const nw = { ...weap };
+  if (v === 'reset') delete nw.tune; else nw.tune = v;
+  if (nw.savedId) { const list = arsenal(), i = list.findIndex((x) => x.id === nw.savedId); if (i >= 0) { list[i] = { ...list[i], tune: nw.tune }; if (!nw.tune) delete list[i].tune; saveArsenal(list); } }
+  return setPart(p, 'weap', nw);
+}
+
 // Name, Munition und „im Arsenal speichern“
 function finishWeapon(w, old) {
   return import('./ui.js').then(({ sheet }) => sheet('Waffe fertig', (body, close) => {
@@ -236,9 +300,24 @@ async function makeFighter(p, side) {
   if (f.arm) {
     const im = await loadImg(f.arm.url);
     if (im) {
-      const kf = FIG_H / (fig.h * S), aw = f.arm.w * S * kf, ah = f.arm.h * S * kf;
+      const kf = F.fh / (fig.h * S), aw = f.arm.w * S * kf, ah = f.arm.h * S * kf;
       const dx = (f.arm.hand[0] - f.arm.grip[0]) * aw, dy = (f.arm.hand[1] - f.arm.grip[1]) * ah;
       Object.assign(F, { armImg: im, aw, ah, agrip: f.arm.grip, armLen: Math.max(12, Math.hypot(dx, dy)), armAng0: Math.atan2(dy, dx) });
+    }
+  }
+  const weap = f.weap && (f.weap.url || PRESETS[f.weap.preset]) ? f.weap : null;
+  if (weap && weap.tune) {
+    const t = weap.tune;
+    F.base = { ...F.st };
+    if (F.kind === 'gun') Object.assign(F.st, { dmg: t.dmg, rate: 1 / Math.max(0.2, t.rps), mag: Math.max(1, Math.round(t.mag)), reload: t.reload, speed: t.speed });
+    else { Object.assign(F.st, { dmg: t.dmg, reach: t.reach, swing: t.swing }); F.st.len = t.reach / (S * KW); }
+    F.ammo = F.st.mag || 0; F.tuned = true;
+  }
+  if (f.shield) {
+    const im = await loadImg(f.shield.url);
+    if (im) {
+      const shh = F.fh * (0.3 + 0.45 * Math.min(1, f.shield.h)), shw = Math.max(18, Math.min(80, shh * f.shield.w / f.shield.h));
+      F.shield = { img: im, w: shw, h: shh, hp: f.shield.hits || 8, max: f.shield.hits || 8, hit: 0 };
     }
   }
   return F;
@@ -264,10 +343,11 @@ async function makeFighter0(p, side) {
   return fighterObj(p, side, fig, img, wimg, st, kind, { anim: kind === 'gun' && weap.ammo === 'nade' ? 'nade' : kind, ww, wh, grip, wang0: kind === 'gun' ? 0 : ((weap.info && weap.info.ang) || -Math.PI / 4), mdx: far[0], mdy: far[1], mzs, wname: weap.name || (kind === 'gun' ? 'Eigene Schusswaffe' : 'Eigene Waffe') });
 }
 function fighterObj(p, side, fig, img, wimg, st, kind, w) {
-  const fw = Math.min(170, Math.max(40, FIG_H * fig.w / fig.h));
+  const FH = FIG_H * figScale(fig), maxHp = figHP(fig);
+  const fw = Math.min(200, Math.max(40, FH * fig.w / fig.h));
   return {
-    p, img, wimg, st, kind, fw, fh: FIG_H, hip: fig.hip || 0.6, sh: [fw * 0.04, -FIG_H * 0.66], armLen: FIG_H * 0.27, wspin: 0, woff: 0, wlift: 0, bw: Math.max(36, Math.min(100, fw * 0.6)), ...w, mlen: Math.hypot(w.mdx, w.mdy), floor: GROUND,
-    x: 0, y: GROUND, vx: 0, vy: 0, face: side ? -1 : 1, hp: 100, cd: 0.6 + Math.random() * 0.4, swing: -1, hit: false, hurt: 0, ko: false, rot: 0, tapCd: 0,
+    p, img, wimg, st, kind, fw, fh: FH, maxHp, hip: fig.hip || 0.6, sh: [fw * 0.04, -FH * 0.66], armLen: FH * 0.27, wspin: 0, woff: 0, wlift: 0, bw: Math.max(36, Math.min(100, fw * 0.6)), ...w, mlen: Math.hypot(w.mdx, w.mdy), floor: GROUND,
+    x: 0, y: GROUND, vx: 0, vy: 0, face: side ? -1 : 1, hp: maxHp, cd: 0.6 + Math.random() * 0.4, swing: -1, hit: false, hurt: 0, ko: false, rot: 0, tapCd: 0,
     jumpT: 1 + Math.random() * 2, t: Math.random() * 10, leg: 0, land: 0, wasAir: false, dustT: 0, recoil: 0, aim: 0, ammo: st.mag || 0, reloadT: 0, flash: 0, koT: 0, cheer: 0, dodge: new Set(),
   };
 }
@@ -360,13 +440,15 @@ export function arena(fx, A, B) {
         const cv = h('canvas.arprev', { width: 440, height: 400 });
         F.cv = cv;
         return h('div.arcard', null,
-          h('div.arcardhead', null, h('span.gdot', { style: { background: p.color } }), h('b', { text: p.name }), h('span.gtag', null, icon(F.kind === 'gun' ? 'target' : 'sword'), F.wname)),
+          h('div.arcardhead', null, h('span.gdot', { style: { background: p.color } }), h('b', { text: p.name }), h('span.gtag.arlife', { title: 'Leben (größer gemalt = mehr)' }, icon('heart'), String(F.maxHp)), h('span.gtag', null, icon(F.kind === 'gun' ? 'target' : 'sword'), F.wname)),
           cv,
           h('div.paintstats', null, ...statBars(F.st)),
           h('div.arbtns', null,
             h('button.btn', { title: 'Figur malen', on: { click: async () => { if (await editFigure(p)) drawPrep(); } } }, icon('pen'), 'Figur'),
             h('button.btn', { title: 'Arm malen', on: { click: async () => { if (await editArm(p)) drawPrep(); } } }, icon('edit'), f.arm ? 'Arm ✓' : 'Arm'),
-            h('button.btn', { on: { click: async () => { const r = await chooseWeapon(p); if (r === 'own' || r === 'new') await editWeapon(p, r === 'new'); if (r) drawPrep(); } } }, icon('sword'), 'Waffe')));
+            h('button.btn', { on: { click: async () => { const r = await chooseWeapon(p); if (r === 'own' || r === 'new') await editWeapon(p, r === 'new'); if (r) drawPrep(); } } }, icon('sword'), 'Waffe'),
+            h('button.btn', { title: 'Schild malen', on: { click: async () => { if (await editShield(p)) drawPrep(); } } }, icon('shield'), f.shield ? `Schild ${f.shield.hits}` : 'Schild'),
+            h('button.btn', { title: 'Werte einstellen', on: { click: async () => { if (await tuneWeapon(p, F)) drawPrep(); } } }, icon('sliders'), F.tuned ? 'Werte ✓' : 'Werte')));
       });
       if (fx.signal.aborted) return;
       prep.replaceChildren(
@@ -463,7 +545,7 @@ export function arena(fx, A, B) {
       raf = requestAnimationFrame(loop);
     }
     function step(dt, real) {
-      if (!over) { timeLeft -= dt; hud.timer.textContent = String(Math.max(0, Math.ceil(timeLeft))); if (timeLeft <= 0) { const [a, b] = F; finish(Math.abs(a.hp - b.hp) < 1 ? null : a.hp > b.hp ? 0 : 1); } }
+      if (!over) { timeLeft -= dt; hud.timer.textContent = String(Math.max(0, Math.ceil(timeLeft))); if (timeLeft <= 0) { const [a, b] = F; const ra = a.hp / a.maxHp, rb = b.hp / b.maxHp; finish(Math.abs(ra - rb) < 0.01 ? null : ra > rb ? 0 : 1); } }
       shake = Math.max(0, shake - real * 3);
       if (slow < 1) slow = Math.min(1, slow + real * 0.5);
       F.forEach((f, i) => think(f, F[1 - i], dt));
@@ -477,7 +559,7 @@ export function arena(fx, A, B) {
       dust = dust.filter((q) => q.t < 0.5);
       pops.forEach((q) => { q.t += real; });
       pops = pops.filter((q) => q.t < 0.8);
-      hud.el.querySelectorAll('.arhpbar i').forEach((el, i) => { el.style.width = Math.max(0, F[i].hp) + '%'; });
+      hud.el.querySelectorAll('.arhpbar i').forEach((el, i) => { el.style.width = Math.max(0, F[i].hp / F[i].maxHp * 100) + '%'; });
       F.forEach((f, i) => {
         if (f.kind !== 'gun') return;
         const n = f.reloadT > 0 ? -2 : f.ammo;
@@ -493,7 +575,7 @@ export function arena(fx, A, B) {
       for (let i = 0; i < n; i++) dust.push({ x: x + (Math.random() - 0.5) * 30, y: y - 4, vx: (Math.random() - 0.5) * 80 + dir * 60, t: Math.random() * 0.1, r: 6 + Math.random() * 8 });
     }
     function think(f, o, dt) {
-      f.t += dt; f.tapCd = Math.max(0, f.tapCd - dt); f.cd -= dt; f.hurt = Math.max(0, f.hurt - dt);
+      f.t += dt; f.tapCd = Math.max(0, f.tapCd - dt); f.cd -= dt; f.hurt = Math.max(0, f.hurt - dt); if (f.shield) f.shield.hit = Math.max(0, f.shield.hit - dt * 6);
       f.land = Math.max(0, f.land - dt * 5); f.recoil = Math.max(0, f.recoil - dt * 6); f.flash = Math.max(0, f.flash - dt * 8);
       const onGround = f.y >= f.floor - 0.5;
       if (f.ko) {
@@ -519,7 +601,9 @@ export function arena(fx, A, B) {
         f.swing += dt / f.st.swing;
         if (!f.hit && f.swing > 0.32 && f.swing < 0.68 && !o.ko && !f.ko) {
           const pts = weaponPts(f);
-          if (pts.some(([px, py]) => Math.abs(px - o.x) < o.bw / 2 + 4 && py > o.y - o.fh && py < o.y + 4)) hitFoe(f, o, pts[pts.length - 1], f.st.dmg * (f.y < GROUND - 10 ? 1.25 : 1), 1);
+          const sb = shieldBox(o);
+          if (sb && Math.sign(f.x - o.x) === o.face && pts.some(([px, py]) => px > sb.l - 6 && px < sb.r + 6 && py > sb.t - 10 && py < sb.b + 10)) { f.hit = true; f.vx = -f.face * 220; shieldHit(o, (sb.l + sb.r) / 2, (sb.t + sb.b) / 2); }
+          else if (pts.some(([px, py]) => Math.abs(px - o.x) < o.bw / 2 + 4 && py > o.y - o.fh && py < o.y + 4)) hitFoe(f, o, pts[pts.length - 1], f.st.dmg * (f.y < GROUND - 10 ? 1.25 : 1), 1);
         }
         if (f.swing >= 1) { f.swing = -1; f.cd = 0.35 + Math.random() * 0.5; }
       }
@@ -603,7 +687,7 @@ export function arena(fx, A, B) {
         pops.push({ x: mx + f.face * 20, y: my - 18, t: 0.15, txt: w[(Math.random() * w.length) | 0], c: f.p.color, small: true });
       }
     }
-    function explode(x, y, owner) {
+    function explode(x, y, owner, safe = null) {
       const st = owner.st, R = st.boom;
       booms.push({ x, y, r: R, t: 0 });
       shake = 1;
@@ -611,7 +695,7 @@ export function arena(fx, A, B) {
       for (let i = 0; i < 18; i++) parts.push({ x, y, vx: (Math.random() - 0.5) * 700, vy: -Math.random() * 600, t: Math.random() * 0.2, c: Math.random() < 0.5 ? '#f2a516' : owner.p.color, r: 3 + Math.random() * 5, star: Math.random() < 0.5 });
       if (!pops.some((q) => q.boom && q.t < 0.3)) pops.push({ x, y: y - 40, t: 0, txt: ['BUMM!', 'KAWUMM!', 'BOOM!'][(Math.random() * 3) | 0], c: '#f2a516', big: true, boom: true });
       for (const o of F) {
-        if (o === owner || o.ko) continue;
+        if (o === owner || o.ko || o === safe) continue;
         const dx = o.x - x, dy = (o.y - o.fh / 2) - y, d = Math.hypot(dx, dy);
         if (d < R + o.bw / 2 + 30) {
           const k = Math.max(0.35, 1 - d / (R * 1.5));
@@ -635,6 +719,12 @@ export function arena(fx, A, B) {
         if (s.rocket && Math.random() < 0.5) dust.push({ x: s.x - Math.sign(s.vx) * 10, y: s.y, vx: -s.vx * 0.05, t: 0.1, r: 4 });
         const o = F.find((q) => q !== s.owner);
         const boomy = s.rocket || s.nade;
+        const sb = o && shieldBox(o);
+        if (!s.dead && sb && Math.sign(s.vx) === -o.face && s.x > sb.l - s.r && s.x < sb.r + s.r && s.y > sb.t && s.y < sb.b) {
+          s.dead = true;
+          shieldHit(o, s.x, s.y, boomy ? 2 : 1);
+          if (boomy) explode(s.x, s.y, s.owner, o.shield.hp > 0 ? o : null);
+        }
         if (!s.dead && o && !o.ko && Math.abs(s.x - o.x) < o.bw / 2 + s.r && s.y > o.y - o.fh && s.y < o.y + 4) {
           s.dead = true;
           if (boomy) explode(s.x, s.y, s.owner); else hitFoe(s.owner, o, [s.x, s.y], s.owner.st.dmg * 0.8, s.owner.st.pellets > 1 ? 0.12 : s.owner.st.dmg < 4 ? 0.1 : 0.4);
@@ -664,6 +754,22 @@ export function arena(fx, A, B) {
     function weaponPts(f) {
       const { hand, phi } = armPose(f);
       return [0.45, 0.72, 1].map((t) => [f.x + f.face * (hand[0] + Math.cos(phi) * f.st.reach * t), f.y + hand[1] + Math.sin(phi) * f.st.reach * t]);
+    }
+    // Schild: Rechteck vor der Figur (Weltkoordinaten)
+    function shieldBox(o) {
+      const S0 = o.shield; if (!S0 || S0.hp <= 0 || o.ko) return null;
+      const x1 = o.x + o.face * o.fw * 0.28, x2 = x1 + o.face * S0.w, cy = o.y - o.fh * 0.5;
+      return { l: Math.min(x1, x2), r: Math.max(x1, x2), t: cy - S0.h / 2, b: cy + S0.h / 2 };
+    }
+    function shieldHit(o, x, y, n = 1) {
+      const S0 = o.shield; S0.hp = Math.max(0, S0.hp - n); S0.hit = 1;
+      for (let i = 0; i < 6; i++) parts.push({ x, y, vx: (Math.random() - 0.5) * 420, vy: -Math.random() * 300, t: 0.2, c: '#f2b632', r: 2 + Math.random() * 2, star: true });
+      if (S0.hp <= 0) {
+        const b = shieldBox({ ...o, shield: { ...S0, hp: 1 } }) || { l: x - 10, r: x + 10, t: y - 30, b: y + 30 };
+        for (let i = 0; i < 4; i++) debris.push({ x: (b.l + b.r) / 2, y: b.t + (b.b - b.t) * (i + 0.5) / 4, w: b.r - b.l, h: (b.b - b.t) / 4, vx: o.face * (60 + Math.random() * 200), vy: -200 - Math.random() * 300, rot: 0, vr: (Math.random() - 0.5) * 12, t: 0, seed: 77 + i, img: S0.img, part: i });
+        pops.push({ x, y: y - 30, t: 0, txt: 'KNACK!', c: o.p.color, big: true });
+        shake = Math.max(shake, 0.6);
+      } else if (!pops.some((q) => q.sh && q.t < 0.35)) pops.push({ x, y: y - 26, t: 0.1, txt: ['Tonk!', 'Klonk!', 'Geblockt!'][(Math.random() * 3) | 0], c: o.p.color, small: true, sh: true });
     }
     function hitFoe(f, o, at, dmg0, kb) {
       f.hit = true;
@@ -707,7 +813,7 @@ export function arena(fx, A, B) {
         if (cracks) { ctx.lineWidth = 1.4; ctx.beginPath(); ctx.moveTo(x + w * 0.3, y); ctx.lineTo(x + w * 0.45, y + hh * 0.5); ctx.lineTo(x + w * 0.35, y + hh); if (cracks > 1) { ctx.moveTo(x + w * 0.7, y); ctx.lineTo(x + w * 0.6, y + hh * 0.6); } ctx.stroke(); }
       };
       for (const b of blocks) if (b.hp > 0) plank(b.x, b.y, b.w, b.h, b.seed, b.max - b.hp);
-      for (const d of debris) { ctx.save(); ctx.globalAlpha = Math.max(0, 1 - Math.max(0, d.t - 1.6) / 0.6); ctx.translate(d.x, d.y); ctx.rotate(d.rot); plank(-d.w / 2, -d.h / 2, d.w, d.h, d.seed, 1); ctx.restore(); }
+      for (const d of debris) { ctx.save(); ctx.globalAlpha = Math.max(0, 1 - Math.max(0, d.t - 1.6) / 0.6); ctx.translate(d.x, d.y); ctx.rotate(d.rot); if (d.img) { const iw = d.img.naturalWidth, ih = d.img.naturalHeight; ctx.drawImage(d.img, 0, ih * d.part / 4, iw, ih / 4, -d.w / 2, -d.h / 2, d.w, d.h); } else plank(-d.w / 2, -d.h / 2, d.w, d.h, d.seed, 1); ctx.restore(); }
       // Explosionen
       for (const b of booms) {
         const k = b.t / 0.5;
@@ -823,7 +929,27 @@ export function arena(fx, A, B) {
         }
         c.restore();
       }
+      if (f.shield && f.shield.hp > 0 && !f.ko) {
+        const S0 = f.shield, k = S0.hp / S0.max;
+        c.save(); c.shadowBlur = 0;
+        const sx = f.fw * 0.28, sy = -f.fh * 0.5 - S0.h / 2 + Math.sin(f.t * 3.2) * 1.5;
+        if (S0.hit > 0) c.translate(-S0.hit * 5, 0);
+        c.drawImage(S0.img, sx, sy, S0.w, S0.h);
+        if (k <= 0.5) {
+          c.strokeStyle = dark ? '#e8ecf4' : '#1d1d1f'; c.lineWidth = 1.6; c.globalAlpha = 0.8; c.beginPath();
+          c.moveTo(sx + S0.w * 0.5, sy + 4); c.lineTo(sx + S0.w * 0.38, sy + S0.h * 0.35); c.lineTo(sx + S0.w * 0.6, sy + S0.h * 0.5);
+          if (k <= 0.25) { c.moveTo(sx + S0.w * 0.2, sy + S0.h * 0.8); c.lineTo(sx + S0.w * 0.45, sy + S0.h * 0.62); c.lineTo(sx + S0.w * 0.42, sy + S0.h * 0.95); }
+          c.stroke();
+        }
+        c.restore();
+      }
       c.restore();
+      // Schild-Leben als kleiner Balken über dem Schild
+      if (!preview && f.shield && f.shield.hp > 0 && !f.ko) {
+        const S0 = f.shield, x1 = f.x + f.face * (f.fw * 0.28 + S0.w / 2) - 18, y1 = f.y - f.fh * 0.5 - S0.h / 2 - 12;
+        c.save(); c.fillStyle = dark ? 'rgba(255,255,255,.18)' : 'rgba(0,0,0,.12)'; c.fillRect(x1, y1, 36, 5);
+        c.fillStyle = f.p.color; c.fillRect(x1, y1, 36 * S0.hp / S0.max, 5); c.restore();
+      }
       // K.O.-Sterne und Nachladen
       if (f.ko && f.koT > 0.4) {
         c.save(); c.fillStyle = '#f2b632';

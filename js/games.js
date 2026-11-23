@@ -11,9 +11,12 @@ export const GAMES = {
   wind: { name: 'Windflug', icon: 'wind', sub: 'Flieg durch Stifte und Bücher', run: windflug },
   plane: { name: 'Papierflieger', icon: 'plane', sub: 'Wer wirft am weitesten?', run: planeDuel },
   arena: { name: 'Strichkampf', icon: 'sword', sub: 'Figur und Waffe malen, dann kämpfen', run: (...a) => import('./arena.js').then((m) => m.arena(...a)) },
+  stack: { name: 'Hochstapler', icon: 'stack', sub: 'Blöcke stapeln, wer baut höher?', run: (...a) => import('./stack.js').then((m) => m.stackDuel(...a)) },
+  chess: { name: 'Schach', icon: 'chess', sub: 'Mit allen Regeln, zu zweit', run: (...a) => import('./chess.js').then((m) => m.chessDuel(...a)) },
+  wall: { name: 'Mauerlauf', icon: 'wall', sub: 'Schritt oder Mauer: wer kommt zuerst rüber?', run: (...a) => import('./wall.js').then((m) => m.wallGame(...a)) },
   quiz: { name: 'Quiz', icon: 'cards', sub: 'Wer kann den Stoff? Fragen aus euren Lernkarten', run: (...a) => import('./quiz.js').then((m) => m.quizDuel(...a)) },
 };
-const MIX = ['ttt', 'wind', 'plane', 'arena'];
+const MIX = ['ttt', 'wind', 'stack', 'plane', 'wall', 'arena'];
 
 const players = () => store.get('gPlayers', []);
 const names = () => store.get('gNames', []);
@@ -88,6 +91,13 @@ export async function renderGames(ctx) {
     h('div.gherotx', null, h('b', { text: 'Quiz allein' }), h('small', { text: 'Fragen aus deinen Lernkarten, mit Zeit und Punkten. Falsche Karten kommen beim Lernen gleich wieder dran.' })),
     h('button.btn.primary', { text: 'Quiz starten', on: { click: () => import('./quiz.js').then((m) => m.quizSolo()) } })));
 
+  // Allein spielen
+  view.append(h('h2.section', { text: 'Allein spielen' }), h('div.ptiles.gtiles', null,
+    h('button.ptile', { on: { click: () => soloStack() } }, h('span.ptileic', null, icon('stack')), h('b', { text: 'Hochstapler' }),
+      h('small', { text: store.get('gStackBest', 0) ? `Dein Rekord: ${store.get('gStackBest', 0)} Blöcke` : 'So hoch stapeln, wie du kannst' })),
+    h('button.ptile', { on: { click: () => soloChess() } }, h('span.ptileic', null, icon('chess')), h('b', { text: 'Schach gegen Computer' }),
+      h('small', { text: 'Leicht, Mittel oder Schwer' }))));
+
   // Duelle
   view.append(h('h2.section', { text: 'Duell zu zweit' }), h('div.ptiles.gtiles', null,
     ...Object.entries(GAMES).map(([k, g]) => h('button.ptile', { on: { click: () => freeDuel(k, again) } },
@@ -133,7 +143,7 @@ function playerSheet(title, { withGame = false, okLabel = 'Sichern' } = {}) {
       list, dl);
     if (withGame) {
       const seg = h('div.gseg.gseg6');
-      const opts = [['ttt', 'Tic-Tac-Toe'], ['wind', 'Windflug'], ['plane', 'Flieger'], ['arena', 'Strichkampf'], ['quiz', 'Quiz'], ['mix', 'Gemischt']];
+      const opts = [['ttt', 'Tic-Tac-Toe'], ['wind', 'Windflug'], ['plane', 'Flieger'], ['arena', 'Strichkampf'], ['stack', 'Hochstapler'], ['chess', 'Schach'], ['wall', 'Mauerlauf'], ['quiz', 'Quiz'], ['mix', 'Gemischt']];
       const drawSeg = () => seg.replaceChildren(...opts.map(([k, l]) => h('button' + (k === game ? '.on' : ''), { text: l, on: { click: () => { game = k; drawSeg(); } } })));
       drawSeg();
       const pw = h('label.gswitch', null, h('span', null, h('b', { text: 'Power-ups beim Papierflieger' }), h('small', { text: 'Vor jedem Wurf eins aus drei wählen, dazu Kugeln in der Luft' })),
@@ -265,6 +275,41 @@ async function freeDuel(key, after) {
   }
   await runDuel(key, pick[0], pick[1], { tour: false });
   after();
+}
+
+// ---------- Allein spielen ----------
+const me = () => players()[0] || { name: 'Du', color: COLORS[0] };
+async function soloStack() {
+  const fx = openFx('Hochstapler', 'Allein · so hoch wie möglich');
+  const m = await import('./stack.js');
+  await m.stackSolo(fx, me());
+}
+async function soloChess() {
+  const lv = await sheet('Schach gegen Computer', (body, close) => {
+    let level = store.get('gChessLv', 2), color = 'w';
+    const seg = h('div.gseg.chlvseg'), seg2 = h('div.gseg.chlvseg');
+    const draw = () => {
+      seg.replaceChildren(...[[1, 'Leicht'], [2, 'Mittel'], [3, 'Schwer']].map(([k, l]) => h('button' + (k === level ? '.on' : ''), { text: l, on: { click: () => { level = k; draw(); } } })));
+      seg2.replaceChildren(...[['w', 'Weiß (fängt an)'], ['b', 'Schwarz']].map(([k, l]) => h('button' + (k === color ? '.on' : ''), { text: l, on: { click: () => { color = k; draw(); } } })));
+    };
+    draw();
+    body.append(h('p.glabel', { text: 'Wie stark?' }), seg, h('p.glabel', { text: 'Du spielst' }), seg2,
+      h('div.dlgactions', null, h('button.btn', { text: 'Abbrechen', on: { click: () => close(null) } }),
+        h('button.btn.primary', { text: 'Los geht’s', on: { click: () => { store.set('gChessLv', level); close({ level, color }); } } })));
+  });
+  if (!lv) return;
+  const fx = openFx('Schach', `gegen Computer · ${['', 'Leicht', 'Mittel', 'Schwer'][lv.level]}`);
+  const m = await import('./chess.js');
+  const cpu = { name: 'Computer', color: '#8a8f98' };
+  for (let white = lv.color;;) {
+    fx.stage.replaceChildren();
+    const A = white === 'w' ? me() : cpu, B = white === 'w' ? cpu : me();
+    const aborted = new Promise((r) => { fx.onClose = () => r(null); });
+    const res = await Promise.race([m.chessGame(fx, A, B, { ai: white === 'w' ? 'b' : 'w', level: lv.level }), aborted]);
+    if (!res || fx.signal.aborted) return;
+    const next = await resultCard(fx, res, A, B, false);
+    if (next !== 'again') { fx.close(); return; }
+  }
 }
 
 // ---------- Spielfenster ----------
