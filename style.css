@@ -2466,3 +2466,8 @@ html.fxopen, html.fxopen body, html:has(> body > .gamefx), html:has(> body > .ga
 .hgresbox.bad > span:first-child { color: #e0483e; }
 .hgrestx { flex: 1; min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
 @media (max-width: 520px) { .hgkey { height: 44px; font-size: 17px; } .hgrow { gap: 4px; } }
+/* Vertretungsplan verbinden: Einfügen-Knöpfe (v64) */
+.vpfield { display: flex; align-items: stretch; gap: 8px; min-width: 0; }
+.vpfield > .field { flex: 1 1 auto; min-width: 0; }
+.vpfield > .vppaste { flex: none; align-self: center; }
+textarea.field.vpboth { min-height: 64px; padding: 12px 14px; resize: vertical; font: inherit; line-height: 1.35; }

@@ -1,6 +1,7 @@
 // Hauptteil: Bibliothek mit Fächern, Büchern und Seiten.
+import { resumeVplanSetup } from './vplan.js';
 import * as db from './db.js';
-const APP_VERSION = '63';   // gleich wie VERSION in sw.js
+const APP_VERSION = '64';   // gleich wie VERSION in sw.js
 import { openEditor } from './editor.js';
 import { renderPage, PAPERS } from './paper.js';
 import { detectPage, defaultCorners } from './scanner.js';
@@ -900,7 +901,8 @@ if ('serviceWorker' in navigator && !document.documentElement.dataset.artifact) 
   } catch (e) { /* egal */ }
 }
 db.askPersistent();
-render();
+// Vertretungsplan-Einrichtung war offen, als die App weg war (z. B. zum Kopieren)? Dann wieder öffnen.
+Promise.resolve(render()).then(() => resumeVplanSetup(render)).catch(() => {});
 // Erinnerungen prüfen, solange die App offen ist (Hinweis + Mitteilung, falls erlaubt)
 focusWatch();
 applyTheme();
