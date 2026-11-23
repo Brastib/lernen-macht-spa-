@@ -1558,7 +1558,7 @@ canvas.alkcv { display: block; width: 100%; height: 360px; }
 /* Papierflieger */
 .planefx { position: fixed; inset: 0; z-index: 400; opacity: 0; transition: opacity .25s ease; overflow: hidden;
   background: radial-gradient(120% 90% at 50% 0%, #f4f8fd 0%, #e6edf7 55%, #dbe4f1 100%); }
-.planefx::before { content: ''; position: absolute; inset: 0; pointer-events: none; opacity: .5;
+.planefx::before { content: ''; position: absolute; inset: 0; pointer-events: none; opacity: 0;
   background-image: radial-gradient(rgba(70,100,150,.18) 1px, transparent 1.2px); background-size: 26px 26px; }
 .planefx.dark { background: radial-gradient(120% 90% at 50% 0%, #1d2433 0%, #141a26 60%, #0f141d 100%); }
 .planefx.dark::before { background-image: radial-gradient(rgba(170,190,230,.12) 1px, transparent 1.2px); }

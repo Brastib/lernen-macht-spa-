@@ -156,6 +156,7 @@ export async function paperPlane(pageCanvas) {
   let phase = 'fold', pt = 0, foldIdx = 0, closing = false, done = null;
   const sheetScale = () => Math.min((H * 0.66) / SH, (W * 0.8) / SW);
   const plane = { x: 0, y: 0, z: 0, vx: 0, vy: 0, ang: -Math.PI / 2, span: 0, roll: 0, sc: 1, loop: 0, loopDir: 1 };
+  let marks = [], nextMark = 5, ground = { x: 0, y: 0 };
   let trail = [], dist = 0, flyT = 0, held = null, hist = [], thrown = 0;
   let best = 0; try { best = parseFloat(localStorage.getItem(BEST_KEY)) || 0; } catch (e) { /* egal */ }
   const FOLD_MS = reduce ? 260 : 620, OPEN_MS = reduce ? 250 : 650;
@@ -246,36 +247,54 @@ export async function paperPlane(pageCanvas) {
     if (phase === 'fly') {
       flyT += dt;
       let sp = Math.hypot(p.vx, p.vy);
-      // Looping bei sehr schnellem Wurf
-      if (p.loop > 0) {
-        p.loop = Math.max(0, p.loop - dt / 1.1);
-        p.z = Math.min(1.3, p.z + dt * 0.6 * (p.loop > 0.5 ? 1 : -0.6));
-        p.vx *= 1 - 0.6 * dt; p.vy *= 1 - 0.6 * dt;
-      } else {
-        // leichtes Schaukeln und Kurven
-        const wob = Math.sin(flyT * 1.9 + thrown) * 0.55 + Math.sin(flyT * 0.7) * 0.25;
-        const turn = wob * dt * clamp(sp / 500, 0.2, 1.2);
-        const c = Math.cos(turn), s = Math.sin(turn);
-        [p.vx, p.vy] = [p.vx * c - p.vy * s, p.vx * s + p.vy * c];
-        p.roll += (clamp(wob * 0.6, -0.7, 0.7) - p.roll) * Math.min(1, dt * 4);
-        const drag = p.z > 0 ? 0.28 : 2.6;
-        p.vx *= 1 - drag * dt; p.vy *= 1 - drag * dt;
-        sp = Math.hypot(p.vx, p.vy);
-        if (p.z > 0) p.z = Math.min(1.2, p.z + ((sp - 420) / 1700 - 0.07) * dt);
-      }
+      // ruhiger Gleitflug: geradeaus, keine Drehung
+      p.roll *= 1 - Math.min(1, dt * 5);
+      const drag = p.z > 0 ? 0.17 : 2.4;
+      p.vx *= 1 - drag * dt; p.vy *= 1 - drag * dt;
+      sp = Math.hypot(p.vx, p.vy);
+      if (p.z > 0) p.z = Math.min(1.1, p.z + ((sp - 380) / 2400 - 0.05) * dt);
       if (p.z <= 0) { p.z = 0; p.roll *= 0.9; }
       const ox = p.x, oy = p.y;
       p.x += p.vx * dt; p.y += p.vy * dt;
       dist += Math.hypot(p.x - ox, p.y - oy);
-      // an den Rändern sanft abprallen
-      const m = 46;
-      if (p.x < m && p.vx < 0 || p.x > W - m && p.vx > 0) { p.vx *= -0.55; p.x = clamp(p.x, m, W - m); }
-      if (p.y < m + 60 && p.vy < 0 || p.y > H - m && p.vy > 0) { p.vy *= -0.55; p.y = clamp(p.y, m + 60, H - m); }
+      // 5-Meter-Marken auf dem Boden
+      while (dist >= nextMark * PX_PER_M) { marks.push({ x: p.x, y: p.y, m: nextMark }); nextMark += 5; }
+      follow(dt);
       sp = Math.hypot(p.vx, p.vy);
-      if (sp > 30 && p.loop === 0) p.ang = Math.atan2(p.vy, p.vx);
+      if (sp > 30) p.ang = Math.atan2(p.vy, p.vx);
       trail.push([p.x, p.y]); if (trail.length > 46) trail.shift();
       if (p.z === 0 && sp < 14) land();
     } else if (trail.length) trail.shift();
+  }
+
+  // Kamera folgt dem Flieger: statt Abprallen wandert der Boden mit
+  function follow(dt) {
+    const p = plane, mx = W * 0.3, top = 110, my = (H - top) * 0.28;
+    let sx = 0, sy = 0;
+    if (p.x > W - mx) sx = p.x - (W - mx); else if (p.x < mx) sx = p.x - mx;
+    if (p.y > H - my) sy = p.y - (H - my); else if (p.y < top + my) sy = p.y - (top + my);
+    const k = Math.min(1, dt * 7);
+    sx *= k; sy *= k;
+    if (!sx && !sy) return;
+    p.x -= sx; p.y -= sy; ground.x += sx; ground.y += sy;
+    for (const t of trail) { t[0] -= sx; t[1] -= sy; }
+    for (const m of marks) { m.x -= sx; m.y -= sy; }
+  }
+  function drawGround() {
+    const sp = 34, ox = -((ground.x % sp) + sp) % sp, oy = -((ground.y % sp) + sp) % sp;
+    ctx.save();
+    ctx.fillStyle = dark ? 'rgba(170,190,230,.16)' : 'rgba(70,100,150,.2)';
+    for (let y = oy; y < H; y += sp) for (let x = ox; x < W; x += sp) { ctx.beginPath(); ctx.arc(x, y, 1.1, 0, Math.PI * 2); ctx.fill(); }
+    ctx.font = '600 12px -apple-system, system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    for (const m of marks) {
+      if (m.x < -60 || m.x > W + 60 || m.y < -40 || m.y > H + 40) continue;
+      const t = m.m ? `${m.m} m` : 'Start', w = ctx.measureText(t).width + 16;
+      ctx.fillStyle = dark ? 'rgba(30,38,54,.85)' : 'rgba(255,255,255,.85)';
+      ctx.beginPath(); ctx.roundRect(m.x - w / 2, m.y + 14, w, 20, 10); ctx.fill();
+      ctx.fillStyle = accent; ctx.beginPath(); ctx.arc(m.x, m.y, 3.5, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = dark ? '#cfd8ea' : '#3b4558'; ctx.fillText(t, m.x, m.y + 24.5);
+    }
+    ctx.restore();
   }
 
   function land() {
@@ -295,7 +314,7 @@ export async function paperPlane(pageCanvas) {
     cv.setPointerCapture(e.pointerId);
     held = { id: e.pointerId, dx: plane.x - e.offsetX, dy: plane.y - e.offsetY };
     hist = [[performance.now(), e.offsetX, e.offsetY]];
-    phase = 'held'; plane.z = 0.45; plane.loop = 0; trail = [];
+    phase = 'held'; plane.z = 0.45; plane.loop = 0; trail = []; marks = [];
     root.classList.add('holding');
   });
   cv.addEventListener('pointermove', (e) => {
@@ -320,12 +339,12 @@ export async function paperPlane(pageCanvas) {
     const a = hist[0], b = hist[hist.length - 1], dt = Math.max(16, b[0] - a[0]) / 1000;
     let vx = (b[1] - a[1]) / dt, vy = (b[2] - a[2]) / dt;
     if (now - b[0] > 120) { vx = 0; vy = 0; }
-    const sp = Math.hypot(vx, vy), cap = 2600;
+    const sp = Math.hypot(vx, vy), cap = 3400;
     if (sp > cap) { vx *= cap / sp; vy *= cap / sp; }
-    Object.assign(plane, { vx, vy, z: 0.55, loop: 0 });
-    if (Math.hypot(vx, vy) > 1500) { plane.loop = 1; plane.loopDir = Math.random() < 0.5 ? 1 : -1; }
+    Object.assign(plane, { vx, vy, z: 0.6, loop: 0, roll: 0 });
+    if (Math.hypot(vx, vy) > 40) plane.ang = Math.atan2(vy, vx);
     if (Math.hypot(vx, vy) < 60) { plane.vx = Math.cos(plane.ang) * 90; plane.vy = Math.sin(plane.ang) * 90; plane.z = 0.25; }
-    dist = 0; flyT = 0; thrown++;
+    dist = 0; flyT = 0; thrown++; nextMark = 5; marks = [{ x: plane.x, y: plane.y, m: 0 }];
     stat.hidden = true;
     setHint('');
     phase = 'fly';
@@ -361,6 +380,7 @@ export async function paperPlane(pageCanvas) {
     const dt = Math.min(0.04, (now - last) / 1000); last = now;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, W, H);
+    drawGround();
     const cx = W / 2, cy = H / 2 + 10, ss = sheetScale();
     const planeAt = { x: cx, y: cy - SH * ss / 2 + L / 2 * 1.0, ang: -Math.PI / 2 };
 
