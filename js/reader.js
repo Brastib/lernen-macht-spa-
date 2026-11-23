@@ -7,10 +7,13 @@ import { $, h, icon, sheet, promptSheet, toast, menu, busy } from './ui.js';
 
 let pages = [], spreads = [], si = 0, selected = 0, title = '', onEdit = null, onMarks = null;
 const urls = new Map();       // Seiten-ID -> Bild-URL (fertig zusammengesetzt)
+const hiUrls = new Map();     // schärfere Fassung für starkes Heranzoomen
 
 export function invalidate(id) {
   const u = urls.get(id);
   if (u) { URL.revokeObjectURL(u); urls.delete(id); }
+  const hu = hiUrls.get(id);
+  if (hu) { URL.revokeObjectURL(hu); hiUrls.delete(id); }
 }
 
 async function pageUrl(p) {
@@ -62,7 +65,7 @@ async function show(dir) {
   for (const idx of sp) {
     if (idx == null) { next.append(h('div.rpage.empty')); continue; }
     const p = pages[idx];
-    const img = h('img', { alt: `Seite ${idx + 1}`, draggable: false });
+    const img = h('img', { alt: `Seite ${idx + 1}`, draggable: false, 'data-idx': String(idx) });
     const el = h('button.rpage' + (sp.length === 2 && idx === selected ? '.sel' : ''), {
       'aria-label': `Seite ${idx + 1}`,
       on: { click: () => { selected = idx; box.querySelectorAll('.rpage').forEach((x) => x.classList.toggle('sel', x === el && sp.length === 2)); info(); } },
@@ -70,6 +73,7 @@ async function show(dir) {
     next.append(el);
     pageUrl(p).then((u) => { img.src = u; }).catch(() => {});
   }
+  resetZoom(false);
   const old = box.firstElementChild;
   if (dir && old && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
     next.classList.add(dir > 0 ? 'in-next' : 'in-prev');
@@ -179,18 +183,152 @@ document.addEventListener('keydown', (e) => {
   if ($('viewer').hidden || !$('editor').hidden) return;
   if (e.key === 'ArrowRight') go(1);
   else if (e.key === 'ArrowLeft') go(-1);
-  else if (e.key === 'Escape') closeReader();
+  else if (e.key === 'Escape') { if (z.s > 1.001) resetZoom(true); else closeReader(); }
+  else if (e.key === '+' || e.key === '=') { const b = box(); zoomAt(b.l + b.w / 2, b.t + b.h / 2, Math.min(MAXZ, z.s * 1.5), true); }
+  else if (e.key === '-') { const b = box(); if (z.s / 1.5 < 1.05) resetZoom(true); else zoomAt(b.l + b.w / 2, b.t + b.h / 2, z.s / 1.5, true); }
+  else if (e.key === '0') resetZoom(true);
 });
 
-// Wischen zum Blättern
-let sw = null;
-$('readStage').addEventListener('pointerdown', (e) => { sw = { x: e.clientX, y: e.clientY, id: e.pointerId }; });
-$('readStage').addEventListener('pointerup', (e) => {
-  if (!sw || sw.id !== e.pointerId) return;
-  const dx = e.clientX - sw.x, dy = e.clientY - sw.y; sw = null;
-  if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)) go(dx < 0 ? 1 : -1);
+// ---------- Heranzoomen und Wischen ----------
+// Zwei Finger: zoomen. Gezoomt: mit einem Finger oder dem Stift verschieben. Doppeltipp: Zoom an/aus.
+// Nicht gezoomt: waagerecht wischen blättert.
+const stage = $('readStage');
+const MAXZ = 5;
+let z = { s: 1, x: 0, y: 0 };
+const pts = new Map();
+let pinch = null, pan = null, sw = null, lastTap = null, hiTimer = 0;
+const curEl = () => $('spread').lastElementChild;
+const box = () => { const r = $('spread').getBoundingClientRect(); return { l: r.left, t: r.top, w: r.width, h: r.height - 26 }; };
+const zoomPill = h('button.zoompill', { hidden: true, 'aria-label': 'Zoom zurücksetzen', on: { click: (e) => { e.stopPropagation(); resetZoom(true); } } }, icon('zoom-out'), h('span'));
+stage.append(zoomPill);
+
+function clampZ() {
+  const b = box();
+  z.s = Math.max(1, Math.min(MAXZ, z.s));
+  z.x = Math.min(0, Math.max(b.w - b.w * z.s, z.x));
+  z.y = Math.min(0, Math.max(b.h - b.h * z.s, z.y));
+}
+function applyZ(anim) {
+  const el = curEl(); if (!el) return;
+  const on = z.s > 1.001;
+  el.style.transformOrigin = '0 0';
+  el.style.transition = anim ? 'transform .28s cubic-bezier(.2,.8,.2,1)' : 'none';
+  el.style.transform = on ? `translate3d(${z.x}px, ${z.y}px, 0) scale(${z.s})` : '';
+  stage.classList.toggle('zoomed', on);
+  zoomPill.hidden = !on;
+  zoomPill.lastChild.textContent = `${Math.round(z.s * 100)} %`;
+}
+function resetZoom(anim) { z = { s: 1, x: 0, y: 0 }; pinch = null; pan = null; applyZ(anim); }
+// Punkt (Bildschirm) bleibt beim Zoomen an seiner Stelle
+function zoomAt(cx, cy, s, anim) {
+  const b = box(), px = cx - b.l, py = cy - b.t;
+  const k = s / z.s;
+  z.x = px - (px - z.x) * k; z.y = py - (py - z.y) * k; z.s = s;
+  clampZ(); applyZ(anim); sharpenSoon();
+}
+
+// Bei starkem Zoom eine schärfere Fassung der Seite laden
+async function hiUrl(p) {
+  if (hiUrls.has(p.id)) return hiUrls.get(p.id);
+  const blob0 = p.kind === 'blank' ? null : await db.getImage(p.id);
+  if (p.kind !== 'blank' && !p.strokes) return null;   // reiner Scan: das Original ist schon in voller Auflösung da
+  const strokes = await db.getInk(p.id);
+  const bg = blob0 ? await blobToImage(blob0) : null;
+  const w = Math.min(3000, Math.max(1400, bg ? bg.naturalWidth : 2800));
+  const blob = await new Promise((r) => renderPage(p, bg, strokes, w).toBlob(r, 'image/jpeg', 0.9));
+  const u = URL.createObjectURL(blob);
+  hiUrls.set(p.id, u);
+  return u;
+}
+function sharpenSoon() {
+  clearTimeout(hiTimer);
+  if (z.s < 1.6) return;
+  hiTimer = setTimeout(() => {
+    const el = curEl(); if (!el) return;
+    el.querySelectorAll('img[data-idx]').forEach((img) => {
+      if (img.dataset.hi) return;
+      const p = pages[+img.dataset.idx]; if (!p) return;
+      img.dataset.hi = '1';
+      hiUrl(p).then((u) => { if (u) img.src = u; }).catch(() => {});
+    });
+  }, 250);
+}
+
+stage.addEventListener('pointerdown', (e) => {
+  if (e.target.closest('.nav, .zoompill')) return;
+  pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (pts.size === 2) {
+    const [a, b] = [...pts.values()];
+    pinch = { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2, s: z.s, x: z.x, y: z.y };
+    sw = null; pan = null; lastTap = null;
+  } else if (pts.size === 1) {
+    sw = { x: e.clientX, y: e.clientY, id: e.pointerId, t: performance.now() };
+    pan = z.s > 1.001 ? { x: e.clientX, y: e.clientY, zx: z.x, zy: z.y, id: e.pointerId } : null;
+  }
 });
-$('readStage').addEventListener('pointercancel', () => { sw = null; });
+stage.addEventListener('pointermove', (e) => {
+  if (!pts.has(e.pointerId)) return;
+  pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (pinch && pts.size >= 2) {
+    const [a, b] = [...pts.values()];
+    const d = Math.hypot(a.x - b.x, a.y - b.y) || 1, mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+    const bx = box();
+    const s = Math.max(0.85, Math.min(MAXZ, pinch.s * d / pinch.d));
+    // Inhalts-Punkt unter der Anfangs-Mitte folgt der aktuellen Mitte
+    const cx = (pinch.mx - bx.l - pinch.x) / pinch.s, cy = (pinch.my - bx.t - pinch.y) / pinch.s;
+    z = { s, x: mx - bx.l - cx * s, y: my - bx.t - cy * s };
+    if (s >= 1) clampZ();
+    applyZ(false);
+  } else if (pan && e.pointerId === pan.id) {
+    z.x = pan.zx + (e.clientX - pan.x); z.y = pan.zy + (e.clientY - pan.y);
+    clampZ(); applyZ(false);
+  }
+});
+function endPointer(e) {
+  if (!pts.has(e.pointerId)) return;
+  pts.delete(e.pointerId);
+  if (pinch) {
+    if (pts.size < 2) {
+      pinch = null;
+      if (z.s < 1.08) resetZoom(true); else { clampZ(); applyZ(true); sharpenSoon(); }
+      // weiterer Finger auf dem Bildschirm verschiebt jetzt
+      const rest = [...pts.entries()][0];
+      pan = rest && z.s > 1.001 ? { x: rest[1].x, y: rest[1].y, zx: z.x, zy: z.y, id: rest[0] } : null;
+    }
+    return;
+  }
+  if (pan && pan.id === e.pointerId) pan = null;
+  if (!sw || sw.id !== e.pointerId) return;
+  const dx = e.clientX - sw.x, dy = e.clientY - sw.y, tapT = performance.now() - sw.t;
+  sw = null;
+  // Doppeltipp
+  if (Math.hypot(dx, dy) < 10 && tapT < 300 && e.type === 'pointerup') {
+    const now = performance.now();
+    if (lastTap && now - lastTap.t < 320 && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < 40) {
+      lastTap = null;
+      if (z.s > 1.001) resetZoom(true); else zoomAt(e.clientX, e.clientY, 2.5, true);
+      return;
+    }
+    lastTap = { t: now, x: e.clientX, y: e.clientY };
+    return;
+  }
+  if (z.s <= 1.001 && Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)) go(dx < 0 ? 1 : -1);
+}
+stage.addEventListener('pointerup', endPointer);
+stage.addEventListener('pointercancel', endPointer);
+// Trackpad / Mausrad: Strg + Rad (oder Zwei-Finger-Pinch am Trackpad) zoomt, sonst verschieben, wenn gezoomt
+stage.addEventListener('wheel', (e) => {
+  if (e.ctrlKey || e.metaKey) {
+    e.preventDefault();
+    zoomAt(e.clientX, e.clientY, Math.max(1, Math.min(MAXZ, z.s * Math.exp(-e.deltaY * 0.01))), false);
+    if (z.s < 1.02) resetZoom(false);
+  } else if (z.s > 1.001) {
+    e.preventDefault();
+    z.x -= e.deltaX; z.y -= e.deltaY; clampZ(); applyZ(false);
+  }
+}, { passive: false });
+// Safari: eigene Seiten-Zoom-Geste im Leser abfangen
+for (const ev of ['gesturestart', 'gesturechange']) stage.addEventListener(ev, (e) => e.preventDefault());
 
 window.addEventListener('resize', () => {
   if ($('viewer').hidden) return;
