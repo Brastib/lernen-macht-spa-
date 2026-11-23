@@ -67,7 +67,7 @@ function drawFrame(x, C, dark, g) {
   x.strokeStyle = inkOf(dark); x.lineWidth = 4; x.lineCap = 'round'; prect(x, 0, 0, GW, GH, 77, 1.5); x.stroke();
 }
 // Bahn malen
-function drawCourseSheet(fx, p, n, R) {
+export function drawCourseSheet(fx, p, n, R, opt = {}) {
   return new Promise((resolve) => {
     const dark = isDark(), ink = inkOf(dark);
     let c = emptyCourse(), tool = 'wall', cur = null, drag = null;
@@ -77,11 +77,11 @@ function drawCourseSheet(fx, p, n, R) {
     drawSeg();
     const host = h('div.hsarea');
     const wrap = h('div.hswrap', null,
-      h('div.hshud', null, chip(p, h('small', { text: `malt Loch ${n} von ${HOLES}` })), h('span.bsspacer'),
+      h('div.hshud', null, chip(p, h('small', { text: opt.hub ? 'malt eine Bahn' : `malt Loch ${n} von ${HOLES}` })), h('span.bsspacer'),
         h('button.btn', { text: 'Zufallsbahn', on: { click: () => { c = randomCourse(R); draw(); } } }),
         h('button.btn', { text: 'Leeren', on: { click: () => { c = emptyCourse(); draw(); } } }),
-        h('button.btn.primary', { text: 'Fertig', on: { click: () => { cleanup(); resolve(c); } } })),
-      seg, h('p.hshint', { text: 'Mal Wände mit dem Stift, Sand bremst, Wasser kostet einen Schlag. Abschlag und Loch kannst du verschieben.' }), host);
+        h('button.btn.primary', { text: opt.okText || 'Fertig', on: { click: () => { cleanup(); resolve(c); } } })),
+      opt.picker ? opt.picker((d) => { c = d; draw(); }) : null, seg, h('p.hshint', { text: 'Mal Wände mit dem Stift, Sand bremst, Wasser kostet einen Schlag. Abschlag und Loch kannst du verschieben.' }), host);
     fx.stage.replaceChildren(wrap);
     const C = canvasBox(host), x = C.x;
     function draw() { const g = fieldGeo(C); drawFrame(x, C, dark, g); drawCourse(x, c, dark, { ink }); if (cur) { x.strokeStyle = ink; x.lineWidth = 7; x.lineCap = 'round'; x.beginPath(); cur.forEach(([a, b], k) => (k ? x.lineTo(a, b) : x.moveTo(a, b))); x.stroke(); }
@@ -218,7 +218,8 @@ export function golf(fx, A, B) {
     for (let n = 1; n <= HOLES; n++) {
       const drawer = P[(n - 1) % P.length];
       if (B) { const ok = await turnCard(fx, drawer, `Loch ${n}: ${drawer.name} malt die Bahn`, 'Wände, Sand und Wasser malen. Oder eine Zufallsbahn nehmen.', 'Bahn malen', 'golfflag'); if (!ok) return null; }
-      const c = await drawCourseSheet(fx, drawer, n, R); if (!c) return null;
+      const { mapPicker } = await import('./hub.js');
+      const c = await drawCourseSheet(fx, drawer, n, R, { picker: (pick) => mapPicker('golf', P, pick) }); if (!c) return null;
       for (const [i, p] of P.entries()) {
         if (B) { const ok = await turnCard(fx, p, `Loch ${n}: ${p.name} puttet`, i ? `Zu schlagen: ${tot[0]} Schläge insgesamt` : 'Weniger Schläge ist besser.', 'Los', 'golfflag'); if (!ok) return null; }
         const s = await playHole(fx, p, c, n, B ? [['Gesamt', tot[i]]] : [['Gesamt', tot[0]]]); if (s == null) return null;

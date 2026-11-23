@@ -37,15 +37,15 @@ function randomPath(R) {
   pts.push([TW - 60, 120 + R() * (TH - 240)]);
   return smoothOpen(resample(pts, STEP), 10);
 }
-function pathSheet(fx, p, R) {
+export function pathSheet(fx, p, R, opt = {}) {
   return new Promise((resolve) => {
     const dark = isDark(), ink = inkOf(dark);
     let path = null, cur = null;
     const info = h('p.hshint', { text: 'Mal den Weg der Gegner mit dem Finger: vom Anfang bis zu deiner Burg. Oder nimm einen Zufallsweg.' });
-    const ok = h('button.btn.primary', { text: 'Los geht’s', on: { click: () => { if (path) { cleanup(); resolve(path); } } } });
+    const ok = h('button.btn.primary', { text: opt.okText || 'Los geht’s', on: { click: () => { if (path) { cleanup(); resolve(path); } } } });
     const host = h('div.hsarea');
     fx.stage.replaceChildren(h('div.hswrap', null, h('div.hshud', null, chip(p, h('small', { text: 'malt den Weg' })), h('span.bsspacer'),
-      h('button.btn', { text: 'Zufallsweg', on: { click: () => { path = randomPath(R); info.textContent = 'Fertig! Du kannst neu malen oder anfangen.'; draw(); } } }), ok), info, host));
+      h('button.btn', { text: 'Zufallsweg', on: { click: () => { path = randomPath(R); info.textContent = 'Fertig! Du kannst neu malen oder anfangen.'; draw(); } } }), ok), opt.picker ? opt.picker((d) => { path = d; info.textContent = 'Gespeicherter Weg geladen.'; draw(); }) : null, info, host));
     const C = canvasBox(host), x = C.x;
     const draw = () => {
       const g = fit(C, TW, TH); x.setTransform(C.dpr, 0, 0, C.dpr, 0, 0); paper(x, C.cw, C.ch, dark, 24 * g.U, g.ox, g.oy);
@@ -102,7 +102,8 @@ function waveList(n) {
 function towerGame(fx, p, opts = {}) {
   return (async () => {
     const R = rng((Math.random() * 1e9) | 0);
-    const path = await pathSheet(fx, p, R);
+    const { mapPicker } = await import('./hub.js');
+    const path = await pathSheet(fx, p, R, { picker: (pick) => mapPicker('tower', [p], pick) });
     if (!path || fx.signal.aborted) return null;
     fx.stage.replaceChildren();
     return new Promise((resolve) => {

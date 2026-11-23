@@ -45,6 +45,7 @@ function keySet() {
 // Papierrennen
 // ======================================================================
 const RW = 1000, RH = 640, ROAD = 92, LAPS = 3;
+let carImg = null;   // Auto-Skins aus dem Skin-Hub
 export function resample(pts, step) {
   const out = [pts[0]]; let acc = 0;
   for (let i = 1; i < pts.length; i++) {
@@ -61,15 +62,15 @@ function randomTrack(R) {
   pts.push(pts[0]);
   return smooth(resample(pts, 14), 6);
 }
-function drawTrackSheet(fx, p, R) {
+export function drawTrackSheet(fx, p, R, opt = {}) {
   return new Promise((resolve) => {
     const dark = isDark(), ink = inkOf(dark);
     let track = null, cur = null;
     const info = h('p.hshint', { text: 'Mal eine Runde mit dem Finger (Anfang und Ende treffen sich von selbst). Oder nimm eine Zufallsstrecke.' });
-    const ok = h('button.btn.primary', { text: 'Losfahren', on: { click: () => { if (track) { cleanup(); resolve(track); } } } });
+    const ok = h('button.btn.primary', { text: opt.okText || 'Losfahren', on: { click: () => { if (track) { cleanup(); resolve(track); } } } });
     const host = h('div.hsarea');
     fx.stage.replaceChildren(h('div.hswrap', null, h('div.hshud', null, chip(p, h('small', { text: 'malt die Strecke' })), h('span.bsspacer'),
-      h('button.btn', { text: 'Zufallsstrecke', on: { click: () => { track = randomTrack(R); info.textContent = 'Fertig! Du kannst neu malen oder losfahren.'; draw(); } } }), ok), info, host));
+      h('button.btn', { text: 'Zufallsstrecke', on: { click: () => { track = randomTrack(R); info.textContent = 'Fertig! Du kannst neu malen oder losfahren.'; draw(); } } }), ok), opt.picker ? opt.picker((d) => { track = d; info.textContent = 'Gespeicherte Strecke geladen.'; draw(); }) : null, info, host));
     const C = canvasBox(host), x = C.x;
     const draw = () => {
       const g = fit(C, RW, RH); x.setTransform(C.dpr, 0, 0, C.dpr, 0, 0); paper(x, C.cw, C.ch, dark, 24 * g.U, g.ox, g.oy);
@@ -111,7 +112,9 @@ export function race(fx, A, B) {
   return (async () => {
     if (!(await keyboardGate(fx, 'Papierrennen'))) return null;
     const R = rng((Math.random() * 1e9) | 0);
-    const track = await drawTrackSheet(fx, A, R); if (!track) return null;
+    const { mapPicker } = await import('./hub.js');
+    const track = await drawTrackSheet(fx, A, R, { picker: (pick) => mapPicker('race', [A, B], pick) }); if (!track) return null;
+    const { carImage } = await import('./hub.js'); carImg = carImage;
     return raceRun(fx, A, B, track, R);
   })();
 }
@@ -172,6 +175,8 @@ function raceRun(fx, A, B, track, R) {
       }
     }
     function drawCar(c) {
+      const im = carImg && carImg(c.p.name);
+      if (im) { x.save(); x.translate(c.x, c.y); x.rotate(c.a); x.fillStyle = 'rgba(0,0,0,.18)'; x.beginPath(); x.ellipse(2, 3, 19, 12, 0, 0, Math.PI * 2); x.fill(); x.drawImage(im, -22, -22, 44, 44); x.restore(); return; }
       x.save(); x.translate(c.x, c.y); x.rotate(c.a);
       x.fillStyle = 'rgba(0,0,0,.18)'; x.fillRect(-15, -8, 32, 18);
       x.fillStyle = dark ? shade(c.p.color, -0.2) : shade(c.p.color, 0.35); prect(x, -17, -10, 34, 20, 5 + c.i, 0.6); x.fill();
