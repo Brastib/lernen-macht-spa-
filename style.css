@@ -1653,3 +1653,11 @@ html.scrlock body { position: fixed; left: 0; right: 0; width: 100%; }
 .ttrows { display: flex; flex-direction: column; }
 @media (max-width: 600px) { .ttpgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .ttpreset .field { background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
+
+/* Eigene Farbe (Farbwähler) */
+.swatch.custom { position: relative; cursor: pointer; }
+.swatch.custom::before { background: conic-gradient(#ff4d4d, #ffb84d, #f5e14a, #5ad17a, #4db5ff, #7a5cff, #e25cff, #ff4d4d); }
+.swatch.custom.set::before { background: var(--sw); box-shadow: inset 0 0 0 1px rgba(0,0,0,.12), 0 0 0 2px var(--surface), 0 0 0 3.5px transparent; }
+.swatch.custom.set::after { content: ''; position: absolute; right: 4px; bottom: 4px; width: 10px; height: 10px; border-radius: 50%; background: conic-gradient(#ff4d4d, #f5e14a, #5ad17a, #4db5ff, #e25cff, #ff4d4d); box-shadow: 0 0 0 1.5px var(--surface); }
+.swatch.custom input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; border: 0; padding: 0; }
+.toolgroup.filling .sizes { opacity: .3; pointer-events: none; }

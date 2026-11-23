@@ -184,10 +184,36 @@ export function drawPaper(ctx, paper, w, h, s) {
 }
 
 // Ein Strich: { tool: 'pen'|'marker', color, size, pts: [x, y, druck, x, y, druck, ...] }
+// Füllung (Farbeimer): Zeilen-Stücke [y, x0, x1, …] in Seiten-Einheiten, mit „Multiplizieren“ gemalt,
+// damit Linien und Schrift darunter sichtbar bleiben.
+const fillCache = new WeakMap();
+function drawFill(ctx, st, s) {
+  const sp = st.spans; if (!sp || !sp.length) return;
+  const [ox, oy] = st.off || [0, 0];
+  let c = fillCache.get(st);
+  if (!c || c.s !== s || c.ox !== ox || c.oy !== oy) {
+    const path = new Path2D();
+    for (let i = 0; i < sp.length; i += 3) path.rect((sp[i + 1] + ox) * s, (sp[i] + oy) * s, (sp[i + 2] - sp[i + 1] + 1) * s, s + 0.6);
+    c = { s, ox, oy, path }; fillCache.set(st, c);
+  }
+  ctx.save();
+  ctx.globalCompositeOperation = 'multiply';
+  ctx.globalAlpha = 0.72;
+  ctx.fillStyle = st.color;
+  ctx.fill(c.path);
+  ctx.restore();
+}
+export function fillHit(st, x, y) {
+  const [ox, oy] = st.off || [0, 0], yy = Math.round(y - oy), xx = x - ox, sp = st.spans || [];
+  for (let i = 0; i < sp.length; i += 3) if (sp[i] === yy && xx >= sp[i + 1] - 2 && xx <= sp[i + 2] + 2) return true;
+  return false;
+}
+
 export function drawStroke(ctx, st, s, from = 3, tail = true) {
   // from/tail: für schnelles Live-Zeichnen nur neue Stücke (nur Stift)
   if (st.tool === 'text') { if (from <= 3) drawText(ctx, st, s); return; }
   if (st.tool === 'axes') { if (from <= 3) drawAxes(ctx, st, s); return; }
+  if (st.tool === 'fill') { if (from <= 3) drawFill(ctx, st, s); return; }
   const p = st.pts;
   if (p.length < 3) return;
   ctx.save();

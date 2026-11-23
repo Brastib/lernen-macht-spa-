@@ -1,5 +1,6 @@
 // Schreib-Ansicht: mit Apple Pencil (oder Finger) auf Blätter und Scans schreiben.
 import * as db from './db.js';
+import { fillHit } from './paper.js';
 import { PAGE_W, drawPaper, drawStroke, renderPage, pageHeight, blobToImage, paperLines, fitText, lhOf, lineHeight, textWidthMax, FONT } from './paper.js';
 import { makeTool, drawTool, hitTool, findEdge, snapPoint, niceAngle, niceRadius, magnetTool, TOOL_NAMES, KNOB_OFF, MM } from './tools.js';
 import { menu, sheet, h as el, toast, busy, promptSheet, shareReady } from './ui.js';
@@ -13,7 +14,7 @@ const COLORS = [
   ['#23764a', 'Grün'], ['#f2c230', 'Gelb'], ['#e2679f', 'Rosa'],
 ];
 const SIZES = { pen: [1.8, 3, 5], marker: [14, 22, 32], text: [18, 24, 34] };
-const TOOLS = ['pen', 'marker', 'eraser', 'lasso', 'text'];
+const TOOLS = ['pen', 'marker', 'eraser', 'lasso', 'text', 'fill'];
 const FANG = 1.8 * MM;          // Fangweite der Karo-Hilfe
 const ERASER_R = 10;
 
@@ -83,6 +84,20 @@ function buildPalette() {
     });
     box.append(b);
   });
+  // Eigene Farbe (Farbwähler)
+  const inp = document.createElement('input');
+  inp.type = 'color'; inp.value = '#7a5cff'; inp.setAttribute('aria-label', 'Eigene Farbe');
+  const lab = document.createElement('label');
+  lab.className = 'swatch custom'; lab.title = 'Eigene Farbe'; lab.dataset.custom = '1';
+  lab.append(inp);
+  inp.addEventListener('input', () => {
+    const c = inp.value;
+    if (tool === 'marker') markerColor = c;
+    else { color = c; if (tool === 'eraser' || tool === 'lasso') setTool('pen'); }
+    if (textEd) { textEd.st.color = c; styleText(); }
+    updateToolbar();
+  });
+  box.append(lab);
   updateToolbar();
 }
 
@@ -94,10 +109,15 @@ function updateToolbar() {
     $('ed_' + t).setAttribute('aria-pressed', tool === t);
   }
   const active = tool === 'marker' ? markerColor : color;
-  [...$('edColors').children].forEach((b) => b.classList.toggle('on', tool !== 'eraser' && b.dataset.color === active));
+  const known = COLORS.some(([c]) => c === active);
+  [...$('edColors').children].forEach((b) => {
+    if (b.dataset.custom) { b.classList.toggle('on', tool !== 'eraser' && !known); b.classList.toggle('set', !known); if (!known) b.style.setProperty('--sw', active); return; }
+    b.classList.toggle('on', tool !== 'eraser' && b.dataset.color === active);
+  });
   [...$('edSizes').children].forEach((b, i) => b.classList.toggle('on', i === sizeIdx));
   $('edTools').classList.toggle('erasing', tool === 'eraser' || tool === 'lasso');
   $('edTools').classList.toggle('texting', tool === 'text');
+  $('edTools').classList.toggle('filling', tool === 'fill');
   $('edMath').classList.toggle('on', !!tpl);
   $('edSelDelete').hidden = !sel;
   $('edUndo').disabled = !undo.length;
@@ -118,6 +138,10 @@ $('ed_marker').addEventListener('click', () => {
 $('ed_eraser').addEventListener('click', () => setTool('eraser'));
 $('ed_lasso').addEventListener('click', () => setTool('lasso'));
 $('ed_text').addEventListener('click', () => setTool('text'));
+$('ed_fill').addEventListener('click', () => {
+  setTool('fill');
+  try { if (!localStorage.getItem('tipFill')) { localStorage.setItem('tipFill', '1'); toast('Farbeimer: Tippe in eine umrandete Fläche. Jede Farbe geht über den bunten Kreis.', 4500); } } catch (err) { /* egal */ }
+});
 [...$('edSizes').children].forEach((b, i) => b.addEventListener('click', () => {
   sizeIdx = i;
   if (textEd) { setTextSize(textEd.st, SIZES.text[i]); styleText(); }
@@ -379,8 +403,13 @@ area.addEventListener('pointerdown', (e) => {
     return;
   }
 
+  if (tool === 'fill' && onPage && drawsHere && !cur) {
+    e.preventDefault();
+    fillAt(x, y);
+    return;
+  }
   if (e.pointerType === 'touch' && !fingerDraws) {
-    touchTap = gapMode && onPage && touches.size === 0 ? { id: e.pointerId, at: [x, y], cx: e.clientX, cy: e.clientY, t: performance.now() } : null;
+    touchTap = (gapMode || tool === 'fill') && onPage && touches.size === 0 ? { id: e.pointerId, at: [x, y], cx: e.clientX, cy: e.clientY, t: performance.now() } : null;
     touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (touches.size === 2) startPinch();
     e.preventDefault();
@@ -665,6 +694,7 @@ function endPointer(e) {
     touches.delete(e.pointerId);
     if (touchTap && touchTap.id === e.pointerId && e.type === 'pointerup' && Math.hypot(e.clientX - touchTap.cx, e.clientY - touchTap.cy) < 10 && performance.now() - touchTap.t < 450) {
       const [tx, ty] = touchTap.at; touchTap = null;
+      if (tool === 'fill') { fillAt(tx, ty); return; }
       const g = textAt(tx, ty) ? null : gapAt(gaps, tx, ty);
       if (g) openGapText(g); else if (textAt(tx, ty)) openText(tx, ty);
       return;
@@ -949,6 +979,71 @@ function snapAllGaps() {
   if (moved && page) { changed(); redrawInk(); updateToolbar(); }
 }
 
+// ---------- Farbeimer ----------
+// Füllt die umrandete Fläche unter dem Finger/Stift. Grenzen sind dunkle oder kräftig farbige Linien
+// (Scan, eigene Striche); helle Karo- und Linien-Papierlinien zählen nicht als Grenze.
+function fillAt(x, y) {
+  if (!page) return;
+  finishStroke(); commitText();
+  const W = PAGE_W, H = Math.round(pageHeight(page));
+  const X = Math.round(x), Y = Math.round(y);
+  if (X < 0 || Y < 0 || X >= W || Y >= H) return;
+  const c = renderPage(page, bg, strokes.filter((s) => s.tool !== 'fill' && s.tool !== 'marker'), W);
+  const d = c.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, W, H).data;
+  const wall = new Uint8Array(W * H);
+  for (let i = 0, j = 0; j < wall.length; i += 4, j++) {
+    const r = d[i], g = d[i + 1], b = d[i + 2], l = 0.299 * r + 0.587 * g + 0.114 * b;
+    const sat = Math.max(r, g, b) - Math.min(r, g, b);
+    wall[j] = l < 165 || (sat > 90 && l < 225) ? 1 : 0;
+  }
+  // kleine Lücken in Linien schließen
+  const wall2 = wall.slice();
+  for (let yy = 1; yy < H - 1; yy++) for (let xx = 1; xx < W - 1; xx++) {
+    const j = yy * W + xx;
+    if (wall[j] && !(wall[j - 1] && wall[j + 1] && wall[j - W] && wall[j + W])) { wall2[j - 1] = wall2[j + 1] = wall2[j - W] = wall2[j + W] = 1; }
+  }
+  if (wall2[Y * W + X]) { toast('Tippe in eine leere Fläche, nicht auf eine Linie.', 2500); return; }
+  const mark = new Uint8Array(W * H);
+  const stack = [X, Y];
+  let count = 0;
+  const limit = W * H * 0.6;
+  while (stack.length) {
+    const sy = stack.pop(), sx0 = stack.pop();
+    let sx = sx0;
+    while (sx > 0 && !wall2[sy * W + sx - 1] && !mark[sy * W + sx - 1]) sx--;
+    let upOpen = false, downOpen = false;
+    for (; sx < W && !wall2[sy * W + sx] && !mark[sy * W + sx]; sx++) {
+      mark[sy * W + sx] = 1; count++;
+      if (sy > 0) { const o = !wall2[(sy - 1) * W + sx] && !mark[(sy - 1) * W + sx]; if (o && !upOpen) stack.push(sx, sy - 1); upOpen = o; }
+      if (sy < H - 1) { const o = !wall2[(sy + 1) * W + sx] && !mark[(sy + 1) * W + sx]; if (o && !downOpen) stack.push(sx, sy + 1); downOpen = o; }
+    }
+    if (count > limit) break;
+  }
+  if (count > limit) { toast('Diese Fläche ist nicht geschlossen. Zieh die Umrandung zu und tipp nochmal.', 3500); return; }
+  // Farbe 2 Pixel unter die Linien ziehen, damit kein weißer Rand bleibt
+  for (let it = 0; it < 2; it++) {
+    const add = [];
+    for (let yy = 1; yy < H - 1; yy++) for (let xx = 1; xx < W - 1; xx++) {
+      const j = yy * W + xx;
+      if (!mark[j] && (mark[j - 1] || mark[j + 1] || mark[j - W] || mark[j + W])) add.push(j);
+    }
+    for (const j of add) mark[j] = 1;
+  }
+  const spans = [];
+  for (let yy = 0; yy < H; yy++) {
+    let s0 = -1;
+    for (let xx = 0; xx <= W; xx++) {
+      const on = xx < W && mark[yy * W + xx];
+      if (on && s0 < 0) s0 = xx;
+      else if (!on && s0 >= 0) { spans.push(yy, s0, xx - 1); s0 = -1; }
+    }
+  }
+  const st = { tool: 'fill', color, size: 0, pts: [X, Y, 0], spans };
+  strokes.push(st);
+  undo.push({ type: 'add', stroke: st }); redo = [];
+  changed(); redrawInk(); updateToolbar();
+}
+
 // ---------- Lasso: Striche auswählen und verschieben ----------
 const inBox = (b, x, y) => x >= b[0] - 8 && x <= b[2] + 8 && y >= b[1] - 8 && y <= b[3] + 8;
 
@@ -994,6 +1089,7 @@ function moveSel(dx, dy) {
   redrawInk(); drawSel();
 }
 function translate(list, dx, dy) {
+  for (const st of list) if (st.spans) st.off = [r1((st.off ? st.off[0] : 0) + dx), r1((st.off ? st.off[1] : 0) + dy)];
   for (const st of list) for (let i = 0; i < st.pts.length; i += 3) { st.pts[i] = r1(st.pts[i] + dx); st.pts[i + 1] = r1(st.pts[i + 1] + dy); }
 }
 function clearSel() { sel = null; drawSel(); updateToolbar(); }
@@ -1034,6 +1130,10 @@ function eraseAt(x, y) {
       if (segDist(x, y, p[0], ay, p[3], ay) < ERASER_R || segDist(x, y, axx, p[1], axx, p[4]) < ERASER_R) {
         cur.removed.push({ stroke: st, index: i }); strokes.splice(i, 1); hit = true;
       }
+      continue;
+    }
+    if (st.tool === 'fill') {
+      if (fillHit(st, x, y)) { cur.removed.push({ stroke: st, index: i }); strokes.splice(i, 1); hit = true; }
       continue;
     }
     if (st.tool === 'text') {
