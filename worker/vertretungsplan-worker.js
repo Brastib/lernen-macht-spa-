@@ -18,6 +18,10 @@
 const LOGIN = 'https://login.schulportal.hessen.de/';
 const CONNECT = 'https://connect.schulportal.hessen.de/';
 const VPLAN = 'https://start.schulportal.hessen.de/vertretungsplan.php';
+const UNTERRICHT = 'https://start.schulportal.hessen.de/meinunterricht.php';
+const KALENDER = 'https://start.schulportal.hessen.de/kalender.php';
+// Kalender-Einträge, die nach einer Arbeit aussehen
+const ARBEIT = /klassenarbeit|klausur|lernkontrolle|leistungskontrolle|vergleichsarbeit|\bvera\b|\btest\b|arbeit\b|präsentation|praesentation|referat|vokabeltest|abgabe/i;
 const UA = 'Mozilla/5.0 (compatible; LernApp-Vertretungsplan/1.0)';
 const CACHE_MS = 5 * 60 * 1000;   // höchstens alle 5 Minuten beim Schulportal fragen
 const MIN_MS = 60 * 1000;         // auch mit „frisch“ höchstens 1x pro Minute
@@ -32,7 +36,7 @@ class SphError extends Error {
 
 export default {
   // nur für Tests
-  _intern: { planDates: (...a) => planDates(...a), parseTable: (...a) => parseTable(...a), parseNotice: (...a) => parseNotice(...a), reset: () => { session = null; cache = null; }, clearCache: () => { cache = null; } },
+  _intern: { planDates: (...a) => planDates(...a), parseTable: (...a) => parseTable(...a), parseNotice: (...a) => parseNotice(...a), reset: () => { session = null; cache = null; }, clearCache: () => { cache = null; }, parseHomework: (h) => parseHomework(h) },
   async fetch(request, env) {
     const origin = request.headers.get('Origin') || '';
     const allowed = (env.ERLAUBTE_SEITE || 'https://brastib.github.io').replace(/\/+$/, '');
@@ -165,11 +169,42 @@ async function loadPlan(env) {
       } catch (e) { /* dann nur die eigenen Einträge */ }
       days.push({ date: d.split('.').reverse().join('-'), notice: parseNotice(html, d), updated: parseUpdated(html, d), mine: mine || [], all, tableFound: !!mine });
     }
+    // Hausaufgaben („Mein Unterricht“) und Arbeiten (Kalender). Fehler hier stören den Vertretungsplan nicht.
+    const extraErrors = [];
+    let homework = null, exams = null;
+    try {
+      const r = await req(UNTERRICHT, { headers: { Cookie: cookie } });
+      const t = r.status === 200 ? await r.text() : '';
+      if (t && !isLoginPage(r, t)) homework = parseHomework(t);
+      else extraErrors.push('Mein Unterricht nicht erreichbar');
+    } catch (e) { extraErrors.push('Mein Unterricht: ' + (e && e.message || e)); }
+    try {
+      const from = new Date(), to = new Date(Date.now() + 120 * 864e5);
+      const iso = (d) => d.toISOString().slice(0, 10);
+      const r = await req(KALENDER, {
+        method: 'POST', headers: { Cookie: cookie, 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest' },
+        body: new URLSearchParams({ f: 'getEvents', k: '', s: '', start: iso(from), end: iso(to) }),
+      });
+      const j = JSON.parse(await r.text());
+      if (Array.isArray(j)) exams = j.filter((e) => ARBEIT.test(`${e.title || ''} ${e.description || ''} ${e.category || ''} ${e.Kategorie || ''}`)).slice(0, 80).map((e) => ({
+        id: e.Id != null ? String(e.Id) : (e.id != null ? String(e.id) : ''),
+        title: text(String(e.title || '')),
+        description: text(String(e.description || '')),
+        place: text(String(e.Ort || '')),
+        start: String(e.Anfang || e.start || ''),
+        end: String(e.Ende || e.end || ''),
+        allDay: !!e.allDay,
+      }));
+      else extraErrors.push('Kalender gab keine Liste zurück');
+    } catch (e) { extraErrors.push('Kalender: ' + (e && e.message || e)); }
     return {
       ok: true,
       fetched: new Date().toISOString(),
       noPlanYet: !days.length && html.includes('module/vertretungsplan'),
       days,
+      homework,
+      exams,
+      extraErrors,
     };
   }
   throw new SphError('sitzung', 'Das Schulportal hat die Seite Vertretungsplan nicht geliefert (Sitzung sofort wieder weg, oder die Schule nutzt den Vertretungsplan nicht).');
@@ -244,6 +279,31 @@ function parseUpdated(html, day) {
   const nextT = html.indexOf('id="vtable', pos + 10);
   const m = /Letzte Aktualisierung:\s*([^<]*?)\s*Uhr/.exec(html.slice(pos, nextT < 0 ? undefined : nextT));
   return m ? text(m[1]) : null;
+}
+
+// „Mein Unterricht“: Zeilen der Tabelle „aktuell“ mit Fach, Thema, Datum und Hausaufgabe
+function parseHomework(html) {
+  const start = html.search(/id=["']aktuellTable["']/);
+  if (start < 0) return [];
+  const endTable = html.indexOf('</table>', start);
+  const t = html.slice(start, endTable < 0 ? undefined : endTable);
+  const out = [];
+  const rows = t.split(/<tr(?=[^>]*\bprintable\b)/i).slice(1);
+  for (const row of rows) {
+    const g = (re) => { const m = re.exec(row); return m ? text(m[1]) : ''; };
+    const course = g(/<h3[^>]*>[\s\S]*?<span[^>]*>([\s\S]*?)<\/span>/i) || g(/<h3[^>]*>([\s\S]*?)<\/h3>/i);
+    const hw = g(/class=["'][^"']*\brealHomework\b[^"']*["'][^>]*>([\s\S]*?)<\/div>/i);
+    if (!hw) continue;
+    out.push({
+      course,
+      teacher: (/class=["']teacher["'][\s\S]*?title=["']([^"']*)["']/i.exec(row) || [])[1] || '',
+      topic: g(/<b[^>]*class=["'][^"']*\bthema\b[^"']*["'][^>]*>([\s\S]*?)<\/b>/i),
+      date: ((/(\d\d)\.(\d\d)\.(\d{4})/.exec(g(/class=["'][^"']*\bdatum\b[^"']*["'][^>]*>([\s\S]*?)<\/span>/i)) || []).slice(1).reverse().join('-')) || '',
+      text: hw,
+      done: /\b(erledigt|done)\b/i.test((/<[^>]*\bhomework\b[^>]*>/i.exec(row) || [''])[0]),
+    });
+  }
+  return out;
 }
 
 // Einheitliche Felder, egal wie die Spalten heißen. „raw“ behält alles.

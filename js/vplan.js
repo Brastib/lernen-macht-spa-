@@ -4,6 +4,7 @@
 // wegen CORS nicht selbst beim Schulportal einloggen.
 import * as db from './db.js';
 import { h, icon, toast, sheet, confirmSheet } from './ui.js';
+import { syncFromSph, lastSync } from './sphsync.js';
 
 const CFG = 'vplancfg';
 const DATA = 'vplan';
@@ -27,6 +28,8 @@ export function refreshVplan({ fresh = false } = {}) {
       const res = await fetchWorker(cfg, fresh);
       const rec = { id: DATA, at: Date.now(), data: res, error: null };
       await db.putItems('meta', rec);
+      // Hausaufgaben und Arbeiten übernehmen (nur Neues, nichts doppelt)
+      try { rec.sync = await syncFromSph(res, cfg); } catch (e) { console.warn('Schulportal-Abgleich:', e); }
       return rec;
     } catch (e) {
       const rec = { ...(old || { id: DATA, at: 0, data: null }), error: e.message, errorAt: Date.now() };
@@ -179,6 +182,7 @@ export async function vplanSetup(after) {
     const url = field('vpUrl', 'z. B. deinname', cur.url, 'url');
     const key = field('vpKey', 'dein App-Schlüssel', cur.key);
     const kl = field('vpKl', 'z. B. 8b (optional)', cur.klasse);
+    const syncBox = h('input', { type: 'checkbox', id: 'vpSync' }); syncBox.checked = cur.sync !== false;
     const both = h('textarea.field.vpboth', { id: 'vpBoth', rows: '2', placeholder: 'Adresse und Schlüssel zusammen', autocomplete: 'off', autocapitalize: 'off', autocorrect: 'off', spellcheck: 'false' });
     const status = h('p.calm.small', { text: draft ? 'Deine Eingaben von eben sind noch da.' : '' });
     const urlHint = h('p.calm.small.vphint', { text: '' });
@@ -222,7 +226,8 @@ export async function vplanSetup(after) {
       h('label.fieldlabel', { for: 'vpBoth', text: 'Beides auf einmal (optional)' }), row(both, 'Adresse und Schlüssel'),
       h('label.fieldlabel', { for: 'vpUrl', text: 'Adresse des Workers (dein Cloudflare-Name reicht)' }), row(url, 'Adresse'), urlHint,
       h('label.fieldlabel', { for: 'vpKey', text: 'App-Schlüssel (derselbe wie APP_SCHLUESSEL im Worker)' }), row(key, 'Schlüssel'),
-      h('label.fieldlabel', { for: 'vpKl', text: 'Deine Klasse (nur nötig, falls deine Schule den ganzen Plan zeigt)' }), kl,
+      h('label.fieldlabel', { for: 'vpKl', text: 'Deine Klasse (z. B. 8b, damit Arbeiten anderer Klassen wegbleiben)' }), kl,
+      h('label.checkrow', { for: 'vpSync' }, syncBox, h('span', null, h('b', { text: 'Hausaufgaben und Arbeiten übernehmen' }), h('small', { text: 'Neue Einträge aus dem Schulportal kommen automatisch in deine Listen. Jeder nur einmal.' }))),
       status,
       h('div.dlgactions', null,
         saved.url ? h('button.btn.danger', { text: 'Trennen', on: { click: () => close({ remove: true }) } }) : null,
@@ -231,7 +236,7 @@ export async function vplanSetup(after) {
           url.value = cleanUrl(url.value); save();
           if (!/^https:\/\/[^/]+\.[^/]+/.test(url.value.trim())) { status.textContent = 'Bitte die Adresse des Workers eintragen (fängt mit https:// an).'; return; }
           if (!key.value.trim()) { status.textContent = 'Bitte den App-Schlüssel eintragen.'; return; }
-          close({ url: url.value.trim(), key: key.value.trim(), klasse: kl.value.trim() });
+          close({ url: url.value.trim(), key: key.value.trim(), klasse: kl.value.trim(), sync: syncBox.checked });
         } } })));
   });
   // Fenster ist zu (egal wie): Zwischenspeicher weg
@@ -306,6 +311,19 @@ export async function vplanBox({ onChange }) {
     h('span.vphead', null, refresh, h('button.icbtn', { 'aria-label': 'Vertretungsplan einrichten', title: 'Einrichten', on: { click: () => vplanSetup(onChange) } }, icon('more')))));
   const stand = rec && rec.at ? `Stand ${ageText(rec.at)}` : 'Noch nicht geladen';
   box.append(h('p.calm.small', { text: stand + (rec && rec.error ? ` · Letzter Versuch: ${rec.error}` : '') }));
+  const ls = cfg.sync !== false ? await lastSync() : null;
+  if (ls) {
+    const ad = ls.added;
+    const parts = [];
+    if (ad && ad.hw) parts.push(`${ad.hw} Hausaufgabe${ad.hw === 1 ? '' : 'n'}`);
+    if (ad && ad.ex) parts.push(`${ad.ex} Arbeit${ad.ex === 1 ? '' : 'en'}`);
+    box.append(h('p.calm.small', { text: parts.length ? `Aus dem Schulportal zuletzt neu eingetragen: ${parts.join(' und ')} (${ageText(ad.at)}).` : 'Hausaufgaben und Arbeiten aus dem Schulportal: bisher nichts Neues.' }));
+    const names = [...new Set((ls.unmatched || []).map((u) => u.name))].slice(0, 4);
+    if (names.length) box.append(h('p.vpnotice', { text: `Noch nicht eingetragen, weil das Fach fehlt oder nicht erkannt wurde: ${names.join(', ')}. Leg das Fach in der Bibliothek an (gleicher Name), dann kommt es beim nächsten Laden.` }));
+  }
+  const xe = rec && rec.data && rec.data.extraErrors;
+  if (xe && xe.length && cfg.sync !== false) box.append(h('p.calm.small', { text: 'Hinweis vom Worker: ' + xe.join(' · ') }));
+  if (rec && rec.data && cfg.sync !== false && rec.data.homework === undefined) box.append(h('p.vpnotice', { text: 'Für Hausaufgaben und Arbeiten braucht der Worker bei Cloudflare den neuen Code (siehe Anleitung).' }));
   if (rec && rec.data && rec.data.noPlanYet) box.append(h('p.calm', { text: 'Im Schulportal ist gerade noch kein Plan veröffentlicht.' }));
   const today = isoDate(new Date());
   const dates = [...byDate.keys()].filter((d) => d >= today).sort();

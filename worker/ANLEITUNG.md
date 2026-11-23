@@ -53,6 +53,13 @@ Dein Passwort kommt NICHT in den Code, sondern hier hinein. Cloudflare speichert
 Danach siehst du im Stundenplan: rot = Entfall, orange = Vertretung oder Raumänderung.
 Auch auf der Startseite bei „Jetzt / Als Nächstes“.
 
+## Worker-Code aktualisieren (z. B. für Hausaufgaben und Arbeiten)
+
+1. https://dash.cloudflare.com → **Workers & Pages** → `vertretung` → **Code bearbeiten**.
+2. Alles löschen, den Code von diesem Link neu einfügen:
+   https://raw.githubusercontent.com/Brastib/lernen-macht-spa-/main/worker/vertretungsplan-worker.js
+3. **Bereitstellen**. Die Geheimnisse bleiben, die musst du nicht neu eintragen.
+
 ## Wenn etwas nicht klappt
 
 - **„Login abgelehnt“**: Schul-ID, Benutzername oder Passwort falsch. Bei Cloudflare unter Geheimnisse ändern.

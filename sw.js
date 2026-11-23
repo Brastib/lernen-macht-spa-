@@ -28,6 +28,7 @@ const FILES = [
   './js/play.js',
   './js/school.js',
   './js/vplan.js',
+  './js/sphsync.js',
   './js/dash.js',
   './js/plotter.js',
   './js/backup.js',
