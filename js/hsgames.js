@@ -5,7 +5,7 @@ import { h, icon } from './ui.js';
 import { FONT, isDark, inkOf, paper, pline, prect, pcirc, hatch, shade, canvasBox, chip, store, rng, turnCard } from './sketch.js';
 
 // ---------- gemeinsamer Rahmen ----------
-function frameUI(fx, p, { stats, finish = true }) {
+export function frameUI(fx, p, { stats, finish = true }) {
   const vals = {};
   const statEls = stats.map(([k, label]) => { const b = h('b', { text: '0' }); vals[k] = b; return h('span.hsstat', null, h('small', { text: label }), b); });
   let onFinish = null;
@@ -16,7 +16,7 @@ function frameUI(fx, p, { stats, finish = true }) {
   fx.stage.append(wrap);
   return { wrap, hud, area, set: (k, v) => { if (vals[k] && vals[k].textContent !== String(v)) vals[k].textContent = String(v); }, finish: (f) => { onFinish = f; } };
 }
-function overText(x, cw, ch, dark, txt) {
+export function overText(x, cw, ch, dark, txt) {
   const ink = inkOf(dark);
   x.save(); const fs = Math.round(Math.max(22, Math.min(40, cw / 12)));
   x.font = `800 ${fs}px ${FONT}`; x.textAlign = 'center'; x.textBaseline = 'middle';
@@ -28,7 +28,7 @@ function overText(x, cw, ch, dark, txt) {
 const pts = (n) => `${n} ${n === 1 ? 'Punkt' : 'Punkte'}`;
 
 // Highscore-Duell: erst A, dann B. Allein: ein Spiel, Ergebnis {score}.
-async function seq(fx, A, B, play, ic, how) {
+export async function seq(fx, A, B, play, ic, how) {
   if (!B) { fx.stage.replaceChildren(); const s = await play(fx, A, { solo: true }); return s == null ? null : { score: s }; }
   const sc = [];
   for (const [i, p] of [A, B].entries()) {
