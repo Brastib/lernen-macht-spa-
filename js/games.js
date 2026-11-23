@@ -26,12 +26,15 @@ export const GAMES = {
   tanks: { name: 'Papierpanzer', icon: 'tank', sub: 'Winkel und Kraft, das Gelände geht kaputt', run: (...a) => import('./p4a.js').then((m) => m.tanks(...a)) },
   paint: { name: 'Malraten', icon: 'pen', sub: 'Einer malt, der andere rät', run: (...a) => import('./p4b.js').then((m) => m.paintGuess(...a)) },
   ships: { name: 'Schiffe versenken', icon: 'ship', sub: 'Flotte verstecken, Treffer landen', run: (...a) => import('./p4a.js').then((m) => m.ships(...a)) },
+  pool: { name: 'Karo-Billard', icon: 'pool', sub: 'Kugeln einlochen, wer holt mehr Punkte?', run: (...a) => import('./p5.js').then((m) => m.pool(...a)) },
+  kick: { name: 'Kritzelkick', icon: 'ball', sub: 'Fußball mit zwei Strichfiguren', run: (...a) => import('./p5.js').then((m) => m.kick(...a)) },
+  bombs: { name: 'Bombenlabyrinth', icon: 'bomb', sub: 'Kisten sprengen, den anderen erwischen', run: (...a) => import('./p5.js').then((m) => m.bombs(...a)) },
   stack: { name: 'Hochstapler', icon: 'stack', sub: 'Blöcke stapeln, wer baut höher?', run: (...a) => import('./stack.js').then((m) => m.stackDuel(...a)) },
   chess: { name: 'Schach', icon: 'chess', sub: 'Mit allen Regeln, zu zweit', run: (...a) => import('./chess.js').then((m) => m.chessDuel(...a)) },
   wall: { name: 'Mauerlauf', icon: 'wall', sub: 'Schritt oder Mauer: wer kommt zuerst rüber?', run: (...a) => import('./wall.js').then((m) => m.wallGame(...a)) },
   quiz: { name: 'Quiz', icon: 'cards', sub: 'Wer kann den Stoff? Fragen aus euren Lernkarten', run: (...a) => import('./quiz.js').then((m) => m.quizDuel(...a)) },
 };
-const MIX = ['ttt', 'wind', 'stack', 'four', 'pong', 'run', 'react', 'snake', 'plane', 'boxes', 'hockey', 'wall', 'trail', 'double', 'blocks', 'brick', 'golf', 'tanks', 'paint', 'ships', 'arena'];
+const MIX = ['ttt', 'wind', 'stack', 'four', 'pong', 'run', 'react', 'snake', 'plane', 'boxes', 'hockey', 'wall', 'trail', 'double', 'blocks', 'brick', 'golf', 'tanks', 'paint', 'ships', 'pool', 'kick', 'bombs', 'arena'];
 
 const players = () => store.get('gPlayers', []);
 const names = () => store.get('gNames', []);
@@ -131,7 +134,10 @@ export async function renderGames(ctx) {
     soloTile('golfflag', 'Kritzelgolf', best('gGolfBest') ? `Dein Rekord: ${best('gGolfBest')} Schläge` : '3 Löcher, so wenig Schläge wie möglich', () => soloScore('golf')),
     soloTile('tank', 'Papierpanzer', 'Gegen den Computer', () => vsCpu('tanks')),
     soloTile('pen', 'Malraten', best('gGuessBest') ? `Dein Rekord: ${best('gGuessBest')} Punkte` : 'Gespeicherte Bilder erraten', () => soloScore('paint')),
-    soloTile('ship', 'Schiffe versenken', 'Gegen den Computer', () => vsCpu('ships'))));
+    soloTile('ship', 'Schiffe versenken', 'Gegen den Computer', () => vsCpu('ships')),
+    soloTile('pool', 'Karo-Billard', best('gPoolBest') ? `Dein Rekord: ${best('gPoolBest')} Stöße` : 'Tisch mit wenig Stößen abräumen', () => soloScore('pool')),
+    soloTile('ball', 'Kritzelkick', 'Gegen den Computer', () => vsCpu('kick')),
+    soloTile('bomb', 'Bombenlabyrinth', 'Gegen den Computer', () => vsCpu('bombs'))));
 
   // Duelle
   view.append(h('h2.section', { text: 'Duell zu zweit' }), h('div.ptiles.gtiles', null,
@@ -178,7 +184,7 @@ function playerSheet(title, { withGame = false, okLabel = 'Sichern' } = {}) {
       list, dl);
     if (withGame) {
       const seg = h('div.gseg.gseg6');
-      const opts = [['ttt', 'Tic-Tac-Toe'], ['wind', 'Windflug'], ['plane', 'Flieger'], ['arena', 'Strichkampf'], ['stack', 'Hochstapler'], ['run', 'Kritzelsprint'], ['react', 'Reaktion'], ['four', 'Vier in Reihe'], ['boxes', 'Kästchen'], ['pong', 'Tischtennis'], ['hockey', 'Lufthockey'], ['snake', 'Schlangen'], ['trail', 'Leuchtspur'], ['double', 'Verdoppler'], ['blocks', 'Klötzchen'], ['brick', 'Blockknacker'], ['golf', 'Kritzelgolf'], ['tanks', 'Panzer'], ['paint', 'Malraten'], ['ships', 'Schiffe'], ['chess', 'Schach'], ['wall', 'Mauerlauf'], ['quiz', 'Quiz'], ['mix', 'Gemischt']];
+      const opts = [['ttt', 'Tic-Tac-Toe'], ['wind', 'Windflug'], ['plane', 'Flieger'], ['arena', 'Strichkampf'], ['stack', 'Hochstapler'], ['run', 'Kritzelsprint'], ['react', 'Reaktion'], ['four', 'Vier in Reihe'], ['boxes', 'Kästchen'], ['pong', 'Tischtennis'], ['hockey', 'Lufthockey'], ['snake', 'Schlangen'], ['trail', 'Leuchtspur'], ['double', 'Verdoppler'], ['blocks', 'Klötzchen'], ['brick', 'Blockknacker'], ['golf', 'Kritzelgolf'], ['tanks', 'Panzer'], ['paint', 'Malraten'], ['ships', 'Schiffe'], ['pool', 'Billard'], ['kick', 'Kritzelkick'], ['bombs', 'Bomben'], ['chess', 'Schach'], ['wall', 'Mauerlauf'], ['quiz', 'Quiz'], ['mix', 'Gemischt']];
       const drawSeg = () => seg.replaceChildren(...opts.map(([k, l]) => h('button' + (k === game ? '.on' : ''), { text: l, on: { click: () => { game = k; drawSeg(); } } })));
       drawSeg();
       const pw = h('label.gswitch', null, h('span', null, h('b', { text: 'Power-ups beim Papierflieger' }), h('small', { text: 'Vor jedem Wurf eins aus drei wählen, dazu Kugeln in der Luft' })),
@@ -326,6 +332,7 @@ const SOLO = {
   brick: { title: 'Blockknacker', key: 'gBrickBest', run: (fx, p) => import('./hsgames.js').then((m) => m.breakerGame(fx, p, null)), fmt: (x) => `${x} ${x === 1 ? 'Punkt' : 'Punkte'}` },
   golf: { title: 'Kritzelgolf', key: 'gGolfBest', low: true, run: (fx, p) => import('./p4b.js').then((m) => m.golf(fx, p, null)), fmt: (x) => `${x} ${x === 1 ? 'Schlag' : 'Schläge'}` },
   paint: { title: 'Malraten', key: 'gGuessBest', run: (fx, p) => import('./p4b.js').then((m) => m.paintGuess(fx, p, null)), fmt: (x) => `${x} ${x === 1 ? 'Punkt' : 'Punkte'}` },
+  pool: { title: 'Karo-Billard', key: 'gPoolBest', low: true, run: (fx, p) => import('./p5.js').then((m) => m.pool(fx, p, null)), fmt: (x) => `${x} ${x === 1 ? 'Stoß' : 'Stöße'}` },
   plane: { title: 'Papierflieger', key: 'gPlaneBest', run: (fx, p) => planeDuel(fx, p, null), fmt: (x) => x.toFixed(1).replace('.', ',') + ' m' },
 };
 async function soloScore(k) {
