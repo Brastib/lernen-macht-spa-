@@ -30,6 +30,7 @@ const MIN_MS = 60 * 1000;         // auch mit „frisch“ höchstens 1x pro Min
 let session = null;   // { sid }
 let cache = null;     // { at, data }
 let msgCache = null;  // { at, data } für Nachrichten
+let lastSend = null;  // { hash, at } gegen doppeltes Senden
 
 class SphError extends Error {
   constructor(code, message, status = 502) { super(message); this.code = code; this.status = status; }
@@ -37,14 +38,14 @@ class SphError extends Error {
 
 export default {
   // nur für Tests
-  _intern: { planDates: (...a) => planDates(...a), parseTable: (...a) => parseTable(...a), parseNotice: (...a) => parseNotice(...a), reset: () => { session = null; cache = null; msgCache = null; }, clearCache: () => { cache = null; }, parseHomework: (h) => parseHomework(h), md5: (b) => md5(b), cjsEncrypt: (a, b) => cjsEncrypt(a, b), cjsDecrypt: (a, b) => cjsDecrypt(a, b), rsaEncryptPkcs1: (a, b) => rsaEncryptPkcs1(a, b) },
+  _intern: { planDates: (...a) => planDates(...a), parseTable: (...a) => parseTable(...a), parseNotice: (...a) => parseNotice(...a), reset: () => { session = null; cache = null; msgCache = null; lastSend = null; }, clearCache: () => { cache = null; }, parseHomework: (h) => parseHomework(h), md5: (b) => md5(b), cjsEncrypt: (a, b) => cjsEncrypt(a, b), cjsDecrypt: (a, b) => cjsDecrypt(a, b), rsaEncryptPkcs1: (a, b) => rsaEncryptPkcs1(a, b) },
   async fetch(request, env) {
     const origin = request.headers.get('Origin') || '';
     const allowed = (env.ERLAUBTE_SEITE || 'https://brastib.github.io').replace(/\/+$/, '');
     const cors = origin === allowed ? {
       'Access-Control-Allow-Origin': allowed,
-      'Access-Control-Allow-Headers': 'X-App-Key',
-      'Access-Control-Allow-Methods': 'GET, OPTIONS',
+      'Access-Control-Allow-Headers': 'X-App-Key, Content-Type',
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
       'Access-Control-Max-Age': '86400',
       'Vary': 'Origin',
     } : { 'Vary': 'Origin' };
@@ -53,7 +54,7 @@ export default {
     });
 
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
-    if (request.method !== 'GET') return json({ ok: false, error: 'methode', message: 'Nur GET.' }, 405);
+    if (request.method !== 'GET' && request.method !== 'POST') return json({ ok: false, error: 'methode', message: 'Nur GET und POST.' }, 405);
 
     const url = new URL(request.url);
     const key = request.headers.get('X-App-Key') || '';
@@ -68,6 +69,29 @@ export default {
     if (missing.length) return json({ ok: false, error: 'einrichtung', message: 'Im Worker fehlen die Geheimnisse: ' + missing.join(', ') }, 500);
 
     const fresh = url.searchParams.get('frisch') === '1';
+    const path = url.pathname.replace(/\/+$/, '');
+    const fail = (e, what) => {
+      const err = e instanceof SphError ? e : new SphError('unbekannt', what + ': ' + (e && e.message || e));
+      return json({ ok: false, error: err.code, message: err.message }, err.status);
+    };
+
+    // Empfänger suchen (Lehrkräfte usw.), mindestens 2 Buchstaben
+    if (path === '/nachrichten/suche') {
+      try { return json(await searchRecipients(env, url.searchParams.get('q') || '')); } catch (e) { return fail(e, 'Fehler bei der Suche'); }
+    }
+    // Senden: nur per POST, nur mit App-Schlüssel, nur wenn die App „bestaetigt: true“ mitschickt
+    if (path === '/nachrichten/antworten' || path === '/nachrichten/neu') {
+      if (request.method !== 'POST') return json({ ok: false, error: 'methode', message: 'Senden nur per POST.' }, 405);
+      let body;
+      try { body = await request.json(); } catch (e) { return json({ ok: false, error: 'eingabe', message: 'Unlesbare Anfrage.' }, 400); }
+      if (!body || body.bestaetigt !== true) return json({ ok: false, error: 'bestaetigung', message: 'Ohne Bestätigung wird nichts gesendet.' }, 400);
+      try {
+        const res = path === '/nachrichten/antworten' ? await sendReply(env, body) : await sendNew(env, body);
+        msgCache = null;
+        return json(res);
+      } catch (e) { return fail(e, 'Fehler beim Senden'); }
+    }
+    if (request.method !== 'GET') return json({ ok: false, error: 'methode', message: 'Hier nur GET.' }, 405);
 
     // Nachrichten aus dem Schulportal (nur lesen)
     if (url.pathname.replace(/\/+$/, '') === '/nachrichten') {
@@ -164,7 +188,8 @@ function isLoginPage(res, text) {
 // ---------------- Nachrichten (verschlüsselt) ----------------
 // Das Schulportal verschlüsselt Nachrichten zusätzlich: Der Client denkt sich ein Passwort aus, schickt es
 // RSA-verschlüsselt (PKCS#1 v1.5) und danach ist alles AES-256-CBC im CryptoJS-Format („Salted__“, EVP_BytesToKey mit MD5).
-// Ablauf wie in pylanis (udondan/lanis, Datei cryption.py und conversations.py). Der Worker LIEST nur.
+// Ablauf wie in pylanis (udondan/lanis, cryption.py, conversations.py) und liblanis (Lanis-Mobile).
+// Gesendet wird NUR über POST /nachrichten/antworten oder /nachrichten/neu, mit App-Schlüssel und bestaetigt: true.
 const AJAX = 'https://start.schulportal.hessen.de/ajax.php';
 const NACHRICHTEN = 'https://start.schulportal.hessen.de/nachrichten.php';
 const MSG_MAX = 20;   // so viele Gespräche mit Inhalt laden
@@ -298,6 +323,7 @@ async function loadMessages(env) {
           const d = JSON.parse(await cjsDecrypt(JSON.parse(await rr.text()).message, secret));
           const one = (m) => ({ from: text(String(m.username || m.Sender || m.SenderName || m.Absender || '')).replace(/^[\s,]*$/, ''), date: String(m.Datum || m.date || ''), text: text(String(m.Inhalt || m.content || '')), own: !!(m.own || m.Own) });
           item.messages = [one({ ...d, SenderName: d.SenderName || hd.SenderName }), ...(Array.isArray(d.reply) ? d.reply.map(one) : [])];
+          Object.assign(item, replyInfo(d, item.sender));
         } catch (e) { item.messages = null; }
       }
       list.push(item);
@@ -305,6 +331,105 @@ async function loadMessages(env) {
     return { ok: true, fetched: new Date().toISOString(), conversations: list };
   }
   throw new SphError('sitzung', 'Das Schulportal hat die Nachrichten nicht geliefert.');
+}
+
+// Wohin geht eine Antwort? Genau wie die Schulportal-Seite (module/nachrichten/js/read.js, siehe Lanis-Mobile/liblanis):
+// Bei einer „Mitteilung“ (privateAnswerOnly) nur an den Absender, sonst an alle im Gespräch.
+function replyInfo(d, senderName) {
+  const st = d.statistik || {};
+  const toSender = d.privateAnswerOnly === 'ja' && !d.own && d.Sender != null && String(d.Sender) !== '';
+  return {
+    canReply: d.noAnswerAllowed !== 'ja',
+    replyMode: toSender ? 'absender' : 'alle',
+    replyName: senderName || text(String(d.username || '')),
+    stats: { schueler: +st.teilnehmer || 0, lehrer: +st.betreuer || 0, eltern: +st.eltern || 0 },
+    kind: d.noAnswerAllowed === 'ja' ? 'Hinweis' : d.privateAnswerOnly === 'ja' ? 'Mitteilung' : d.groupOnly === 'ja' ? 'Gruppenchat' : 'Chat',
+  };
+}
+
+// Sitzung + Verschlüsselung für Nachrichten. Wiederholt den Login einmal, BEVOR etwas gesendet wird.
+async function msgContext(env, attempt) {
+  if (!session || attempt > 0) await login(env);
+  const cookie = `i=${String(env.SPH_SCHULE).trim()}; sid=${session.sid}`;
+  const secret = await handshake(cookie);
+  const post = (body, query = '') => req(NACHRICHTEN + query, { method: 'POST', headers: { Cookie: cookie, 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'X-Requested-With': 'XMLHttpRequest' }, body: new URLSearchParams(body) });
+  return { cookie, secret, post };
+}
+async function withMsg(env, fn) {
+  let lastErr;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    let ctx;
+    try { ctx = await msgContext(env, attempt); } catch (e) { lastErr = e; if (e instanceof SphError && e.code === 'login') throw e; session = null; continue; }
+    return fn(ctx);
+  }
+  throw lastErr instanceof SphError ? lastErr : new SphError('sitzung', 'Keine Verbindung zu den Nachrichten im Schulportal.');
+}
+
+const cleanMsg = (t) => String(t || '').replace(/\r\n?/g, '\n').trim();
+async function guardDouble(parts) {
+  const hash = b64(new Uint8Array(await crypto.subtle.digest('SHA-256', enc.encode(JSON.stringify(parts)))));
+  if (lastSend && lastSend.hash === hash && Date.now() - lastSend.at < 2 * 60 * 1000) throw new SphError('doppelt', 'Genau diese Nachricht wurde gerade schon gesendet. Darum nicht noch einmal.', 409);
+  return () => { lastSend = { hash, at: Date.now() }; };
+}
+async function sendResult(r) {
+  const t = await r.text();
+  let j = null; try { j = JSON.parse(t); } catch (e) { /* unten */ }
+  if (j && (j.back === true || j.back === 'true')) return { ok: true, id: j.id || null };
+  throw new SphError('senden', 'Das Schulportal hat die Nachricht nicht angenommen.' + (j && j.message ? ' (' + text(String(j.message)) + ')' : ''));
+}
+
+async function sendReply(env, body) {
+  const id = String(body.id || '').trim(), message = cleanMsg(body.text), mode = body.an;
+  if (!id) throw new SphError('eingabe', 'Welche Nachricht? (ID fehlt)', 400);
+  if (!message) throw new SphError('eingabe', 'Der Text ist leer.', 400);
+  if (message.length > 5000) throw new SphError('eingabe', 'Der Text ist zu lang (höchstens 5000 Zeichen).', 400);
+  if (mode !== 'absender' && mode !== 'alle') throw new SphError('eingabe', 'Es fehlt, an wen die Antwort gehen soll.', 400);
+  const done = await guardDouble(['r', id, message]);
+  return withMsg(env, async ({ secret, post }) => {
+    // Gespräch frisch lesen, damit die Empfänger sicher stimmen
+    const rr = await post({ a: 'read', uniqid: await cjsEncrypt(id, secret) }, '?a=read&msg=' + encodeURIComponent(id));
+    let d;
+    try { d = JSON.parse(await cjsDecrypt(JSON.parse(await rr.text()).message, secret)); } catch (e) { throw new SphError('nachrichten', 'Das Gespräch konnte nicht gelesen werden. Es wurde nichts gesendet.'); }
+    const info = replyInfo(d, '');
+    if (!info.canReply) throw new SphError('keineantwort', 'Auf diese Nachricht kann man nicht antworten (Hinweis). Es wurde nichts gesendet.', 400);
+    if (info.replyMode !== mode) throw new SphError('empfaenger', 'Die Empfänger haben sich geändert. Bitte neu laden und noch einmal prüfen. Es wurde nichts gesendet.', 409);
+    const to = info.replyMode === 'absender' ? String(d.Sender) : 'all';
+    const c = await cjsEncrypt(JSON.stringify({ to, groupOnly: d.groupOnly === 'ja' ? 'ja' : 'nein', privateAnswerOnly: d.privateAnswerOnly === 'ja' ? 'ja' : 'nein', message, replyToMsg: id }), secret);
+    done();   // ab hier zählt es als gesendet, auch wenn die Antwort unklar ist
+    return sendResult(await post({ a: 'reply', c }));
+  });
+}
+
+async function sendNew(env, body) {
+  const to = Array.isArray(body.an) ? body.an.map((x) => String(x && x.id || x || '').trim()).filter(Boolean) : [];
+  const subject = cleanMsg(body.betreff).replace(/\n+/g, ' '), message = cleanMsg(body.text);
+  if (!to.length) throw new SphError('eingabe', 'Kein Empfänger ausgewählt.', 400);
+  if (to.length > 10) throw new SphError('eingabe', 'Höchstens 10 Empfänger auf einmal.', 400);
+  if (!subject) throw new SphError('eingabe', 'Der Betreff fehlt.', 400);
+  if (!message) throw new SphError('eingabe', 'Der Text ist leer.', 400);
+  if (message.length > 5000 || subject.length > 200) throw new SphError('eingabe', 'Betreff oder Text ist zu lang.', 400);
+  const done = await guardDouble(['n', to, subject, message]);
+  return withMsg(env, async ({ secret, post }) => {
+    const data = [{ name: 'subject', value: subject }, { name: 'text', value: message }, ...to.map((v) => ({ name: 'to[]', value: v }))];
+    const c = await cjsEncrypt(JSON.stringify(data), secret);
+    done();
+    return sendResult(await post({ a: 'newmessage', c }));
+  });
+}
+
+async function searchRecipients(env, q) {
+  q = String(q).trim().slice(0, 50);
+  if (q.length < 2) return { ok: true, items: [] };
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (!session || attempt > 0) await login(env);
+    const cookie = `i=${String(env.SPH_SCHULE).trim()}; sid=${session.sid}`;
+    const r = await req(NACHRICHTEN + '?a=searchRecipt&q=' + encodeURIComponent(q), { headers: { Cookie: cookie, 'X-Requested-With': 'XMLHttpRequest' } });
+    const t = await r.text();
+    let j; try { j = JSON.parse(t); } catch (e) { session = null; continue; }
+    const items = (j && Array.isArray(j.items) ? j.items : []).map((x) => ({ id: String(x.id || ''), name: text(String(x.text || '')), type: String(x.type || '') })).filter((x) => x.id && x.name);
+    return { ok: true, items };
+  }
+  throw new SphError('sitzung', 'Die Suche im Schulportal hat nicht geklappt.');
 }
 
 // ---------------- Vertretungsplan ----------------
