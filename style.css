@@ -2522,3 +2522,16 @@ textarea.field.vpboth { min-height: 64px; padding: 12px 14px; resize: vertical; 
 .msgresult { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; padding: 10px 12px; border-radius: 12px; background: var(--surface-2); text-align: left; min-width: 0; }
 .msgresult b { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .msgresult small { color: var(--muted); flex: none; }
+
+/* Paket 7: Radierer-Rabatz */
+.ewmid { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 0; }
+.ewtime { font: 800 18px 'Noteworthy', 'Marker Felt', system-ui, sans-serif; min-height: 1.2em; }
+.ewfield { touch-action: none; }
+.ewctrl { row-gap: 8px; }
+.ewmoves { display: flex; gap: 8px; }
+.ewmove { width: 52px; height: 52px; display: grid; place-items: center; border-radius: 14px; background: var(--bg); box-shadow: inset 0 0 0 1px var(--line); color: inherit; touch-action: none; user-select: none; -webkit-user-select: none; }
+.ewmove svg { width: 24px; height: 24px; }
+.ewmove:active:not(:disabled) { background: var(--pc, var(--accent)); color: #fff; }
+.ewctrl .tkweap button { display: inline-flex; align-items: center; gap: 6px; }
+.ewctrl .tkweap svg { width: 16px; height: 16px; }
+.ewtip { flex: 1 1 100%; color: var(--muted); font-size: 13px; text-align: center; min-height: 1.3em; }
