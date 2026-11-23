@@ -317,13 +317,14 @@ function openFx(title, sub) {
   const ac = new AbortController();
   let onClose = null;
   const stage = h('div.gstage');
-  const close = () => { if (ac.signal.aborted) return; ac.abort(); root.classList.remove('in'); setTimeout(() => root.remove(), 220); document.removeEventListener('keydown', onKey); if (onClose) onClose(); };
+  const close = () => { if (ac.signal.aborted) return; ac.abort(); if (document.querySelectorAll('.gamefx').length <= 1) document.documentElement.classList.remove('fxopen'); root.classList.remove('in'); setTimeout(() => root.remove(), 220); document.removeEventListener('keydown', onKey); if (onClose) onClose(); };
   const onKey = (e) => { if (e.key === 'Escape' && !document.querySelector('.planefx')) close(); };
   const root = h('div.gamefx', null,
     h('div.gtop', null, h('div.gtitle', null, h('b', { text: title }), h('small', { text: sub })),
       h('button.btn.round.gclose', { 'aria-label': 'Schließen', title: 'Schließen', on: { click: close } }, icon('close'))),
     stage);
   document.body.append(root);
+  document.documentElement.classList.add('fxopen');   // Seite dahinter festhalten, damit oben nichts durchscheint
   document.addEventListener('keydown', onKey);
   requestAnimationFrame(() => root.classList.add('in'));
   return { root, stage, signal: ac.signal, close, set onClose(f) { onClose = f; } };

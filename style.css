@@ -2147,3 +2147,9 @@ body:has(.gamefx) .toast { z-index: 430; }
 
 .arcardhead .gtag.arlife { margin-left: auto; }
 .arcardhead .gtag.arlife + .gtag { margin-left: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 0 1 auto; }
+
+/* Spiele im Vollbild: nichts von der Seite dahinter darf oben (unter der Statusleiste) durchscheinen */
+html.fxopen, html.fxopen body, html:has(> body > .gamefx), html:has(> body > .gamefx) body { overflow: hidden; overscroll-behavior: none; }
+.gamefx { overscroll-behavior: contain; }
+.gamefx::before { content: ''; position: absolute; left: 0; right: 0; bottom: 100%; height: 400px; background: var(--bg); pointer-events: none; }
+.gamefx .gtop { background: var(--surface); }
