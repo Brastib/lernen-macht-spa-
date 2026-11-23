@@ -53,7 +53,7 @@ Dein Passwort kommt NICHT in den Code, sondern hier hinein. Cloudflare speichert
 Danach siehst du im Stundenplan: rot = Entfall, orange = Vertretung oder Raumänderung.
 Auch auf der Startseite bei „Jetzt / Als Nächstes“.
 
-## Worker-Code aktualisieren (z. B. für Hausaufgaben und Arbeiten)
+## Worker-Code aktualisieren (z. B. für Hausaufgaben, Arbeiten, Nachrichten)
 
 1. https://dash.cloudflare.com → **Workers & Pages** → `vertretung` → **Code bearbeiten**.
 2. Alles löschen, den Code von diesem Link neu einfügen:
@@ -74,6 +74,6 @@ Auch auf der Startseite bei „Jetzt / Als Nächstes“.
 - Der Worker antwortet nur, wenn der richtige App-Schlüssel mitkommt. Und er nimmt nur Anfragen von deiner App-Seite an.
 - Der App-Schlüssel steht in der App und in deinen App-Sicherungen. Wer ihn hat, kann deinen Vertretungsplan lesen (nicht dein Passwort).
   Wenn er mal weg ist: bei Cloudflare einen neuen eintragen und in der App neu verbinden.
-- Der Worker liest nur. Er ändert nichts im Schulportal. Er fragt höchstens alle 5 Minuten nach.
+- Der Worker liest nur. Er schickt keine Nachrichten. Beim Lesen einer Nachricht kann das Schulportal sie als gelesen markieren. Er fragt höchstens alle 5 Minuten nach.
 - Das ist kein offizielles Angebot des Schulportals. Es nutzt denselben Weg wie die Open-Source-Apps „Lanis-Mobile“ und „pylanis“.
   Wenn das Schulportal seinen Login ändert, kann es aufhören zu klappen.

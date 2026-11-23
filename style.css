@@ -2490,3 +2490,21 @@ textarea.field.vpboth { min-height: 64px; padding: 12px 14px; resize: vertical; 
 .pkbtn.on { background: var(--accent); color: #fff; box-shadow: none; }
 .pkbtn.on small { color: rgba(255,255,255,.85); }
 @media (max-width: 520px) { .pkbtn { width: 68px; height: 62px; } .pkgrp { gap: 6px; } }
+
+/* Nachrichten (Schulportal) */
+.msglist { display: flex; flex-direction: column; gap: 8px; margin: 10px 0 4px; }
+.msgrow { display: flex; align-items: flex-start; gap: 12px; width: 100%; padding: 14px 16px; border-radius: 16px; background: var(--surface); box-shadow: 0 0 0 1px var(--line); text-align: left; min-width: 0; }
+.msgrow:active { transform: scale(.99); }
+.msgdot { flex: none; width: 9px; height: 9px; margin-top: 6px; border-radius: 50%; background: transparent; }
+.msgrow.unread .msgdot { background: var(--accent); }
+.msgtext { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.msgtext b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.msgrow:not(.unread) .msgtext b { font-weight: 500; }
+.msgtext small { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.msgprev { color: var(--muted); font-size: .92em; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.msgchat { display: flex; flex-direction: column; gap: 10px; margin: 12px 0; max-height: 58vh; overflow-y: auto; padding: 4px 2px; }
+.msgbubble { align-self: flex-start; max-width: 85%; padding: 10px 14px; border-radius: 16px 16px 16px 6px; background: var(--surface-2); }
+.msgbubble.own { align-self: flex-end; border-radius: 16px 16px 6px 16px; background: var(--accent-soft); }
+.msgbubble small { display: block; color: var(--muted); font-size: .8em; margin-bottom: 4px; }
+.msgbubble p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.dlgactions.left { justify-content: flex-start; }

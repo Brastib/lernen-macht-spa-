@@ -1,7 +1,8 @@
 // Hauptteil: Bibliothek mit Fächern, Büchern und Seiten.
-import { resumeVplanSetup } from './vplan.js';
+import { resumeVplanSetup, vplanCfg } from './vplan.js';
+import { renderMessages, unreadCount } from './messages.js';
 import * as db from './db.js';
-const APP_VERSION = '69';   // gleich wie VERSION in sw.js
+const APP_VERSION = '70';   // gleich wie VERSION in sw.js
 import { openEditor } from './editor.js';
 import { renderPage, PAPERS } from './paper.js';
 import { detectPage, defaultCorners } from './scanner.js';
@@ -90,6 +91,7 @@ async function render() {
   if (nav.view === 'games') return import('./games.js').then((m) => m.renderGames({ setHeader, btn, iconBtn, go }));
   if (nav.view === 'kit') return renderKit({ setHeader, btn, iconBtn, go }, nav.tab);
   if (nav.view === 'timetable') return renderTimetable({ setHeader, btn, iconBtn, go });
+  if (nav.view === 'messages') return renderMessages({ setHeader, btn, iconBtn, go });
   if (nav.view === 'exams') return renderExams({ setHeader, btn, iconBtn, go });
   if (nav.view === 'sort') return renderSorter({ setHeader, btn, iconBtn, go });
   if (nav.view === 'plan') return renderPlan({ setHeader, btn, iconBtn, go }, nav.examId);
@@ -168,12 +170,14 @@ async function renderLibrary() {
   // Planer
   const [rems, exams, grades] = await Promise.all([db.listReminders(), db.listExams(), db.listGrades()]);
   const openRems = rems.filter((r) => !r.done).length;
+  const sphOn = !!((await vplanCfg()) || {}).url, unread = sphOn ? await unreadCount() : 0;
   const tile = (cls, ic, title, sub, view) => h('button.ptile' + cls, { on: { click: () => go({ view }) } }, h('span.ptileic', null, icon(ic)), h('b', { text: title }), h('small', { text: sub }));
   view.append(h('h2.section', { text: 'Planer' }), h('div.ptiles', null,
     tile('', 'grid', 'Stundenplan', 'Fächer, Räume, Zeiten', 'timetable'),
     tile('', 'bookmark', 'Arbeiten', exams.length ? plural(exams.filter((x) => x.date >= new Date().toISOString().slice(0, 10)).length, 'geplant', 'geplant') : 'Arbeiten und Präsentationen', 'exams'),
     tile('', 'homework', 'Noten', grades.length ? plural(grades.length, 'Note', 'Noten') : 'Schnitt pro Fach', 'grades'),
-    tile('.rementry', 'clock', 'Erinnerungen', openRems ? `${openRems} offen` : 'Für alles, was du nicht vergessen willst', 'reminders')));
+    tile('.rementry', 'clock', 'Erinnerungen', openRems ? `${openRems} offen` : 'Für alles, was du nicht vergessen willst', 'reminders'),
+    sphOn ? tile('', 'inbox', 'Nachrichten', unread ? `${unread} ungelesen` : 'Schulportal', 'messages') : null));
   // Werkzeuge
   view.append(h('h2.section', { text: 'Werkzeuge' }), h('div.ptiles.kit', null,
     ...KIT_TABS.map(([k, l, ic, sub]) => h('button.ptile', { on: { click: () => go({ view: 'kit', tab: k }) } }, h('span.ptileic', null, icon(ic)), h('b', { text: l }), h('small', { text: sub })))));
