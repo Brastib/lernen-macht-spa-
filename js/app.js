@@ -1,6 +1,6 @@
 // Hauptteil: Bibliothek mit Fächern, Büchern und Seiten.
 import * as db from './db.js';
-const APP_VERSION = '29';   // gleich wie VERSION in sw.js
+const APP_VERSION = '30';   // gleich wie VERSION in sw.js
 import { openEditor } from './editor.js';
 import { renderPage, PAPERS } from './paper.js';
 import { detectPage, defaultCorners } from './scanner.js';
@@ -17,7 +17,7 @@ import { editHomework, hwList, sortHw } from './homework.js';
 import { renderPlan, todayPlan } from './plan.js';
 import { renderSorter, dateGroup, fmtDay } from './organize.js';
 import { importPdf, exportPdf } from './pdfio.js';
-import { ocrPages, needsOcr, snippet } from './ocr.js';
+import { ocrPages, needsOcr, snippet, needsInk, hasInk, readInk, fuzzyFind } from './ocr.js';
 import { renderCodeList } from './code.js';
 import { renderReminders, dueBanner, startReminderWatch, editReminder } from './reminders.js';
 
@@ -636,7 +636,7 @@ async function searchFlow() {
         let nText = 0;
         for (const p of all) {
           if (nText >= 30) break;
-          const src = [p.ocr, p.textBoxes].filter(Boolean).join('\n');
+          const src = [p.tags, p.ocr, p.textBoxes].filter(Boolean).join('\n');
           if (!src || !norm(src).includes(q)) continue;
           const b = p.bookId === INBOX ? { id: INBOX, title: 'Eingang', kind: 'inbox' } : bookMap.get(p.bookId); if (!b) continue;
           const s = sub.get(b.subjectId);
@@ -645,6 +645,22 @@ async function searchFlow() {
             close(true); nav = b.id === INBOX ? { view: 'book', book: b } : { view: 'book', book: b, subject: s }; await render();
             const i = pages.findIndex((x) => x.id === p.id); if (i >= 0) openBook(i);
           } } }, icon('page'), h('span.snip', { text: snippet(src, q, norm) }), h('small', { text: `${b.title} · S. ${p.index + 1}` })));
+        }
+        // Handschrift (unsicher erkannt, unscharf gesucht)
+        let nInk = 0;
+        for (const p of all) {
+          if (nInk >= 20) break;
+          if (!p.ink) continue;
+          const already = [p.tags, p.ocr, p.textBoxes].filter(Boolean).join('\n');
+          if (already && norm(already).includes(q)) continue;
+          const w = fuzzyFind(p.ink, q, norm); if (!w) continue;
+          const b = p.bookId === INBOX ? { id: INBOX, title: 'Eingang', kind: 'inbox' } : bookMap.get(p.bookId); if (!b) continue;
+          const s = sub.get(b.subjectId);
+          nInk++;
+          list.append(h('button.target', { on: { click: async () => {
+            close(true); nav = b.id === INBOX ? { view: 'book', book: b } : { view: 'book', book: b, subject: s }; await render();
+            const i = pages.findIndex((x) => x.id === p.id); if (i >= 0) openBook(i);
+          } } }, icon('pen'), h('span.snip', { text: `„${w}“` }), h('small', { text: `Handschrift, unsicher · ${b.title} · S. ${p.index + 1}` })));
         }
         // Kartenstapel und Vokabeln
         const deckHits = new Map();
@@ -666,7 +682,36 @@ async function searchFlow() {
       if (!list.children.length) list.append(h('p.targetnone', { text: q ? 'Nichts gefunden.' : 'Noch keine Fächer.' }));
     };
     input.addEventListener('input', show);
-    body.append(input, list);
+    // Handschrift lesen (Versuch)
+    const inkBar = h('div.inkbar');
+    const drawInkBar = () => {
+      const withInk = all.filter(hasInk), todo = withInk.filter(needsInk);
+      inkBar.hidden = !withInk.length;
+      if (!withInk.length) return;
+      const artifact = !!document.documentElement.dataset.artifact;
+      const btn = h('button.btn.small', { disabled: artifact || !todo.length, on: { click: async () => {
+        let stop = false;
+        const msg = h('small', { text: 'Texterkennung wird geladen …' });
+        const cancel = h('button.btn.small', { text: 'Abbrechen', on: { click: () => { stop = true; cancel.disabled = true; msg.textContent = 'Wird nach dieser Seite beendet …'; } } });
+        inkBar.replaceChildren(h('div.inkinfo', null, h('b', { text: 'Handschrift wird gelesen' }), msg), h('span.inkspin', { 'aria-hidden': 'true' }), cancel);
+        try {
+          const { drawStroke } = await import('./paper.js');
+          const n = await readInk(todo, drawStroke, (t) => { if (!stop) msg.textContent = t; }, () => stop);
+          const found = todo.filter((p) => p.ink).length;
+          toast(`${plural(n, 'Seite', 'Seiten')} gelesen, auf ${found} davon wurden Wörter erkannt.`, 4000);
+        } catch (err) { toast('Handschrift lesen fehlgeschlagen: ' + err.message, 5000); }
+        finally { drawInkBar(); show(); }
+      } } }, icon('pen'), h('span', { text: todo.length ? `Handschrift lesen (${todo.length})` : 'Alles gelesen' }));
+      inkBar.replaceChildren(
+        h('div.inkinfo', null,
+          h('b', { text: 'Handschrift suchen' }),
+          h('small', { text: artifact
+            ? 'Geht nur in der eigenen App unter brastib.github.io/lernen-macht-spa-, nicht in dieser Testversion.'
+            : 'Ein Versuch: Saubere Druckbuchstaben klappen oft, Schreibschrift kaum. Sicher findest du Seiten über Stichworte (im Editor unter „Teilen“).' })),
+        btn);
+    };
+    drawInkBar();
+    body.append(input, list, inkBar);
     show();
   });
 }

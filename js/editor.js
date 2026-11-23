@@ -127,10 +127,29 @@ $('edShare').addEventListener('click', (e) => {
     { label: 'Als PDF teilen', icon: 'share', onClick: sharePagePdf },
     { label: 'Name und Datum einsetzen', icon: 'text', onClick: stampName },
     { label: 'Namen ändern', icon: 'edit', onClick: () => { try { localStorage.removeItem('myName'); } catch (err) { /* egal */ } stampName(); } },
+    { label: 'Stichworte für die Suche …', icon: 'search', onClick: tagsFlow },
     'sep',
     { label: 'Als Papierflieger falten', icon: 'plane', onClick: planeFlow },
   ]);
 });
+async function tagsFlow() {
+  const pg = page; if (!pg) return;
+  const res = await sheet('Stichworte für die Suche', (body, close) => {
+    const input = el('textarea.field.tagfield', { rows: 3, id: 'tagField', placeholder: 'z. B. Photosynthese, Zellatmung, Test 12.3.' });
+    input.value = pg.tags || '';
+    body.append(
+      el('p.dlgtext', { text: 'Die Suche findet diese Seite über die Wörter hier. Schreib einfach mit dem Pencil ins Feld, das iPad macht daraus Text (Kritzeln/Scribble).' }),
+      input,
+      el('div.dlgactions', null,
+        el('button.btn', { text: 'Abbrechen', on: { click: () => close(null) } }),
+        el('button.btn.primary', { text: 'Sichern', on: { click: () => close({ v: input.value.replace(/\s+/g, ' ').trim() }) } })));
+    setTimeout(() => input.focus(), 50);
+  });
+  if (!res) return;
+  await db.updatePage(pg.id, { tags: res.v });
+  pg.tags = res.v;
+  toast(res.v ? 'Stichworte gesichert. Die Suche findet die Seite jetzt.' : 'Stichworte entfernt.');
+}
 async function planeFlow() {
   finishStroke(); commitText();
   await flushSave();

@@ -1594,3 +1594,15 @@ canvas.alkcv { display: block; width: 100%; height: 360px; }
 .planerec { font-style: normal; font-size: 13px; font-weight: 700; color: #fff; background: var(--accent); padding: 5px 10px; border-radius: 999px; white-space: nowrap; }
 @keyframes planepop { from { opacity: 0; transform: translate(-50%, 10px) scale(.96); } to { opacity: 1; transform: translate(-50%, 0) scale(1); } }
 @media (max-width: 560px) { .planestat { gap: 14px; padding: 10px 14px; } .planestat b { font-size: 17px; } }
+
+/* Handschrift-Suche */
+.inkbar { display: flex; align-items: center; gap: 14px; margin-top: 14px; padding: 12px 14px; border-radius: 14px; background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--line); }
+.inkbar[hidden] { display: none; }
+.inkinfo { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.inkinfo b { font-size: 14px; font-weight: 600; }
+.inkinfo small { font-size: 13px; color: var(--muted); line-height: 1.35; }
+.inkbar .btn { flex: none; white-space: nowrap; }
+@media (max-width: 560px) { .inkbar { flex-direction: column; align-items: stretch; } }
+.tagfield { margin-top: 12px; resize: vertical; min-height: 84px; font-size: 16px; line-height: 1.4; }
+.inkspin { flex: none; width: 18px; height: 18px; border-radius: 50%; border: 2.5px solid var(--line); border-top-color: var(--accent); animation: inkspin .8s linear infinite; }
+@keyframes inkspin { to { transform: rotate(360deg); } }
