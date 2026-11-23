@@ -111,7 +111,9 @@ function mapTri(ctx, img, s, d) {
 const ease = (t) => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
-export async function paperPlane(pageCanvas) {
+export async function paperPlane(pageCanvas, opts = {}) {
+  const duel = opts.duel || null;   // { name, note }: ein Wurf, Ergebnis wird zurückgegeben
+  let result = null;
   const css = getComputedStyle(document.documentElement);
   const accent = css.getPropertyValue('--accent').trim() || '#4f7cff';
   const dark = matchMedia('(prefers-color-scheme: dark)').matches && document.documentElement.dataset.theme !== 'light' || document.documentElement.dataset.theme === 'dark';
@@ -137,7 +139,7 @@ export async function paperPlane(pageCanvas) {
   const stat = h('div.planestat', { hidden: true });
   const closeBtn = h('button.btn.round.planeclose', { 'aria-label': 'Auffalten und schließen', title: 'Auffalten' }, icon('close'));
   const root = h('div.planefx' + (dark ? '.dark' : ''), { role: 'dialog', 'aria-label': 'Papierflieger' },
-    cv, h('div.planetop', null, h('div.planetitle', null, h('b', { text: 'Papierflieger' }), h('small', { text: 'Wirf deine Notiz quer über den Bildschirm' })), closeBtn),
+    cv, h('div.planetop', null, h('div.planetitle', null, h('b', { text: duel ? `${duel.name} wirft` : 'Papierflieger' }), h('small', { text: duel ? (duel.note || 'Ein Wurf, so weit wie möglich') : 'Wirf deine Notiz quer über den Bildschirm' })), closeBtn),
     hint, stat);
   document.body.append(root);
   requestAnimationFrame(() => root.classList.add('in'));
@@ -300,6 +302,16 @@ export async function paperPlane(pageCanvas) {
   function land() {
     phase = 'land';
     const m = dist / PX_PER_M;
+    if (duel) {
+      result = m;
+      stat.hidden = false;
+      stat.replaceChildren(
+        h('span', null, h('small', { text: duel.name }), h('b', { text: fmtM(m) })),
+        h('span', null, h('small', { text: 'Flugzeit' }), h('b', { text: flyT.toFixed(1).replace('.', ',') + ' s' })),
+        h('button.btn.primary.planenext', { text: 'Weiter', on: { click: () => startClose() } }));
+      setHint('');
+      return;
+    }
     const rec = m > best + 0.05;
     if (rec) { best = m; try { localStorage.setItem(BEST_KEY, String(best)); } catch (e) { /* egal */ } }
     showStat(m, flyT, rec);
@@ -310,6 +322,7 @@ export async function paperPlane(pageCanvas) {
   const near = (x, y) => Math.hypot(x - plane.x, y - plane.y) < 90;
   cv.addEventListener('pointerdown', (e) => {
     if (!['ready', 'fly', 'land'].includes(phase)) return;
+    if (duel && phase !== 'ready') return;
     if (!near(e.offsetX, e.offsetY)) return;
     cv.setPointerCapture(e.pointerId);
     held = { id: e.pointerId, dx: plane.x - e.offsetX, dy: plane.y - e.offsetY };
@@ -367,7 +380,7 @@ export async function paperPlane(pageCanvas) {
     root.classList.remove('in');
     window.removeEventListener('resize', resize);
     document.removeEventListener('keydown', onKey);
-    setTimeout(() => { root.remove(); done && done(); }, 260);
+    setTimeout(() => { root.remove(); done && done(result); }, 260);
     cancelAnimationFrame(raf);
   }
   closeBtn.addEventListener('click', startClose);

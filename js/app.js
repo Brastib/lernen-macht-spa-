@@ -1,6 +1,6 @@
 // Hauptteil: Bibliothek mit Fächern, Büchern und Seiten.
 import * as db from './db.js';
-const APP_VERSION = '36';   // gleich wie VERSION in sw.js
+const APP_VERSION = '37';   // gleich wie VERSION in sw.js
 import { openEditor } from './editor.js';
 import { renderPage, PAPERS } from './paper.js';
 import { detectPage, defaultCorners } from './scanner.js';
@@ -86,6 +86,7 @@ async function render() {
   if (nav.view === 'subject') return renderSubject();
   if (nav.view === 'code') return renderCodeList({ setHeader, btn, go });
   if (nav.view === 'reminders') return renderReminders({ setHeader, btn, go, saveFile });
+  if (nav.view === 'games') return import('./games.js').then((m) => m.renderGames({ setHeader, btn, iconBtn, go }));
   if (nav.view === 'kit') return renderKit({ setHeader, btn, iconBtn, go }, nav.tab);
   if (nav.view === 'timetable') return renderTimetable({ setHeader, btn, iconBtn, go });
   if (nav.view === 'exams') return renderExams({ setHeader, btn, iconBtn, go });
@@ -175,6 +176,7 @@ async function renderLibrary() {
   // Werkzeuge
   view.append(h('h2.section', { text: 'Werkzeuge' }), h('div.ptiles.kit', null,
     ...KIT_TABS.map(([k, l, ic, sub]) => h('button.ptile', { on: { click: () => go({ view: 'kit', tab: k }) } }, h('span.ptileic', null, icon(ic)), h('b', { text: l }), h('small', { text: sub })))));
+  view.append(h('button.gbanner', { on: { click: () => go({ view: 'games' }) } }, h('span.ptileic', null, icon('game')), h('span.gbantx', null, h('b', { text: 'Games' }), h('small', { text: 'Turnier, Tic-Tac-Toe, Windflug, Papierflieger-Duell' })), icon('right')));
 
   // Programmieren
   const nCode = (await db.listCode()).length;
