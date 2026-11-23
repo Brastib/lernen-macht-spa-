@@ -8,7 +8,8 @@ const S = 600;   // interne Auflösung
 //         grip: [x, y] (0..1, Griff-Punkt für Waffen), removeLabel, stats(info) → Elemente }
 // Ergebnis: { url, w, h, grip, info } | 'remove' | null
 export function paintSheet(opts) {
-  const min = opts.min || 0.5;
+  let kind = opts.kind || (opts.kinds ? opts.kinds[0][0] : null);
+  const minOf = () => (opts.minFor ? opts.minFor(kind) : opts.min || 0.5);
   return sheet(opts.title, (body, close) => {
     const cv = h('canvas.skincv', { width: S, height: S });
     const x = cv.getContext('2d', { willReadFrequently: true });
@@ -41,17 +42,18 @@ export function paintSheet(opts) {
     }
     function measure() {
       const d = x.getImageData(0, 0, S, S).data;
-      let x0 = S, y0 = S, x1 = -1, y1 = -1, n = 0, far = 0, fx = 0, fy = 0, nearGrip = false;
+      let x0 = S, y0 = S, x1 = -1, y1 = -1, n = 0, far = 0, fx = 0, fy = 0, nearGrip = false; const min = minOf();
       for (let y = 0; y < S; y += 2) for (let xx = 0; xx < S; xx += 2) {
         if (d[(y * S + xx) * 4 + 3] <= 40) continue;
         n++; if (xx < x0) x0 = xx; if (xx > x1) x1 = xx; if (y < y0) y0 = y; if (y > y1) y1 = y;
         if (G) { const dd = Math.hypot(xx - G[0], y - G[1]); if (dd > far) { far = dd; fx = xx; fy = y; } if (dd < 50) nearGrip = true; }
       }
       if (x1 < 0) return null;
-      return { x0, y0, x1: x1 + 2, y1: y1 + 2, n, far, ang: Math.atan2(fy - (G ? G[1] : 0), fx - (G ? G[0] : 0)), nearGrip };
+      return { x0, y0, x1: x1 + 2, y1: y1 + 2, n, far, fx, fy, ang: Math.atan2(fy - (G ? G[1] : 0), fx - (G ? G[0] : 0)), nearGrip };
     }
     function check() {
       box = measure();
+      const min = minOf();
       const span = !box ? 0 : G ? box.far / S : Math.max(box.x1 - box.x0, box.y1 - box.y0) / S;
       const gripOk = !G || (box && box.nearGrip);
       const ok = !!box && span >= min && box.n > 80 && gripOk;
@@ -61,9 +63,13 @@ export function paintSheet(opts) {
         : !gripOk ? 'Fang am Griff an (beim roten Punkt).'
           : ok ? 'Groß genug. Du kannst sichern.' : (opts.small || 'Noch zu klein. Mal größer, mindestens bis zur gestrichelten Linie.');
       save.disabled = !ok;
-      if (opts.stats) statBox.replaceChildren(...(ok ? opts.stats(info()) : []));
+      if (opts.stats) statBox.replaceChildren(...(ok ? opts.stats(info(), kind) : []));
+      const showM = kind === 'gun' && box;
+      muz.hidden = !showM; muzL.hidden = !showM;
+      if (showM) { for (const el of [muz, muzL]) { el.style.left = `${box.fx / S * 100}%`; el.style.top = `${box.fy / S * 100}%`; } }
+      placeGuide();
     }
-    const info = () => box && { n: box.n, len: box.far / S, ang: box.ang, w: (box.x1 - box.x0) / S, h: (box.y1 - box.y0) / S };
+    const info = () => box && { kind, n: box.n, len: box.far / S, ang: box.ang, w: (box.x1 - box.x0) / S, h: (box.y1 - box.y0) / S };
     const pos = (e) => { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) * S / r.width, (e.clientY - r.top) * S / r.height]; };
     const width = (ev) => (erase ? size * 2.4 : size) * (ev.pointerType === 'pen' ? 0.5 + ev.pressure : 1);
     cv.addEventListener('pointerdown', (e) => {
@@ -96,13 +102,26 @@ export function paintSheet(opts) {
       const w = Math.min(S, box.x1 + pad) - sx, hh = Math.min(S, box.y1 + pad) - sy, k = Math.min(1, 260 / Math.max(w, hh));
       const out = document.createElement('canvas'); out.width = Math.max(1, Math.round(w * k)); out.height = Math.max(1, Math.round(hh * k));
       out.getContext('2d').drawImage(cv, sx, sy, w, hh, 0, 0, out.width, out.height);
-      close({ url: out.toDataURL('image/png'), w: w / S, h: hh / S, grip: G ? [(G[0] - sx) / w, (G[1] - sy) / hh] : null, info: info() });
+      close({ url: out.toDataURL('image/png'), w: w / S, h: hh / S, grip: G ? [(G[0] - sx) / w, (G[1] - sy) / hh] : null, muzzle: G ? [(box.fx - sx) / w, (box.fy - sy) / hh] : null, kind, info: info() });
     });
-    const pad = h('div.skinpad', null, cv, h('span.skinguide' + (G ? '.round' : ''), G ? { style: { left: `${G[0] / S * 100}%`, top: `${G[1] / S * 100}%`, width: `${min * 200}%`, height: `${min * 200}%` } } : { style: { left: `${50 - min * 50}%`, top: `${50 - min * 50}%`, width: `${min * 100}%`, height: `${min * 100}%` } }));
+    const guide = h('span.skinguide' + (G ? '.round' : ''));
+    function placeGuide() {
+      const min = minOf();
+      Object.assign(guide.style, G ? { left: `${G[0] / S * 100}%`, top: `${G[1] / S * 100}%`, width: `${min * 200}%`, height: `${min * 200}%` } : { left: `${50 - min * 50}%`, top: `${50 - min * 50}%`, width: `${min * 100}%`, height: `${min * 100}%` });
+    }
+    const muz = h('span.paintmuz', { hidden: true }), muzL = h('span.paintgriplbl.muz', { text: 'Mündung', hidden: true });
+    const pad = h('div.skinpad', null, cv, guide, muz, muzL);
     if (G) pad.append(h('span.paintgrip', { style: { left: `${G[0] / S * 100}%`, top: `${G[1] / S * 100}%` } }), h('span.paintgriplbl', { text: 'Griff', style: { left: `${G[0] / S * 100}%`, top: `${G[1] / S * 100}%` } }));
     if (opts.ghost) pad.prepend(h('img.paintghost', { src: opts.ghost, alt: '' }));
+    let kindSeg = null;
+    if (opts.kinds) {
+      kindSeg = h('div.gseg.paintkind');
+      const drawKind = () => kindSeg.replaceChildren(...opts.kinds.map(([k, l]) => h('button' + (k === kind ? '.on' : ''), { text: l, on: { click: () => { kind = k; drawKind(); textEl.textContent = opts.textFor ? opts.textFor(kind) : opts.text; check(); } } })));
+      drawKind();
+    }
+    const textEl = h('p.calm', { text: opts.textFor ? opts.textFor(kind) : opts.text });
     body.append(
-      h('p.calm', { text: opts.text }),
+      kindSeg, textEl,
       pad, meter, statBox, tools,
       h('div.dlgactions', null,
         opts.old && opts.removeLabel ? h('button.btn', { text: opts.removeLabel, on: { click: () => close('remove') } }) : null,

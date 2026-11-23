@@ -1906,3 +1906,14 @@ body:has(.gamefx) .toast { z-index: 430; }
 .artime { min-width: 58px; padding: 8px 12px; border-radius: 14px; text-align: center; font: 700 24px var(--font-display); font-variant-numeric: tabular-nums; background: var(--glass); box-shadow: 0 0 0 1px var(--line), var(--shadow); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
 .artip { position: absolute; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 18px); transform: translateX(-50%); margin: 0; padding: 10px 16px; border-radius: 999px; background: var(--glass); box-shadow: 0 0 0 1px var(--line), var(--shadow); color: var(--muted); font-size: 14px; white-space: nowrap; pointer-events: none; transition: opacity .4s ease; max-width: calc(100% - 32px); overflow: hidden; text-overflow: ellipsis; }
 .artip.gone { opacity: 0; }
+.gseg.paintkind { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-bottom: 10px; }
+.paintmuz { position: absolute; width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: 50%; background: #3f6ff0; box-shadow: 0 0 0 4px rgba(63,111,240,.25); pointer-events: none; z-index: 2; }
+.paintmuz[hidden], .paintgriplbl[hidden] { display: none; }
+.paintgriplbl.muz { color: #3f6ff0; }
+.arammo { display: flex; gap: 4px; flex-wrap: wrap; }
+.arhp.r .arammo { justify-content: flex-end; }
+.arammo i { width: 7px; height: 12px; border-radius: 3px; background: var(--line); transition: background .15s ease; }
+.arammo i.on { background: var(--ink); }
+.arammo.reload i { animation: gblink .5s ease-in-out infinite alternate; }
+@keyframes gblink { to { background: var(--muted); } }
+.arcardhead .gtag { margin-left: auto; flex: none; }
