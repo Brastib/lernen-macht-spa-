@@ -135,10 +135,14 @@ const writeDraft = (d) => { try { localStorage.setItem(DRAFT, JSON.stringify({ .
 const dropDraft = () => { try { localStorage.removeItem(DRAFT); } catch (e) { /* egal */ } };
 
 // Adresse ergänzen: „vertretung.x.workers.dev“ → „https://vertretung.x.workers.dev“
+// Kurzform reicht: „deinname“ → https://vertretung.deinname.workers.dev (Worker-Name aus der Anleitung)
 export function cleanUrl(v) {
-  let u = String(v || '').trim().replace(/[\s<>"']/g, '');
-  if (u && !/^https?:\/\//i.test(u) && /\./.test(u)) u = 'https://' + u;
-  return u.replace(/^http:\/\//i, 'https://');
+  let u = String(v || '').trim().replace(/[\s<>"']/g, '').replace(/\/+$/, '');
+  if (!u) return '';
+  if (/^[a-z0-9-]+$/i.test(u)) u = `vertretung.${u}.workers.dev`;
+  else if (/^vertretung\.[a-z0-9-]+$/i.test(u)) u = `${u}.workers.dev`;
+  if (!/^https?:\/\//i.test(u) && /\./.test(u)) u = 'https://' + u;
+  return u.replace(/^http:\/\//i, 'https://').toLowerCase();
 }
 // Aus einem eingefügten Text Adresse und Schlüssel herausholen
 export function splitPaste(text) {
@@ -168,17 +172,20 @@ export async function vplanSetup(after) {
   let hideRef = null;
   const res = await sheet('Vertretungsplan verbinden', (body, close) => {
     const field = (id, ph, value, type = 'text') => h('input.field', { type, id, placeholder: ph, value: value || '', autocomplete: 'off', autocapitalize: 'off', autocorrect: 'off', spellcheck: 'false' });
-    const url = field('vpUrl', 'https://vertretung.DEINNAME.workers.dev', cur.url, 'url');
+    const url = field('vpUrl', 'z. B. deinname', cur.url, 'url');
     const key = field('vpKey', 'dein App-Schlüssel', cur.key);
     const kl = field('vpKl', 'z. B. 8b (optional)', cur.klasse);
     const both = h('textarea.field.vpboth', { id: 'vpBoth', rows: '2', placeholder: 'Adresse und Schlüssel zusammen', autocomplete: 'off', autocapitalize: 'off', autocorrect: 'off', spellcheck: 'false' });
     const status = h('p.calm.small', { text: draft ? 'Deine Eingaben von eben sind noch da.' : '' });
+    const urlHint = h('p.calm.small.vphint', { text: '' });
+    const showHint = () => { const c = cleanUrl(url.value); urlHint.textContent = c && c !== url.value.trim() ? 'Wird zu: ' + c : ''; };
+    url.addEventListener('input', showHint); showHint();
     const save = () => writeDraft({ open: true, url: url.value, key: key.value, klasse: kl.value });
     hideRef = () => { if (document.hidden) save(); };
     document.addEventListener('visibilitychange', hideRef);
     save();
     for (const el of [url, key, kl]) el.addEventListener('input', save);
-    url.addEventListener('blur', () => { url.value = cleanUrl(url.value); save(); });
+    url.addEventListener('blur', () => { url.value = cleanUrl(url.value); showHint(); save(); });
     const fromBoth = (text) => {
       const p = splitPaste(text);
       if (p.url) url.value = p.url;
@@ -209,7 +216,7 @@ export async function vplanSetup(after) {
     body.append(
       h('p.dlgtext', { text: 'Die App holt den Plan über deinen eigenen Cloudflare Worker. Du kannst ruhig zum Kopieren in eine andere App wechseln: Deine Eingaben bleiben, und dieses Fenster geht beim Zurückkommen wieder auf.' }),
       h('label.fieldlabel', { for: 'vpBoth', text: 'Beides auf einmal (optional)' }), row(both, 'Adresse und Schlüssel'),
-      h('label.fieldlabel', { for: 'vpUrl', text: 'Adresse des Workers' }), row(url, 'Adresse'),
+      h('label.fieldlabel', { for: 'vpUrl', text: 'Adresse des Workers (dein Cloudflare-Name reicht)' }), row(url, 'Adresse'), urlHint,
       h('label.fieldlabel', { for: 'vpKey', text: 'App-Schlüssel (derselbe wie APP_SCHLUESSEL im Worker)' }), row(key, 'Schlüssel'),
       h('label.fieldlabel', { for: 'vpKl', text: 'Deine Klasse (nur nötig, falls deine Schule den ganzen Plan zeigt)' }), kl,
       status,
