@@ -2479,3 +2479,14 @@ textarea.field.vpboth { min-height: 64px; padding: 12px 14px; resize: vertical; 
 .ttpause small { font-size: 12px; font-variant-numeric: tabular-nums; }
 .timerow.withpause { grid-template-columns: 28px 1fr auto 1fr auto; }
 .ttpzlabel { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); white-space: nowrap; }
+
+/* Paket 7: Kritzel-Parkour */
+.pkfield { flex: 1; min-height: 0; min-width: 0; display: flex; position: relative; border-radius: 14px; overflow: hidden; }
+.pkctrl { display: flex; justify-content: space-between; gap: 12px; padding-bottom: calc(env(safe-area-inset-bottom) + 4px); }
+.pkgrp { display: flex; gap: 10px; }
+.pkbtn { width: 84px; height: 72px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border-radius: 18px; background: var(--surface); box-shadow: inset 0 0 0 2px var(--line); color: inherit; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.pkbtn svg { width: 26px; height: 26px; }
+.pkbtn small { font-size: 11px; color: var(--muted); }
+.pkbtn.on { background: var(--accent); color: #fff; box-shadow: none; }
+.pkbtn.on small { color: rgba(255,255,255,.85); }
+@media (max-width: 520px) { .pkbtn { width: 68px; height: 62px; } .pkgrp { gap: 6px; } }
