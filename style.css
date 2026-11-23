@@ -2434,3 +2434,35 @@ html.fxopen, html.fxopen body, html:has(> body > .gamefx), html:has(> body > .ga
 .sedmsg { color: #c0392b; font-size: 13px; overflow-wrap: anywhere; min-height: 2.6em; }
 .sedmsg.ok { color: #2f9e5f; }
 @media (max-width: 700px) { .sedmain { grid-template-columns: 1fr; } }
+
+/* Paket 7: Galgenmännchen */
+.hgpick { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; width: 100%; max-width: 680px; align-self: center; box-sizing: border-box; margin: 0 auto; padding: 16px 16px calc(env(safe-area-inset-bottom) + 16px); }
+.hgpick h3 { margin: 4px 0; font-size: 20px; }
+.hgsrc { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 6px; border-radius: 18px; background: var(--surface); box-shadow: 0 0 0 1px var(--line); }
+.hgsrc.on { box-shadow: 0 0 0 2px var(--accent); }
+.hgsrcbtn { flex: 1 1 260px; display: flex; align-items: center; gap: 12px; min-width: 0; padding: 8px; border-radius: 14px; background: transparent; color: inherit; text-align: left; }
+.hgsrctx { display: flex; flex-direction: column; min-width: 0; }
+.hgsrctx small { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+.hgedit { margin: 0 8px 0 auto; }
+.hgta { width: 100%; min-height: 200px; resize: vertical; font: inherit; font-size: 16px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--bg); color: inherit; box-sizing: border-box; }
+.hgcount { color: var(--muted); font-size: 13px; }
+.hgsecrow { display: flex; gap: 8px; }
+.hgsecrow .input { flex: 1; min-width: 0; }
+.hgsecret:not(.shown) { -webkit-text-security: disc; }
+.hgwrap .hghint { overflow-wrap: anywhere; }
+.hgboard { flex: 1; min-height: 160px; min-width: 0; position: relative; display: flex; }
+.hgkeys { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px calc(env(safe-area-inset-bottom) + 10px); align-items: center; }
+.hgkeys.done { display: none; }
+.hgrow { display: flex; gap: 6px; width: min(100%, 760px); justify-content: center; }
+.hgkey { flex: 1 1 0; min-width: 0; max-width: 62px; height: 50px; border-radius: 12px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); color: inherit; font: 700 20px "Noteworthy","Marker Felt","Segoe Print",system-ui,sans-serif; padding: 0; }
+.hgkey.hit { background: color-mix(in srgb, #2f9e5f 22%, var(--surface)); box-shadow: inset 0 0 0 2px #2f9e5f; opacity: .75; }
+.hgkey.miss { background: color-mix(in srgb, #e0483e 16%, var(--surface)); box-shadow: inset 0 0 0 2px #e0483e; text-decoration: line-through; opacity: .6; }
+.hgres { display: none; padding: 8px 12px calc(env(safe-area-inset-bottom) + 12px); }
+.hgres.on { display: block; }
+.hgresbox { display: flex; align-items: center; gap: 12px; width: min(760px, 100%); margin: 0 auto; padding: 10px 12px; border-radius: 16px; background: var(--surface); box-shadow: 0 0 0 2px var(--line); }
+.hgresbox.ok { box-shadow: 0 0 0 2px #2f9e5f; }
+.hgresbox.bad { box-shadow: 0 0 0 2px #e0483e; }
+.hgresbox.ok > span:first-child { color: #2f9e5f; }
+.hgresbox.bad > span:first-child { color: #e0483e; }
+.hgrestx { flex: 1; min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
+@media (max-width: 520px) { .hgkey { height: 44px; font-size: 17px; } .hgrow { gap: 4px; } }

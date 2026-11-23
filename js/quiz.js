@@ -12,13 +12,13 @@ const TIME = 15;   // Sekunden pro Frage
 const shuffle = (a) => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 
 // Welche Stapel? Gibt { deckIds, label } zurück
-export async function pickSource({ title = 'Quiz: Welches Thema?', okLabel = 'Weiter' } = {}) {
+export async function pickSource({ title = 'Quiz: Welches Thema?', okLabel = 'Weiter', min = 4, text = 'Das Quiz nimmt die Fragen aus deinen Lernkarten. Für eine Arbeit wählst du die passenden Stapel.', key = 'gQuiz' } = {}) {
   const [subjects, decks, cards] = await Promise.all([db.listSubjects(), db.listDecks(), db.listCards()]);
   const count = new Map();
   for (const c of cards) if (c.front && c.back) count.set(c.deckId, (count.get(c.deckId) || 0) + 1);
   const usable = decks.filter((d) => (count.get(d.id) || 0) >= 1);
   if (!usable.length) { toast('Leg zuerst Lernkarten an (im Fach unter „Lernkarten“). Daraus macht die App das Quiz.', 5000); return null; }
-  const last = store.get('gQuiz', null);
+  const last = store.get(key, null);
   const sel = new Set((last && last.deckIds || []).filter((id) => usable.some((d) => d.id === id)));
   return sheet(title, (body, close) => {
     const total = h('p.qtotal');
@@ -30,16 +30,16 @@ export async function pickSource({ title = 'Quiz: Welches Thema?', okLabel = 'We
             h('button.pchip' + (sel.has(d.id) ? '.on' : ''), { style: { '--c': s.color }, on: { click: () => { if (sel.has(d.id)) sel.delete(d.id); else sel.add(d.id); draw(); } } },
               h('span', { text: d.title }), h('small.qn', { text: String(count.get(d.id)) })))))));
       const n = [...sel].reduce((a, id) => a + (count.get(id) || 0), 0);
-      total.textContent = sel.size ? `${plural(n, 'Karte', 'Karten')} ausgewählt` + (n < 4 ? ' · für Auswahl-Antworten braucht es mindestens 4' : '') : 'Tippe einen oder mehrere Stapel an.';
-      ok.disabled = n < 4;
+      total.textContent = sel.size ? `${plural(n, 'Karte', 'Karten')} ausgewählt` + (n < min ? ` · es braucht mindestens ${min}` : '') : 'Tippe einen oder mehrere Stapel an.';
+      ok.disabled = n < min;
     };
     const ok = h('button.btn.primary', { text: okLabel, on: { click: () => {
       const ids = [...sel];
       const label = ids.map((id) => usable.find((d) => d.id === id).title).join(', ');
-      store.set('gQuiz', { deckIds: ids, label });
+      store.set(key, { deckIds: ids, label });
       close({ deckIds: ids, label });
     } } });
-    body.append(h('p.dlgtext', { text: 'Das Quiz nimmt die Fragen aus deinen Lernkarten. Für eine Arbeit wählst du die passenden Stapel.' }), list, total,
+    body.append(h('p.dlgtext', { text }), list, total,
       h('div.dlgactions', null, h('button.btn', { text: 'Abbrechen', on: { click: () => close(null) } }), ok));
     draw();
   }, { wide: true });
