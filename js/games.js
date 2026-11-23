@@ -42,9 +42,10 @@ export const GAMES = {
   wall: { name: 'Mauerlauf', icon: 'wall', sub: 'Schritt oder Mauer: wer kommt zuerst rüber?', run: (...a) => import('./wall.js').then((m) => m.wallGame(...a)) },
   hang: { name: 'Galgenmännchen', icon: 'gallows', sub: 'Wörter raten, auch eigene Vokabeln', run: (...a) => import('./p7a.js').then((m) => m.hangman(...a)) },
   parkour: { name: 'Kritzel-Parkour', icon: 'parkour', sub: 'Hindernis-Kurs auf Zeit', run: (...a) => import('./p7b.js').then((m) => m.parkour(...a)) },
+  erasers: { name: 'Radierer-Rabatz', icon: 'eraser', sub: 'Teams auf der Papier-Insel, reihum zielen', run: (...a) => import('./p7c.js').then((m) => m.eraserWar(...a)) },
   quiz: { name: 'Quiz', icon: 'cards', sub: 'Wer kann den Stoff? Fragen aus euren Lernkarten', run: (...a) => import('./quiz.js').then((m) => m.quizDuel(...a)) },
 };
-const MIX = ['ttt', 'wind', 'stack', 'four', 'pong', 'run', 'react', 'snake', 'plane', 'boxes', 'hockey', 'wall', 'trail', 'double', 'blocks', 'brick', 'golf', 'tanks', 'paint', 'ships', 'pool', 'kick', 'bombs', 'race', 'sumo', 'archery', 'space', 'tower', 'dame', 'muehle', 'flipper', 'hang', 'parkour', 'arena'];
+const MIX = ['ttt', 'wind', 'stack', 'four', 'pong', 'run', 'react', 'snake', 'plane', 'boxes', 'hockey', 'wall', 'trail', 'double', 'blocks', 'brick', 'golf', 'tanks', 'paint', 'ships', 'pool', 'kick', 'bombs', 'race', 'sumo', 'archery', 'space', 'tower', 'dame', 'muehle', 'flipper', 'hang', 'parkour', 'erasers', 'arena'];
 
 const players = () => store.get('gPlayers', []);
 const names = () => store.get('gNames', []);
@@ -157,7 +158,8 @@ export async function renderGames(ctx) {
     soloTile('mill', 'Mühle', 'Gegen den Computer', () => vsCpu('muehle')),
     soloTile('pinball', 'Kritzelflipper', best('gFlipBest') ? `Dein Rekord: ${best('gFlipBest')} Punkte` : '3 Kugeln, so viele Punkte wie möglich', () => soloScore('flipper')),
     soloTile('gallows', 'Galgenmännchen', best('gHangBest') ? `Dein Rekord: ${best('gHangBest')} Wörter am Stück` : 'Wörter raten, auch eigene Vokabeln', () => soloScore('hang')),
-    soloTile('parkour', 'Kritzel-Parkour', best('gParkBest') ? `Dein Rekord: ${String(best('gParkBest')).replace('.', ',')} s` : 'Hindernis-Kurs so schnell wie möglich', () => soloScore('parkour'))));
+    soloTile('parkour', 'Kritzel-Parkour', best('gParkBest') ? `Dein Rekord: ${String(best('gParkBest')).replace('.', ',')} s` : 'Hindernis-Kurs so schnell wie möglich', () => soloScore('parkour')),
+    soloTile('eraser', 'Radierer-Rabatz', 'Dein Team gegen den Computer', () => vsCpu('erasers'))));
 
   // Duelle
   view.append(h('h2.section', { text: 'Duell zu zweit' }), h('div.ptiles.gtiles', null,
@@ -213,7 +215,7 @@ function playerSheet(title, { withGame = false, okLabel = 'Sichern' } = {}) {
       list, dl);
     if (withGame) {
       const seg = h('div.gseg.gseg6');
-      const opts = [['ttt', 'Tic-Tac-Toe'], ['wind', 'Windflug'], ['plane', 'Flieger'], ['arena', 'Strichkampf'], ['stack', 'Hochstapler'], ['run', 'Kritzelsprint'], ['react', 'Reaktion'], ['four', 'Vier in Reihe'], ['boxes', 'Kästchen'], ['pong', 'Tischtennis'], ['hockey', 'Lufthockey'], ['snake', 'Schlangen'], ['trail', 'Leuchtspur'], ['double', 'Verdoppler'], ['blocks', 'Klötzchen'], ['brick', 'Blockknacker'], ['golf', 'Kritzelgolf'], ['tanks', 'Panzer'], ['paint', 'Malraten'], ['ships', 'Schiffe'], ['pool', 'Billard'], ['kick', 'Kritzelkick'], ['bombs', 'Bomben'], ['race', 'Rennen'], ['sumo', 'Kissenschlacht'], ['archery', 'Windbogen'], ['space', 'Sternenduell'], ['tower', 'Burgwache'], ['dame', 'Dame'], ['muehle', 'Mühle'], ['flipper', 'Flipper'], ['hang', 'Galgenmännchen'], ['parkour', 'Parkour'], ['chess', 'Schach'], ['wall', 'Mauerlauf'], ['quiz', 'Quiz'], ['mix', 'Gemischt']];
+      const opts = [['ttt', 'Tic-Tac-Toe'], ['wind', 'Windflug'], ['plane', 'Flieger'], ['arena', 'Strichkampf'], ['stack', 'Hochstapler'], ['run', 'Kritzelsprint'], ['react', 'Reaktion'], ['four', 'Vier in Reihe'], ['boxes', 'Kästchen'], ['pong', 'Tischtennis'], ['hockey', 'Lufthockey'], ['snake', 'Schlangen'], ['trail', 'Leuchtspur'], ['double', 'Verdoppler'], ['blocks', 'Klötzchen'], ['brick', 'Blockknacker'], ['golf', 'Kritzelgolf'], ['tanks', 'Panzer'], ['paint', 'Malraten'], ['ships', 'Schiffe'], ['pool', 'Billard'], ['kick', 'Kritzelkick'], ['bombs', 'Bomben'], ['race', 'Rennen'], ['sumo', 'Kissenschlacht'], ['archery', 'Windbogen'], ['space', 'Sternenduell'], ['tower', 'Burgwache'], ['dame', 'Dame'], ['muehle', 'Mühle'], ['flipper', 'Flipper'], ['hang', 'Galgenmännchen'], ['parkour', 'Parkour'], ['erasers', 'Radierer'], ['chess', 'Schach'], ['wall', 'Mauerlauf'], ['quiz', 'Quiz'], ['mix', 'Gemischt']];
       const drawSeg = () => seg.replaceChildren(...opts.map(([k, l]) => h('button' + (k === game ? '.on' : ''), { text: l, on: { click: () => { game = k; drawSeg(); } } })));
       drawSeg();
       const pw = h('label.gswitch', null, h('span', null, h('b', { text: 'Power-ups beim Papierflieger' }), h('small', { text: 'Vor jedem Wurf eins aus drei wählen, dazu Kugeln in der Luft' })),
