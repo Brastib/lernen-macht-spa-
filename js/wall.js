@@ -43,6 +43,26 @@ export function pathLen(walls, from, who) {
   }
   return -1;
 }
+// Computer: läuft den kürzesten Weg. Ist der Gegner näher am Ziel, setzt er eine Mauer, die ihn am meisten aufhält.
+export function cpuMove(st, me) {
+  const foe = 1 - me;
+  const myLen = pathLen(st.walls, st.pos[me], me), foeLen = pathLen(st.walls, st.pos[foe], foe);
+  if (st.left[me] > 0 && (foeLen < myLen || (foeLen <= 3 && foeLen <= myLen)) && Math.random() < 0.85) {
+    let best = null, gain = 0;
+    const [fr, fc] = st.pos[foe];
+    for (const o of 'hv') for (let r = Math.max(0, fr - 3); r <= Math.min(N - 2, fr + 2); r++) for (let c = Math.max(0, fc - 3); c <= Math.min(N - 2, fc + 2); c++) {
+      const w = `${o} ${r} ${c}`;
+      if (wallProblem(st, w)) continue;
+      const nw = new Set(st.walls.keys()); nw.add(w);
+      const g = (pathLen(nw, st.pos[foe], foe) - foeLen) - (pathLen(nw, st.pos[me], me) - myLen) * 0.8;
+      if (g > gain) { gain = g; best = w; }
+    }
+    if (best) return { wall: best };
+  }
+  let to = null, bl = Infinity;
+  for (const m of moves(st, me)) { const l = m[0] === goalRow(me) ? -1 : pathLen(st.walls, m, me); if (l >= 0 && l < bl || l === -1) { if (l === -1) return { to: m }; bl = l; to = m; } }
+  return { to: to || moves(st, me)[0] };
+}
 // Darf die Mauer hier hin? Gibt Grund zurück, wenn nicht.
 export function wallProblem(st, w) {
   const [o, r, c] = w.split(' '), R = +r, C = +c;
@@ -55,8 +75,9 @@ export function wallProblem(st, w) {
   return null;
 }
 
-export function wallGame(fx, A, B) {
+export function wallGame(fx, A, B, o = {}) {
   return new Promise((resolve) => {
+    const cpu = o.cpu ? 1 : null;
     const P = [A, B];
     const st = { pos: [[N - 1, 4], [0, 4]], walls: new Map(), left: [WALLS, WALLS], turn: 0 };
     let mode = 'go', ghost = null, over = false;
@@ -121,14 +142,14 @@ export function wallGame(fx, A, B) {
       place.disabled = !ghost || !!wallProblem(st, ghost);
       if (!over) msg.textContent = mode === 'wall'
         ? (ghost ? (wallProblem(st, ghost) || 'Passt. Tippe „Mauer setzen“ oder noch mal auf die Mauer.') : 'Tippe zwischen zwei Felder, wo die Mauer hin soll.')
-        : `${P[st.turn].name} ist dran: einen Schritt gehen oder eine Mauer setzen.`;
+        : st.turn === cpu ? 'Computer überlegt …' : `${P[st.turn].name} ist dran: einen Schritt gehen oder eine Mauer setzen.`;
     }
     function toBoard(e) {
       const r = svg.getBoundingClientRect(), k = W / r.width;
       return [(e.clientX - r.left) * k - PAD, (e.clientY - r.top) * k - PAD];
     }
     svg.addEventListener('pointerdown', (e) => {
-      if (over || fx.signal.aborted) return;
+      if (over || fx.signal.aborted || st.turn === cpu) return;
       e.preventDefault();
       const [x, y] = toBoard(e);
       if (mode === 'go') {
@@ -157,7 +178,18 @@ export function wallGame(fx, A, B) {
       ghost = null; mode = 'go';
       next();
     }
-    function next() { st.turn = 1 - st.turn; if (mode === 'wall' && !st.left[st.turn]) mode = 'go'; ghost = null; render(); }
+    function next() {
+      st.turn = 1 - st.turn; if (mode === 'wall' && !st.left[st.turn]) mode = 'go'; ghost = null; render();
+      if (st.turn === cpu && !over) setTimeout(cpuTurn, 550);
+    }
+    function cpuTurn() {
+      if (over || fx.signal.aborted) return;
+      const m = cpuMove(st, cpu);
+      if (m.wall) { st.walls.set(m.wall, cpu); st.left[cpu]--; next(); return; }
+      st.pos[cpu] = m.to;
+      if (m.to[0] === goalRow(cpu)) return finish(cpu);
+      next();
+    }
     function finish(w) {
       over = true; render();
       msg.textContent = `${P[w].name} ist auf der anderen Seite angekommen!`;

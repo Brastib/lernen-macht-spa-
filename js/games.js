@@ -92,11 +92,16 @@ export async function renderGames(ctx) {
     h('button.btn.primary', { text: 'Quiz starten', on: { click: () => import('./quiz.js').then((m) => m.quizSolo()) } })));
 
   // Allein spielen
+  const best = (k) => store.get(k, 0);
+  const soloTile = (ic, name, sub, go) => h('button.ptile', { on: { click: go } }, h('span.ptileic', null, icon(ic)), h('b', { text: name }), h('small', { text: sub }));
   view.append(h('h2.section', { text: 'Allein spielen' }), h('div.ptiles.gtiles', null,
-    h('button.ptile', { on: { click: () => soloStack() } }, h('span.ptileic', null, icon('stack')), h('b', { text: 'Hochstapler' }),
-      h('small', { text: store.get('gStackBest', 0) ? `Dein Rekord: ${store.get('gStackBest', 0)} Blöcke` : 'So hoch stapeln, wie du kannst' })),
-    h('button.ptile', { on: { click: () => soloChess() } }, h('span.ptileic', null, icon('chess')), h('b', { text: 'Schach gegen Computer' }),
-      h('small', { text: 'Leicht, Mittel oder Schwer' }))));
+    soloTile('wind', 'Windflug', best('gWindBest') ? `Dein Rekord: ${best('gWindBest')} Punkte` : 'So weit fliegen, wie du kannst', () => soloScore('wind')),
+    soloTile('plane', 'Papierflieger', best('gPlaneBest') ? `Dein Rekord: ${String(best('gPlaneBest')).replace('.', ',')} m` : 'Wie weit fliegt dein Flieger?', () => soloScore('plane')),
+    soloTile('stack', 'Hochstapler', best('gStackBest') ? `Dein Rekord: ${best('gStackBest')} Blöcke` : 'So hoch stapeln, wie du kannst', () => soloStack()),
+    soloTile('ttt', 'Tic-Tac-Toe', 'Gegen den Computer', () => vsCpu('ttt')),
+    soloTile('sword', 'Strichkampf', 'Dein Kämpfer gegen den Computer', () => vsCpu('arena')),
+    soloTile('chess', 'Schach', 'Gegen den Computer: Leicht, Mittel, Schwer', () => soloChess()),
+    soloTile('wall', 'Mauerlauf', 'Gegen den Computer', () => vsCpu('wall'))));
 
   // Duelle
   view.append(h('h2.section', { text: 'Duell zu zweit' }), h('div.ptiles.gtiles', null,
@@ -279,6 +284,49 @@ async function freeDuel(key, after) {
 
 // ---------- Allein spielen ----------
 const me = () => players()[0] || { name: 'Du', color: COLORS[0] };
+const CPU = { name: 'Computer', color: '#8a8f98' };
+// Rekord-Spiele: Windflug und Papierflieger allein
+const SOLO = {
+  wind: { title: 'Windflug', key: 'gWindBest', run: (fx, p) => windflug(fx, p, null), fmt: (x) => `${x} ${x === 1 ? 'Punkt' : 'Punkte'}` },
+  plane: { title: 'Papierflieger', key: 'gPlaneBest', run: (fx, p) => planeDuel(fx, p, null), fmt: (x) => x.toFixed(1).replace('.', ',') + ' m' },
+};
+async function soloScore(k) {
+  const g = SOLO[k], p = me();
+  const fx = openFx(g.title, 'Allein · neuer Rekord?');
+  for (;;) {
+    fx.stage.replaceChildren();
+    const r = await g.run(fx, p);
+    if (!r || fx.signal.aborted) return;
+    const old = store.get(g.key, 0), rec = r.score > old;
+    if (rec) store.set(g.key, r.score);
+    const again = await new Promise((res) => {
+      fx.stage.querySelectorAll('.gres').forEach((el) => el.remove());
+      fx.stage.append(h('div.gres', null, h('div.grescard', null,
+        h('span.gresic', { style: { color: rec ? '#e0a106' : p.color } }, icon(rec ? 'trophy' : k)),
+        h('b', { text: g.fmt(r.score) }),
+        h('small', { text: rec ? (old ? `Neuer Rekord! Vorher ${g.fmt(old)}.` : 'Dein erster Rekord.') : old ? `Rekord: ${g.fmt(old)}` : 'Noch kein Rekord. Versuch es nochmal!' }),
+        h('div.gresbtns', null, h('button.btn', { text: 'Fertig', on: { click: () => res(false) } }), h('button.btn.primary', { text: 'Nochmal', on: { click: () => res(true) } })))));
+    });
+    if (!again) { fx.close(); return; }
+  }
+}
+// Gegen den Computer (Tic-Tac-Toe, Strichkampf, Mauerlauf)
+async function vsCpu(k) {
+  const g = GAMES[k], p = me();
+  const fx = openFx(g.name, 'gegen den Computer');
+  if (k === 'arena') {   // Computer bekommt jedes Mal eine zufällige fertige Waffe, man kann sie in der Vorbereitung ändern
+    const { PRESET_IDS } = await import('./weapons.js');
+    try { const all = JSON.parse(localStorage.getItem('gFighters') || '{}'); const c = all.computer || {}; c.weap = { preset: PRESET_IDS[(Math.random() * PRESET_IDS.length) | 0] }; all.computer = c; localStorage.setItem('gFighters', JSON.stringify(all)); } catch (e) { /* egal */ }
+  }
+  const aborted = new Promise((r) => { fx.onClose = () => r(null); });
+  for (;;) {
+    fx.stage.replaceChildren();
+    const res = await Promise.race([g.run(fx, p, CPU, { cpu: 1 }), aborted]);
+    if (!res || fx.signal.aborted) return;
+    const next = await Promise.race([resultCard(fx, res, p, CPU, false), aborted]);
+    if (next !== 'again') { fx.close(); return; }
+  }
+}
 async function soloStack() {
   const fx = openFx('Hochstapler', 'Allein · so hoch wie möglich');
   const m = await import('./stack.js');
@@ -365,16 +413,33 @@ function resultCard(fx, res, A, B, tour) {
 }
 
 // ---------- Tic-Tac-Toe ----------
+// Computer: meistens der beste Zug (Minimax), manchmal ein zufälliger, damit man auch gewinnen kann
+function tttMove(cells, me) {
+  const free = cells.map((c, i) => (c == null ? i : -1)).filter((i) => i >= 0);
+  if (Math.random() < 0.22) return free[(Math.random() * free.length) | 0];
+  const win = (b, w) => LINES.some((l) => l.every((k) => b[k] === w));
+  const mm = (b, t) => {
+    if (win(b, me)) return 1; if (win(b, 1 - me)) return -1;
+    const f = b.map((c, i) => (c == null ? i : -1)).filter((i) => i >= 0);
+    if (!f.length) return 0;
+    const vals = f.map((i) => { b[i] = t; const v = mm(b, 1 - t); b[i] = null; return v; });
+    return t === me ? Math.max(...vals) : Math.min(...vals);
+  };
+  let best = free[0], bv = -2;
+  for (const i of free.sort(() => Math.random() - 0.5)) { const b = cells.slice(); b[i] = me; const v = mm(b, 1 - me); if (v > bv) { bv = v; best = i; } }
+  return best;
+}
 const LINES = [[0, 1, 2], [3, 4, 5], [6, 7, 8], [0, 3, 6], [1, 4, 7], [2, 5, 8], [0, 4, 8], [2, 4, 6]];
-function ticTacToe(fx, A, B) {
+function ticTacToe(fx, A, B, o = {}) {
   return new Promise((resolve) => {
+    const cpu = o.cpu ? 1 : null;
     const cells = Array(9).fill(null);
     let turn = 0, over = false;
     const pa = h('span.gturn', null, dot(A), h('b', { text: A.name }), h('small', { text: '✕' }));
     const pb = h('span.gturn', null, dot(B), h('b', { text: B.name }), h('small', { text: '◯' }));
     const msg = h('p.gmsg');
     const board = h('div.tttboard');
-    const btns = cells.map((_, i) => h('button.tttcell', { 'aria-label': `Feld ${i + 1}`, on: { click: () => play(i) } }));
+    const btns = cells.map((_, i) => h('button.tttcell', { 'aria-label': `Feld ${i + 1}`, on: { click: () => { if (turn !== cpu) play(i); } } }));
     board.append(...btns);
     fx.stage.append(h('div.tttwrap', null, h('div.gturns', null, pa, pb), board, msg));
     const svg = (p, who) => {
@@ -398,6 +463,7 @@ function ticTacToe(fx, A, B) {
       if (line) return end(turn, line);
       if (cells.every((c) => c != null)) return end(null);
       turn = 1 - turn; show();
+      if (turn === cpu) setTimeout(() => { if (!over && !fx.signal.aborted) play(tttMove(cells, cpu)); }, 450);
     }
     function end(w, line) {
       over = true; show();
@@ -483,7 +549,7 @@ function windflug(fx, A, B) {
       card.replaceChildren(h('div.grescard', null,
         h('span.gresic', { style: { color: p.color } }, icon('wind')),
         h('b', { text: `${p.name} ist dran` }),
-        h('small', { text: who ? `Zu schlagen: ${scores[0]} ${scores[0] === 1 ? 'Punkt' : 'Punkte'}` : 'Tippe auf den Bildschirm oder drücke die Leertaste, damit der Flieger steigt. Weich den Stiften und Büchern aus.' }),
+        h('small', { text: !B && store.get('gWindBest', 0) ? `Dein Rekord: ${store.get('gWindBest', 0)} Punkte. Tippe oder drücke die Leertaste, damit der Flieger steigt.` : who ? `Zu schlagen: ${scores[0]} ${scores[0] === 1 ? 'Punkt' : 'Punkte'}` : 'Tippe auf den Bildschirm oder drücke die Leertaste, damit der Flieger steigt. Weich den Stiften und Büchern aus.' }),
         h('div.gresbtns', null,
           h('button.btn', { on: { click: async (e) => { e.stopPropagation(); if (await skinEditor(p)) turnCard(); } } }, skinOf(p.name) ? 'Skin ändern' : 'Skin malen'),
           h('button.btn.primary', { text: 'Start', on: { click: (e) => { e.stopPropagation(); begin(); } } }))));
@@ -502,6 +568,7 @@ function windflug(fx, A, B) {
       scores.push(st.pts);
       setTimeout(() => {
         if (fx.signal.aborted) return;
+        if (!B) { cleanup(); resolve({ score: scores[0] }); return; }
         if (who === 0) { who = 1; turnCard(); return; }
         cleanup();
         const [a, b] = scores;
@@ -646,7 +713,7 @@ async function planeDuel(fx, A, B, o = {}) {
   const dist = [];
   let power = o.power != null ? o.power : store.get('gPower', true);
   const free = o.power == null;
-  for (const [i, p] of [A, B].entries()) {
+  for (const [i, p] of [A, B].filter(Boolean).entries()) {
     const offer = [...POWER_IDS].sort(() => Math.random() - 0.5).slice(0, 3);
     let pick = offer[0];
     const r0 = await new Promise((r) => {
@@ -654,7 +721,7 @@ async function planeDuel(fx, A, B, o = {}) {
       const draw = () => card.replaceChildren(
         h('span.gresic', { style: { color: p.color } }, icon('plane')),
         h('b', { text: `${p.name} wirft` }),
-        h('small', { text: i ? `Zu schlagen: ${fmt(dist[0])}` : 'Jeder hat einen Wurf. Der weiteste Flieger gewinnt.' }),
+        h('small', { text: i ? `Zu schlagen: ${fmt(dist[0])}` : !B ? (store.get('gPlaneBest', 0) ? `Dein Rekord: ${fmt(store.get('gPlaneBest', 0))}` : 'Ein Wurf, so weit wie möglich.') : 'Jeder hat einen Wurf. Der weiteste Flieger gewinnt.' }),
         free ? h('label.gswitch.small', null, h('span', null, h('b', { text: 'Power-ups' })), h('input', { type: 'checkbox', checked: power, on: { change: (e) => { power = e.target.checked; store.set('gPower', power); draw(); } } })) : null,
         power ? h('p.glabel', { text: 'Such dir ein Power-up aus' }) : null,
         power ? h('div.pdpicks', null, ...offer.map((id) => h('button.pdpick' + (id === pick ? '.on' : ''), { style: { '--pc': POWERS[id].color }, on: { click: () => { pick = id; draw(); } } },
@@ -670,5 +737,6 @@ async function planeDuel(fx, A, B, o = {}) {
     dist.push(Math.round(m * 10) / 10);
   }
   const [a, b] = dist;
+  if (!B) return { score: a };
   return { w: a > b ? 0 : b > a ? 1 : null, detail: `${fmt(a)} : ${fmt(b)}` };
 }
