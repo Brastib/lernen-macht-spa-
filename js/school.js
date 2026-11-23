@@ -46,7 +46,7 @@ const dayIdx = (d = new Date()) => (d.getDay() + 6) % 7;   // Mo = 0
 
 // Was ist jetzt dran, was als Nächstes? Gibt { now, next } mit { day, p, cell, start, end } zurück
 export function nowNext(tt, at = new Date()) {
-  const has = (d, p) => tt.cells[`${d}-${p}`] && tt.cells[`${d}-${p}`].subjectId;
+  const has = (d, p) => !(tt.periods[p] && tt.periods[p].pause) && tt.cells[`${d}-${p}`] && tt.cells[`${d}-${p}`].subjectId;
   const m = at.getHours() * 60 + at.getMinutes();
   const today = dayIdx(at);
   let now = null, next = null;
@@ -82,6 +82,7 @@ export async function renderTimetable(ctx) {
       { label: 'Stunde hinzufügen', icon: 'plus', onClick: async () => { const l = tt.periods[tt.periods.length - 1]; const e = mins(l.e); tt.periods.push({ s: hm(e), e: hm(e + 45) }); await saveTT(tt); again(); } },
       { label: 'Letzte Stunde entfernen', icon: 'trash', onClick: async () => { if (tt.periods.length > 1) { tt.periods.pop(); await saveTT(tt); again(); } } },
       { label: tt.days === 6 ? 'Ohne Samstag' : 'Mit Samstag', icon: 'list', onClick: async () => { tt.days = tt.days === 6 ? 5 : 6; await saveTT(tt); again(); } },
+      { label: 'Mittagspause einfügen', icon: 'clock', onClick: () => insertPause(tt, again) },
       { label: 'Vertretungsplan verbinden', icon: 'list', onClick: () => vplanSetup(again) },
     ])), ctx.btn('Nachhilfe', 'plus', () => editTutoring(tt, null, subjects, again)) ],
   });
@@ -99,6 +100,12 @@ export async function renderTimetable(ctx) {
   grid.append(h('div.tthead.corner'));
   for (let d = 0; d < tt.days; d++) grid.append(h('div.tthead' + (d === today ? '.ttday' : ''), null, h('b', { text: DSHORT[d] }), h('small', { text: DAYS[d] })));
   tt.periods.forEach((per, p) => {
+    if (per.pause) {
+      // Pause zählt mit (damit „8. Stunde“ im Vertretungsplan in die richtige Zeile kommt), hat aber keinen Unterricht
+      grid.append(h('button.ttnum.ttpausenum', { on: { click: () => editTimes(tt, again) } }, h('b', { text: String(p + 1) }), h('small', { text: `${per.s}\n${per.e}` })),
+        h('button.ttpause', { style: { gridColumn: `span ${tt.days}` }, on: { click: () => editTimes(tt, again) } }, h('span', { text: per.name || 'Mittagspause' }), h('small', { text: `${per.s}–${per.e}` })));
+      return;
+    }
     grid.append(h('button.ttnum', { on: { click: () => editTimes(tt, again) } }, h('b', { text: String(p + 1) }), h('small', { text: `${per.s}\n${per.e}` })));
     for (let d = 0; d < tt.days; d++) {
       const c = tt.cells[`${d}-${p}`];
@@ -282,6 +289,39 @@ async function editCell(tt, d, p, subjects, after) {
   after();
 }
 
+// Mittagspause als eigene Zeile einfügen. Alles danach rutscht eine Zeile nach unten (Nummern wie in der Schule).
+async function insertPause(tt, after) {
+  const firstPause = tt.periods.findIndex((p) => p.pause);
+  const res = await sheet('Mittagspause einfügen', (body, close) => {
+    const sel = h('select.field', { id: 'pzAfter' }, ...tt.periods.map((p, i) => h('option', { value: i + 1, text: `nach der ${i + 1}. Stunde (${p.e})` })));
+    sel.value = String(Math.min(6, tt.periods.length));
+    const len = h('input.field', { type: 'number', id: 'pzLen', min: 5, max: 120, value: 45, inputmode: 'numeric' });
+    body.append(h('p.dlgtext', { text: 'Die Pause bekommt eine eigene Nummer, so wie in der Schule (z. B. 7. Stunde = Mittagspause). Deine Fächer danach rutschen eine Zeile nach unten.' }),
+      h('label.fieldlabel', { for: 'pzAfter', text: 'Wo?' }), sel,
+      h('label.fieldlabel', { for: 'pzLen', text: 'Wie lange? (Minuten)' }), len,
+      firstPause >= 0 ? h('p.calm.small', { text: `Es gibt schon eine Pause (${firstPause + 1}.). Die kannst du unter „Zeiten der Stunden“ ändern.` }) : '',
+      h('div.dlgactions', null,
+        h('button.btn', { text: 'Abbrechen', on: { click: () => close(null) } }),
+        h('button.btn.primary', { text: 'Einfügen', on: { click: () => close({ at: +sel.value, len: Math.max(5, +len.value || 45) }) } })));
+  });
+  if (!res) return;
+  const at = res.at;   // neue Zeile hat den Index at
+  const s = mins(tt.periods[at - 1].e);
+  const e = s + res.len;
+  // Zellen ab „at“ eine Zeile nach unten schieben (von hinten, damit nichts überschrieben wird)
+  const cells = {};
+  for (const [k, v] of Object.entries(tt.cells)) { const [d, p] = k.split('-').map(Number); cells[`${d}-${p >= at ? p + 1 : p}`] = v; }
+  tt.cells = cells;
+  // Zeiten danach nur verschieben, wenn sie sich mit der Pause überschneiden
+  const rest = tt.periods.slice(at);
+  const shift = rest.length && mins(rest[0].s) < e ? e - mins(rest[0].s) : 0;
+  tt.periods = [...tt.periods.slice(0, at), { s: hm(s), e: hm(e), pause: 1 }, ...rest.map((p) => (shift ? { ...p, s: hm(mins(p.s) + shift), e: hm(mins(p.e) + shift) } : p))];
+  tt.timesSet = 1;
+  await saveTT(tt);
+  toast('Mittagspause eingefügt');
+  after();
+}
+
 async function editTimes(tt, after) {
   let list = tt.periods.map((p) => ({ ...p }));
   const res = await sheet('Zeiten der Stunden', (body, close) => {
@@ -307,17 +347,21 @@ async function editTimes(tt, after) {
       rowsBox.textContent = '';
       rows = list.map((per, i) => {
         const s = h('input.field', { type: 'time', value: per.s }), e = h('input.field', { type: 'time', value: per.e });
-        rowsBox.append(h('div.timerow', null, h('b', { text: `${i + 1}.` }), h('div.datewrap', null, s), h('span', { text: 'bis' }), h('div.datewrap', null, e)));
-        return [s, e];
+        const pz = h('input', { type: 'checkbox', id: 'ttPz' + i });
+        pz.checked = !!per.pause;
+        rowsBox.append(h('div.timerow.withpause', null, h('b', { text: `${i + 1}.` }), h('div.datewrap', null, s), h('span', { text: 'bis' }), h('div.datewrap', null, e),
+          h('label.ttpzlabel', { for: 'ttPz' + i }, pz, h('span', { text: 'Pause' }))));
+        return [s, e, pz];
       });
     };
     draw();
     body.append(box, rowsBox, h('div.dlgactions', null,
       h('button.btn', { text: 'Abbrechen', on: { click: () => close(null) } }),
-      h('button.btn.primary', { text: 'Sichern', on: { click: () => close(rows.map(([s, e]) => ({ s: s.value || '08:00', e: e.value || '08:45' }))) } })));
+      h('button.btn.primary', { text: 'Sichern', on: { click: () => close(rows.map(([s, e, pz]) => ({ s: s.value || '08:00', e: e.value || '08:45', ...(pz.checked ? { pause: 1 } : {}) }))) } })));
   });
   if (!res) return;
   tt.periods = res;
+  res.forEach((per, p) => { if (per.pause) for (let d = 0; d < 7; d++) delete tt.cells[`${d}-${p}`]; });
   tt.timesSet = 1;
   await saveTT(tt);
   after();
