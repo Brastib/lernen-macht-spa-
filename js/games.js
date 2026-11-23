@@ -19,12 +19,15 @@ export const GAMES = {
   hockey: { name: 'Lufthockey', icon: 'hockey', sub: 'Puck ins andere Tor schießen', run: (...a) => import('./rtgames.js').then((m) => m.hockey(...a)) },
   snake: { name: 'Schlangenduell', icon: 'snake', sub: 'Äpfel fressen, nirgends anstoßen', run: (...a) => import('./rtgames.js').then((m) => m.snakeDuel(...a)) },
   trail: { name: 'Leuchtspur', icon: 'trail', sub: 'Mit dem Textmarker den anderen einkesseln', run: (...a) => import('./rtgames.js').then((m) => m.trail(...a)) },
+  double: { name: 'Verdoppler', icon: 'double', sub: 'Gleiche Zahlen schieben, verdoppeln, Punkte sammeln', run: (...a) => import('./hsgames.js').then((m) => m.doublerGame(...a)) },
+  blocks: { name: 'Klötzchenregen', icon: 'blocks', sub: 'Fallende Klötzchen zu vollen Reihen stapeln', run: (...a) => import('./hsgames.js').then((m) => m.blocksGame(...a)) },
+  brick: { name: 'Blockknacker', icon: 'brick', sub: 'Mit dem Ball alle Kästchen wegknacken', run: (...a) => import('./hsgames.js').then((m) => m.breakerGame(...a)) },
   stack: { name: 'Hochstapler', icon: 'stack', sub: 'Blöcke stapeln, wer baut höher?', run: (...a) => import('./stack.js').then((m) => m.stackDuel(...a)) },
   chess: { name: 'Schach', icon: 'chess', sub: 'Mit allen Regeln, zu zweit', run: (...a) => import('./chess.js').then((m) => m.chessDuel(...a)) },
   wall: { name: 'Mauerlauf', icon: 'wall', sub: 'Schritt oder Mauer: wer kommt zuerst rüber?', run: (...a) => import('./wall.js').then((m) => m.wallGame(...a)) },
   quiz: { name: 'Quiz', icon: 'cards', sub: 'Wer kann den Stoff? Fragen aus euren Lernkarten', run: (...a) => import('./quiz.js').then((m) => m.quizDuel(...a)) },
 };
-const MIX = ['ttt', 'wind', 'stack', 'four', 'pong', 'run', 'react', 'snake', 'plane', 'boxes', 'hockey', 'wall', 'trail', 'arena'];
+const MIX = ['ttt', 'wind', 'stack', 'four', 'pong', 'run', 'react', 'snake', 'plane', 'boxes', 'hockey', 'wall', 'trail', 'double', 'blocks', 'brick', 'arena'];
 
 const players = () => store.get('gPlayers', []);
 const names = () => store.get('gNames', []);
@@ -117,7 +120,10 @@ export async function renderGames(ctx) {
     soloTile('paddle', 'Tischtennis', 'Gegen den Computer', () => vsCpu('pong')),
     soloTile('hockey', 'Lufthockey', 'Gegen den Computer', () => vsCpu('hockey')),
     soloTile('snake', 'Schlangenduell', best('gSnakeBest') ? `Dein Rekord: ${best('gSnakeBest')} Äpfel` : 'So viele Äpfel wie möglich', () => soloScore('snake')),
-    soloTile('trail', 'Leuchtspur', 'Gegen den Computer', () => vsCpu('trail'))));
+    soloTile('trail', 'Leuchtspur', 'Gegen den Computer', () => vsCpu('trail')),
+    soloTile('double', 'Verdoppler', best('gDoubleBest') ? `Dein Rekord: ${best('gDoubleBest')} Punkte` : 'Zahlen verdoppeln, Punkte sammeln', () => soloScore('double')),
+    soloTile('blocks', 'Klötzchenregen', best('gBlocksBest') ? `Dein Rekord: ${best('gBlocksBest')} Punkte` : 'Volle Reihen bauen', () => soloScore('blocks')),
+    soloTile('brick', 'Blockknacker', best('gBrickBest') ? `Dein Rekord: ${best('gBrickBest')} Punkte` : 'Alle Kästchen wegknacken', () => soloScore('brick'))));
 
   // Duelle
   view.append(h('h2.section', { text: 'Duell zu zweit' }), h('div.ptiles.gtiles', null,
@@ -164,7 +170,7 @@ function playerSheet(title, { withGame = false, okLabel = 'Sichern' } = {}) {
       list, dl);
     if (withGame) {
       const seg = h('div.gseg.gseg6');
-      const opts = [['ttt', 'Tic-Tac-Toe'], ['wind', 'Windflug'], ['plane', 'Flieger'], ['arena', 'Strichkampf'], ['stack', 'Hochstapler'], ['run', 'Kritzelsprint'], ['react', 'Reaktion'], ['four', 'Vier in Reihe'], ['boxes', 'Kästchen'], ['pong', 'Tischtennis'], ['hockey', 'Lufthockey'], ['snake', 'Schlangen'], ['trail', 'Leuchtspur'], ['chess', 'Schach'], ['wall', 'Mauerlauf'], ['quiz', 'Quiz'], ['mix', 'Gemischt']];
+      const opts = [['ttt', 'Tic-Tac-Toe'], ['wind', 'Windflug'], ['plane', 'Flieger'], ['arena', 'Strichkampf'], ['stack', 'Hochstapler'], ['run', 'Kritzelsprint'], ['react', 'Reaktion'], ['four', 'Vier in Reihe'], ['boxes', 'Kästchen'], ['pong', 'Tischtennis'], ['hockey', 'Lufthockey'], ['snake', 'Schlangen'], ['trail', 'Leuchtspur'], ['double', 'Verdoppler'], ['blocks', 'Klötzchen'], ['brick', 'Blockknacker'], ['chess', 'Schach'], ['wall', 'Mauerlauf'], ['quiz', 'Quiz'], ['mix', 'Gemischt']];
       const drawSeg = () => seg.replaceChildren(...opts.map(([k, l]) => h('button' + (k === game ? '.on' : ''), { text: l, on: { click: () => { game = k; drawSeg(); } } })));
       drawSeg();
       const pw = h('label.gswitch', null, h('span', null, h('b', { text: 'Power-ups beim Papierflieger' }), h('small', { text: 'Vor jedem Wurf eins aus drei wählen, dazu Kugeln in der Luft' })),
@@ -307,6 +313,9 @@ const SOLO = {
   react: { title: 'Reaktionstest', key: 'gReactBest', low: true, run: (fx, p) => import('./pgames.js').then((m) => m.reaction(fx, p, null)), fmt: (x) => `Ø ${x} ms` },
   run: { title: 'Kritzelsprint', key: 'gRunBest', run: (fx, p) => import('./runner.js').then((m) => m.runSolo(fx, p)), fmt: (x) => `${x} m` },
   snake: { title: 'Schlangenduell', key: 'gSnakeBest', run: (fx, p) => import('./rtgames.js').then((m) => m.snakeSolo(fx, p)), fmt: (x) => `${x} ${x === 1 ? 'Apfel' : 'Äpfel'}` },
+  double: { title: 'Verdoppler', key: 'gDoubleBest', run: (fx, p) => import('./hsgames.js').then((m) => m.doublerGame(fx, p, null)), fmt: (x) => `${x} ${x === 1 ? 'Punkt' : 'Punkte'}` },
+  blocks: { title: 'Klötzchenregen', key: 'gBlocksBest', run: (fx, p) => import('./hsgames.js').then((m) => m.blocksGame(fx, p, null)), fmt: (x) => `${x} ${x === 1 ? 'Punkt' : 'Punkte'}` },
+  brick: { title: 'Blockknacker', key: 'gBrickBest', run: (fx, p) => import('./hsgames.js').then((m) => m.breakerGame(fx, p, null)), fmt: (x) => `${x} ${x === 1 ? 'Punkt' : 'Punkte'}` },
   plane: { title: 'Papierflieger', key: 'gPlaneBest', run: (fx, p) => planeDuel(fx, p, null), fmt: (x) => x.toFixed(1).replace('.', ',') + ' m' },
 };
 async function soloScore(k) {

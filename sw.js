@@ -1,6 +1,6 @@
 // Offline-Speicher für die App selbst (nicht für deine Scans, die liegen in IndexedDB).
 // Bei jeder neuen Version VERSION erhöhen.
-const VERSION = 'v52';
+const VERSION = 'v53';
 const CACHE = 'lernapp-' + VERSION;
 const FILES = [
   './',
@@ -31,7 +31,7 @@ const FILES = [
   './js/plotter.js',
   './js/backup.js',
   './js/chem.js',
-  './js/lab.js', './js/plan.js', './js/speech.js', './js/calc2.js', './js/markcards.js', './js/organize.js', './js/plane.js', './js/games.js', './js/gpaint.js', './js/arena.js', './js/weapons.js', './js/quiz.js', './js/stack.js', './js/chess.js', './js/wall.js', './js/runner.js', './js/pgames.js', './js/sketch.js', './js/rtgames.js', './js/gaps.js',
+  './js/lab.js', './js/plan.js', './js/speech.js', './js/calc2.js', './js/markcards.js', './js/organize.js', './js/plane.js', './js/games.js', './js/gpaint.js', './js/arena.js', './js/weapons.js', './js/quiz.js', './js/stack.js', './js/chess.js', './js/wall.js', './js/runner.js', './js/pgames.js', './js/sketch.js', './js/rtgames.js', './js/hsgames.js', './js/gaps.js',
   './js/kit.js',
   './vendor/fengari-web.js',
   './vendor/pdf.min.js',

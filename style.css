@@ -2208,3 +2208,33 @@ html.fxopen, html.fxopen body, html:has(> body > .gamefx), html:has(> body > .ga
 .sgwrap.tall .sgbtn { min-height: 84px; }
 .pkchip { display: inline-flex; align-items: center; gap: 8px; min-width: 0; max-width: 100%; }
 .pkchip b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 17px; }
+
+/* ---------- Paket 3: Highscore-Spiele (Verdoppler, Klötzchenregen, Blockknacker) ---------- */
+.hswrap { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 10px; padding: 10px 16px calc(env(safe-area-inset-bottom) + 12px); }
+.hshud { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; min-width: 0; padding: 8px 12px; border-radius: 18px; background: var(--surface); box-shadow: 0 0 0 1px var(--line); }
+.hshud .pkchip { flex: 0 1 auto; max-width: 30%; }
+.hsstats { flex: 1 1 auto; display: flex; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.hsstat { display: flex; flex-direction: column; min-width: 64px; padding: 4px 10px; border-radius: 12px; background: var(--plot-grid2); }
+.hsstat small { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.hsstat b { font: 800 18px/1.2 'Noteworthy', 'Marker Felt', system-ui, sans-serif; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.hsfin { flex: none; }
+.hsarea { position: relative; flex: 1; min-height: 0; min-width: 0; display: flex; }
+.blkarea { display: grid; grid-template-columns: minmax(120px, 190px) minmax(0, 1fr) minmax(120px, 190px); gap: 12px; }
+.blkboard { position: relative; display: flex; min-width: 0; min-height: 0; }
+.blkpad { display: flex; flex-direction: column; justify-content: flex-end; gap: 10px; min-width: 0; }
+.blkbtn { min-height: 76px; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border-radius: 18px; border: 1px solid var(--line); background: var(--surface); color: var(--text); font: 700 14px/1.2 'Noteworthy', 'Marker Felt', system-ui, sans-serif; touch-action: none; user-select: none; -webkit-user-select: none; transition: transform .08s ease, background .12s ease; }
+.blkbtn .ic { width: 30px; height: 30px; stroke-width: 2.2; }
+.blkbtn.on, .blkbtn:active { background: color-mix(in srgb, var(--accent) 18%, var(--surface)); transform: scale(.96); }
+.blknextbox { display: flex; flex-direction: column; gap: 4px; padding: 8px; border-radius: 16px; background: var(--surface); box-shadow: 0 0 0 1px var(--line); margin-bottom: auto; }
+.blknextbox small { font-size: 11px; color: var(--muted); }
+.blknext { width: 100%; height: 56px; display: block; }
+@media (max-aspect-ratio: 1/1) {
+  .blkarea { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
+  .blkboard { grid-column: 1 / -1; grid-row: 1; }
+  .blkpad { flex-direction: row; justify-content: stretch; }
+  .blkpad > * { flex: 1 1 0; }
+  .blknextbox { margin-bottom: 0; }
+  .blknext { height: 44px; }
+  .blkbtn { min-height: 70px; }
+}
+.hshint { margin: 0; padding: 0 4px; font-size: 14px; color: var(--muted); text-align: center; overflow-wrap: anywhere; }
