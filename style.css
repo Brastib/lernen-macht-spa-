@@ -2153,3 +2153,39 @@ html.fxopen, html.fxopen body, html:has(> body > .gamefx), html:has(> body > .ga
 .gamefx { overscroll-behavior: contain; }
 .gamefx::before { content: ''; position: absolute; left: 0; right: 0; bottom: 100%; height: 400px; background: var(--bg); pointer-events: none; }
 .gamefx .gtop { background: var(--surface); }
+
+/* ---------- Paket 1: Reaktionstest, Vier in einer Reihe, Kästchen ---------- */
+.rxwrap { flex: 1; min-width: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 12px 16px 16px; }
+.rxwrap.solo { grid-template-columns: 1fr; }
+@media (orientation: portrait) { .rxwrap { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; } .rxwrap.solo { grid-template-rows: 1fr; } }
+.rxhalf { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; min-width: 0; min-height: 0; padding: 20px; border-radius: 22px; color: var(--ink); text-align: center; touch-action: none; user-select: none; -webkit-user-select: none;
+  background-color: var(--surface); background-image: linear-gradient(var(--plot-grid, rgba(60,100,170,.1)) 1px, transparent 1px), linear-gradient(90deg, var(--plot-grid, rgba(60,100,170,.1)) 1px, transparent 1px); background-size: 24px 24px;
+  box-shadow: inset 0 0 0 2px var(--line); transition: box-shadow .15s ease, background-color .15s ease; }
+.rxhalf.wait { box-shadow: inset 0 0 0 3px var(--pc); }
+.rxhalf.go { background-color: color-mix(in srgb, var(--pc) 22%, var(--surface)); box-shadow: inset 0 0 0 4px var(--pc); }
+.rxhalf.go .rxbig::before { content: '★'; display: block; font-size: 1.6em; color: #f2b632; animation: popin .18s ease; }
+.rxhalf.bad { box-shadow: inset 0 0 0 4px #e04848; }
+.rxhalf.win { box-shadow: inset 0 0 0 4px #2fbf71; }
+.rxname { position: absolute; left: 16px; top: 14px; display: inline-flex; align-items: center; gap: 8px; max-width: calc(100% - 32px); }
+.rxname b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rxbig { font: 800 clamp(30px, 6vw, 56px)/1.1 'Noteworthy', 'Marker Felt', var(--font-display), system-ui, sans-serif; }
+.rxsub { color: var(--muted); font-size: 15px; max-width: 420px; min-height: 20px; }
+.rxscore { position: absolute; right: 16px; top: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.p4wrap { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 12px 16px 16px; overflow: hidden; }
+.p4boardwrap { padding: 10px; border-radius: 18px; background-color: var(--surface); box-shadow: 0 0 0 1px var(--line), 0 10px 30px rgba(0,0,0,.08);
+  background-image: linear-gradient(var(--plot-grid, rgba(60,100,170,.1)) 1px, transparent 1px), linear-gradient(90deg, var(--plot-grid, rgba(60,100,170,.1)) 1px, transparent 1px); background-size: 20px 20px; }
+.p4board, .bxboard { display: block; touch-action: none; user-select: none; -webkit-user-select: none; cursor: pointer; }
+.p4grid path { stroke: var(--ink); stroke-width: 2.4; stroke-linecap: round; opacity: .55; fill: none; }
+.p4grid .p4floor { opacity: .9; stroke-width: 3; }
+.p4hov { stroke-width: 6; stroke-linecap: round; opacity: .6; }
+.p4disc { animation: p4drop .32s cubic-bezier(.5,0,.75,1.3) both; }
+@keyframes p4drop { from { transform: translateY(var(--fall)); } to { transform: none; } }
+.p4fill { fill: currentColor; opacity: .3; }
+.p4ink { fill: none; stroke: currentColor; stroke-width: 3.4; stroke-linecap: round; }
+.p4ink2 { fill: none; stroke: currentColor; stroke-width: 2; opacity: .55; }
+.p4win { stroke-width: 9; stroke-linecap: round; opacity: .85; fill: none; }
+.bxdot { fill: var(--ink); }
+.bxfree { stroke: var(--ink); stroke-width: 18; stroke-linecap: round; opacity: .05; }
+.bxline { stroke-width: 6; stroke-linecap: round; }
+.bxown rect { fill: currentColor; opacity: .22; }
+.bxown text { fill: currentColor; font: 800 30px 'Noteworthy', 'Marker Felt', system-ui, sans-serif; text-anchor: middle; }

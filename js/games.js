@@ -12,12 +12,15 @@ export const GAMES = {
   plane: { name: 'Papierflieger', icon: 'plane', sub: 'Wer wirft am weitesten?', run: planeDuel },
   arena: { name: 'Strichkampf', icon: 'sword', sub: 'Figur und Waffe malen, dann kämpfen', run: (...a) => import('./arena.js').then((m) => m.arena(...a)) },
   run: { name: 'Kritzelsprint', icon: 'run', sub: 'Rennen und springen, wer kommt weiter?', run: (...a) => import('./runner.js').then((m) => m.runDuel(...a)) },
+  react: { name: 'Reaktionstest', icon: 'bolt', sub: 'Wer tippt zuerst, wenn der Stern kommt?', run: (...a) => import('./pgames.js').then((m) => m.reaction(...a)) },
+  four: { name: 'Vier in einer Reihe', icon: 'four', sub: 'Steine einwerfen, vier in eine Reihe', run: (...a) => import('./pgames.js').then((m) => m.four(...a)) },
+  boxes: { name: 'Kästchen erobern', icon: 'boxes', sub: 'Linien ziehen, Kästchen schließen', run: (...a) => import('./pgames.js').then((m) => m.boxes(...a)) },
   stack: { name: 'Hochstapler', icon: 'stack', sub: 'Blöcke stapeln, wer baut höher?', run: (...a) => import('./stack.js').then((m) => m.stackDuel(...a)) },
   chess: { name: 'Schach', icon: 'chess', sub: 'Mit allen Regeln, zu zweit', run: (...a) => import('./chess.js').then((m) => m.chessDuel(...a)) },
   wall: { name: 'Mauerlauf', icon: 'wall', sub: 'Schritt oder Mauer: wer kommt zuerst rüber?', run: (...a) => import('./wall.js').then((m) => m.wallGame(...a)) },
   quiz: { name: 'Quiz', icon: 'cards', sub: 'Wer kann den Stoff? Fragen aus euren Lernkarten', run: (...a) => import('./quiz.js').then((m) => m.quizDuel(...a)) },
 };
-const MIX = ['ttt', 'wind', 'stack', 'run', 'plane', 'wall', 'arena'];
+const MIX = ['ttt', 'wind', 'stack', 'four', 'run', 'react', 'plane', 'boxes', 'wall', 'arena'];
 
 const players = () => store.get('gPlayers', []);
 const names = () => store.get('gNames', []);
@@ -103,7 +106,10 @@ export async function renderGames(ctx) {
     soloTile('ttt', 'Tic-Tac-Toe', 'Gegen den Computer', () => vsCpu('ttt')),
     soloTile('sword', 'Strichkampf', 'Dein Kämpfer gegen den Computer', () => vsCpu('arena')),
     soloTile('chess', 'Schach', 'Gegen den Computer: Leicht, Mittel, Schwer', () => soloChess()),
-    soloTile('wall', 'Mauerlauf', 'Gegen den Computer', () => vsCpu('wall'))));
+    soloTile('wall', 'Mauerlauf', 'Gegen den Computer', () => vsCpu('wall')),
+    soloTile('bolt', 'Reaktionstest', best('gReactBest') ? `Dein Rekord: Ø ${best('gReactBest')} ms` : 'Wie schnell bist du?', () => soloScore('react')),
+    soloTile('four', 'Vier in einer Reihe', 'Gegen den Computer', () => vsCpu('four')),
+    soloTile('boxes', 'Kästchen erobern', 'Gegen den Computer', () => vsCpu('boxes'))));
 
   // Duelle
   view.append(h('h2.section', { text: 'Duell zu zweit' }), h('div.ptiles.gtiles', null,
@@ -150,7 +156,7 @@ function playerSheet(title, { withGame = false, okLabel = 'Sichern' } = {}) {
       list, dl);
     if (withGame) {
       const seg = h('div.gseg.gseg6');
-      const opts = [['ttt', 'Tic-Tac-Toe'], ['wind', 'Windflug'], ['plane', 'Flieger'], ['arena', 'Strichkampf'], ['stack', 'Hochstapler'], ['run', 'Kritzelsprint'], ['chess', 'Schach'], ['wall', 'Mauerlauf'], ['quiz', 'Quiz'], ['mix', 'Gemischt']];
+      const opts = [['ttt', 'Tic-Tac-Toe'], ['wind', 'Windflug'], ['plane', 'Flieger'], ['arena', 'Strichkampf'], ['stack', 'Hochstapler'], ['run', 'Kritzelsprint'], ['react', 'Reaktion'], ['four', 'Vier in Reihe'], ['boxes', 'Kästchen'], ['chess', 'Schach'], ['wall', 'Mauerlauf'], ['quiz', 'Quiz'], ['mix', 'Gemischt']];
       const drawSeg = () => seg.replaceChildren(...opts.map(([k, l]) => h('button' + (k === game ? '.on' : ''), { text: l, on: { click: () => { game = k; drawSeg(); } } })));
       drawSeg();
       const pw = h('label.gswitch', null, h('span', null, h('b', { text: 'Power-ups beim Papierflieger' }), h('small', { text: 'Vor jedem Wurf eins aus drei wählen, dazu Kugeln in der Luft' })),
@@ -290,6 +296,7 @@ const CPU = { name: 'Computer', color: '#8a8f98' };
 // Rekord-Spiele: Windflug und Papierflieger allein
 const SOLO = {
   wind: { title: 'Windflug', key: 'gWindBest', run: (fx, p) => windflug(fx, p, null), fmt: (x) => `${x} ${x === 1 ? 'Punkt' : 'Punkte'}` },
+  react: { title: 'Reaktionstest', key: 'gReactBest', low: true, run: (fx, p) => import('./pgames.js').then((m) => m.reaction(fx, p, null)), fmt: (x) => `Ø ${x} ms` },
   run: { title: 'Kritzelsprint', key: 'gRunBest', run: (fx, p) => import('./runner.js').then((m) => m.runSolo(fx, p)), fmt: (x) => `${x} m` },
   plane: { title: 'Papierflieger', key: 'gPlaneBest', run: (fx, p) => planeDuel(fx, p, null), fmt: (x) => x.toFixed(1).replace('.', ',') + ' m' },
 };
@@ -300,7 +307,7 @@ async function soloScore(k) {
     fx.stage.replaceChildren();
     const r = await g.run(fx, p);
     if (!r || fx.signal.aborted) return;
-    const old = store.get(g.key, 0), rec = r.score > old;
+    const old = store.get(g.key, 0), rec = g.low ? r.score > 0 && (!old || r.score < old) : r.score > old;
     if (rec) store.set(g.key, r.score);
     const again = await new Promise((res) => {
       fx.stage.querySelectorAll('.gres').forEach((el) => el.remove());
