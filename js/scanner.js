@@ -1,9 +1,9 @@
 // Bildverarbeitung: Seite finden, gerade ziehen, verbessern, verkleinern.
 // Alles läuft lokal im Browser, ohne Internet und ohne Zusatz-Bibliotheken.
 
-export const MAX_BYTES = 300 * 1024;   // Ziel: unter 300 KB pro Seite
-const WORK_MAX = 2400;                 // Arbeitsgröße des Fotos (längste Seite)
-const OUT_MAX = 1700;                  // Größe der fertigen Seite (längste Seite)
+export const MAX_BYTES = 420 * 1024;   // Ziel: unter 420 KB pro Seite (scharf genug zum Heranzoomen)
+const WORK_MAX = 2800;                 // Arbeitsgröße des Fotos (längste Seite)
+const OUT_MAX = 2200;                  // Größe der fertigen Seite (längste Seite)
 const DETECT_MAX = 360;                // kleine Kopie nur für die Seiten-Erkennung
 
 // Foto-Datei laden und auf Arbeitsgröße bringen.
@@ -266,6 +266,106 @@ export function enhance(canvas, mode = 'color') {
     }
   } else {
     for (let i = 0; i < d.length; i += 4) { d[i] = lut[d[i]]; d[i + 1] = lut[d[i + 1]]; d[i + 2] = lut[d[i + 2]]; }
+  }
+  ctx.putImageData(img, 0, 0);
+  return canvas;
+}
+
+
+// ---------- Schärfer und gerader ----------
+// Schatten und ungleichmäßiges Licht entfernen: Papierhelligkeit schätzen (Text herausfiltern) und ausgleichen.
+export function flatten(canvas) {
+  const w = canvas.width, h = canvas.height;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  const img = ctx.getImageData(0, 0, w, h), d = img.data;
+  const S = 8, sw = Math.ceil(w / S), sh = Math.ceil(h / S);
+  // kleine Kopie: hellster Wert je Block = Papier
+  const small = new Float32Array(sw * sh);
+  for (let by = 0; by < sh; by++) for (let bx = 0; bx < sw; bx++) {
+    let mx = 0;
+    for (let y = by * S; y < Math.min(h, by * S + S); y += 2) for (let x = bx * S; x < Math.min(w, bx * S + S); x += 2) {
+      const i = (y * w + x) * 4, l = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+      if (l > mx) mx = l;
+    }
+    small[by * sw + bx] = mx;
+  }
+  // Text-Lücken schließen (Maximum über Nachbarn), dann weich machen
+  const dil = new Float32Array(sw * sh), R = 3;
+  for (let y = 0; y < sh; y++) for (let x = 0; x < sw; x++) {
+    let mx = 0;
+    for (let yy = Math.max(0, y - R); yy <= Math.min(sh - 1, y + R); yy++) for (let xx = Math.max(0, x - R); xx <= Math.min(sw - 1, x + R); xx++) if (small[yy * sw + xx] > mx) mx = small[yy * sw + xx];
+    dil[y * sw + x] = mx;
+  }
+  const bg = boxBlur(dil, sw, sh, 4);
+  for (let y = 0; y < h; y++) {
+    const fy = Math.min(sh - 1.001, Math.max(0, y / S - 0.5)), y0 = fy | 0, ty = fy - y0;
+    for (let x = 0; x < w; x++) {
+      const fx = Math.min(sw - 1.001, Math.max(0, x / S - 0.5)), x0 = fx | 0, tx = fx - x0;
+      const a = bg[y0 * sw + x0], b = bg[y0 * sw + x0 + 1], c = bg[(y0 + 1) * sw + x0], e = bg[(y0 + 1) * sw + x0 + 1];
+      const L = (a + (b - a) * tx) * (1 - ty) + (c + (e - c) * tx) * ty;
+      const k = L < 110 ? Math.min(1.25, 250 / Math.max(1, L)) : Math.min(2.2, 250 / L);   // dunkle Flächen (Bilder) kaum anfassen
+      const i = (y * w + x) * 4;
+      d[i] = Math.min(255, d[i] * k); d[i + 1] = Math.min(255, d[i + 1] * k); d[i + 2] = Math.min(255, d[i + 2] * k);
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  return canvas;
+}
+
+// Schräglage der Textzeilen finden (bis ±5°) und gerade drehen
+export function skewAngle(canvas) {
+  const W = 700, f = Math.min(1, W / canvas.width);
+  const w = Math.round(canvas.width * f), h = Math.round(canvas.height * f);
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const x = c.getContext('2d', { willReadFrequently: true });
+  x.drawImage(canvas, 0, 0, w, h);
+  const d = x.getImageData(0, 0, w, h).data;
+  const pts = [];
+  const m = Math.round(w * 0.05);
+  for (let yy = m; yy < h - m; yy++) for (let xx = m; xx < w - m; xx++) {
+    const i = (yy * w + xx) * 4;
+    if (0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2] < 110) pts.push(xx, yy);
+  }
+  const n = pts.length / 2;
+  if (n < 400 || n > w * h * 0.25) return 0;
+  const score = (deg) => {
+    const t = Math.tan(deg * Math.PI / 180), bins = new Float32Array(h * 2 + 8);
+    for (let i = 0; i < pts.length; i += 2) { const b = Math.round(pts[i + 1] - pts[i] * t + h * 0.5); if (b >= 0 && b < bins.length) bins[b]++; }
+    let s = 0; for (let i = 1; i < bins.length; i++) { const v = bins[i] - bins[i - 1]; s += v * v; }
+    return s;
+  };
+  let best = 0, bs = score(0);
+  for (let a = -5; a <= 5.001; a += 0.5) { const sc = score(a); if (sc > bs) { bs = sc; best = a; } }
+  for (let a = best - 0.45; a <= best + 0.451; a += 0.15) { const sc = score(a); if (sc > bs) { bs = sc; best = a; } }
+  return Math.abs(best) < 0.25 ? 0 : best;
+}
+export function deskew(canvas) {
+  const a = skewAngle(canvas);
+  if (!a) return canvas;
+  const r = -a * Math.PI / 180, w = canvas.width, h = canvas.height;
+  const out = document.createElement('canvas'); out.width = w; out.height = h;
+  const x = out.getContext('2d');
+  x.fillStyle = '#fff'; x.fillRect(0, 0, w, h);
+  // leicht vergrößern, damit keine weißen Ecken entstehen
+  const k = 1 + Math.abs(Math.sin(r)) * Math.max(w / h, h / w);
+  x.translate(w / 2, h / 2); x.rotate(r); x.scale(k, k);
+  x.imageSmoothingQuality = 'high';
+  x.drawImage(canvas, -w / 2, -h / 2);
+  return out;
+}
+
+// Schärfen (Unscharf maskieren auf der Helligkeit)
+export function sharpen(canvas, amount = 0.6) {
+  const w = canvas.width, h = canvas.height;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  const img = ctx.getImageData(0, 0, w, h), d = img.data;
+  const L = new Float32Array(w * h);
+  for (let i = 0, j = 0; j < L.length; i += 4, j++) L[j] = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+  const B = boxBlur(L, w, h, 1);
+  for (let i = 0, j = 0; j < L.length; i += 4, j++) {
+    const diff = (L[j] - B[j]) * amount;
+    if (diff > -2 && diff < 2) continue;
+    d[i] = Math.max(0, Math.min(255, d[i] + diff)); d[i + 1] = Math.max(0, Math.min(255, d[i + 1] + diff)); d[i + 2] = Math.max(0, Math.min(255, d[i + 2] + diff));
   }
   ctx.putImageData(img, 0, 0);
   return canvas;

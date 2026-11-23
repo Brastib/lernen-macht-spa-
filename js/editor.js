@@ -5,6 +5,7 @@ import { makeTool, drawTool, hitTool, findEdge, snapPoint, niceAngle, niceRadius
 import { menu, sheet, h as el, toast, busy, promptSheet, shareReady } from './ui.js';
 import { compile, mathify } from './mathfn.js';
 import { axesBox, axesFrame } from './paper.js';
+import { detectGaps, textForGap, baselineShift, gapAt } from './gaps.js';
 
 const $ = (id) => document.getElementById(id);
 const COLORS = [
@@ -29,6 +30,7 @@ let tpl = null;              // angelegtes Mathe-Werkzeug
 let tplDrag = null;
 let sel = null;              // Lasso-Auswahl { strokes: Set, box: [x0, y0, x1, y1] }
 let textEd = null;           // offenes Textfeld { st, isNew, before, ta }
+let gapMode = false, gaps = [], gapGroups = new Map(), gapTimer = 0, touchTap = null;
 let gridAssist = true;       // Karo-Hilfe: Lineal und gerade Striche rasten an den Linien ein
 
 try { const f = localStorage.getItem('fingerDraws'); if (f !== null) fingerDraws = f === '1'; } catch (e) { /* egal */ }
@@ -41,6 +43,7 @@ export async function openEditor(p, { onClose } = {}) {
   strokes = await db.getInk(p.id);
   undo = []; redo = []; dirty = false; zoom = 1;
   cur = null; touches.clear(); pinch = null; tpl = null; tplDrag = null; sel = null; textEd = null;
+  exitGapMode();
   bg = null;
   if (p.kind !== 'blank') {
     const blob = await db.getImage(p.id);
@@ -53,6 +56,8 @@ export async function openEditor(p, { onClose } = {}) {
 
 async function close() {
   finishStroke();
+  snapAllGaps();
+  exitGapMode();
   commitText();
   await flushSave();
   $('editor').hidden = true;
@@ -375,6 +380,7 @@ area.addEventListener('pointerdown', (e) => {
   }
 
   if (e.pointerType === 'touch' && !fingerDraws) {
+    touchTap = gapMode && onPage && touches.size === 0 ? { id: e.pointerId, at: [x, y], cx: e.clientX, cy: e.clientY, t: performance.now() } : null;
     touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (touches.size === 2) startPinch();
     e.preventDefault();
@@ -471,7 +477,7 @@ function finishStroke() {
   const c = cur;
   cur = null;
   if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
-  if (c.textTap) { if (!c.scrolling) openText(c.at[0], c.at[1]); return; }
+  if (c.textTap) { if (!c.scrolling) { const g = gapMode && !textAt(c.at[0], c.at[1]) ? gapAt(gaps, c.at[0], c.at[1]) : null; if (g) openGapText(g); else openText(c.at[0], c.at[1]); } return; }
   if (c.lasso) { pickSel(c.pts); updateToolbar(); return; }
   if (c.lassoMove) {
     if (c.dx || c.dy) { undo.push({ type: 'move', strokes: [...sel.strokes], dx: c.dx, dy: c.dy }); redo = []; changed(); }
@@ -481,8 +487,10 @@ function finishStroke() {
   if (c.erase) {
     if (c.removed.length) { undo.push({ type: 'erase', items: c.removed }); redo = []; changed(); }
   } else {
+    if (gapMode && c.tool === 'pen' && gapTap(c)) { clearLive(); updateToolbar(); return; }
     const st = { tool: c.tool, color: c.color, size: c.size, pts: assistStroke(c) };
     strokes.push(st);
+    if (gapMode && c.tool === 'pen') gapStroke(st);
     drawStroke($('edInk').getContext('2d'), st, scale());
     undo.push({ type: 'add', stroke: st }); redo = [];
     changed();
@@ -566,9 +574,9 @@ function textAt(x, y) {
   }
   return null;
 }
-function openText(x, y) {
-  let st = textAt(x, y), isNew = false;
-  if (!st) {
+function openText(x, y, preset = null) {
+  let st = preset ? null : textAt(x, y), isNew = false;
+  if (preset) { st = preset; isNew = true; } else if (!st) {
     isNew = true;
     st = { tool: 'text', color, size: SIZES.text[sizeIdx], text: '', pts: [] };
     setTextSize(st, st.size);
@@ -655,6 +663,13 @@ function endPointer(e) {
   }
   if (touches.has(e.pointerId)) {
     touches.delete(e.pointerId);
+    if (touchTap && touchTap.id === e.pointerId && e.type === 'pointerup' && Math.hypot(e.clientX - touchTap.cx, e.clientY - touchTap.cy) < 10 && performance.now() - touchTap.t < 450) {
+      const [tx, ty] = touchTap.at; touchTap = null;
+      const g = textAt(tx, ty) ? null : gapAt(gaps, tx, ty);
+      if (g) openGapText(g); else if (textAt(tx, ty)) openText(tx, ty);
+      return;
+    }
+    touchTap = null;
     if (pinch && touches.size < 2) { pinch = null; layout(true); }
     return;
   }
@@ -835,6 +850,7 @@ $('edMath').addEventListener('click', (e) => {
     { label: 'Funktionsgraph …', icon: 'graph', onClick: graphFlow },
     { label: 'Funktionsplotter …', icon: 'graph', onClick: plotterFlow },
     { label: 'Taschenrechner', icon: 'calc', onClick: () => import('./kit.js').then((m) => m.calcSheet()) },
+    ...(page && page.kind !== 'blank' ? [{ label: (gapMode ? '✓ ' : '') + 'Lücken ausfüllen', icon: 'text', onClick: () => (gapMode ? exitGapMode() : enterGapMode()) }] : []),
     ...(page && page.kind !== 'blank' ? [{ label: 'Lernkarten aus Markiertem', icon: 'cards', onClick: async () => { finishStroke(); commitText(); await flushSave(); const m = await import('./markcards.js'); m.cardsFromMarks({ page, strokes, pageW: PAGE_W }); } }] : []),
     'sep',
     ...Object.entries(TOOL_NAMES).map(([k, label]) => ({ label: (tpl && tpl.type === k ? '✓ ' : '') + label, icon: 'tool-' + k, onClick: () => showTool(k) })),
@@ -850,6 +866,88 @@ $('edMath').addEventListener('click', (e) => {
     }] : []),
   ]);
 });
+
+// ---------- Lücken ausfüllen ----------
+// Findet Schreiblinien auf Scans. Tippen öffnet ein Textfeld genau auf der Linie,
+// Handschrift mit dem Stift wird nach einer kurzen Pause auf die Linie gesetzt.
+function enterGapMode() {
+  if (!page || !bg) { toast('Das geht auf gescannten Arbeitsblättern.', 3500); return; }
+  commitText();
+  gaps = detectGaps(bg, PAGE_W);
+  if (!gaps.length) { toast('Auf dieser Seite wurden keine leeren Schreiblinien gefunden.', 4000); return; }
+  gapMode = true; gapGroups = new Map();
+  drawGaps();
+  const bar = el('div.gapbar', { id: 'gapBar' },
+    el('div.gapinfo', null,
+      el('b', { text: gaps.length === 1 ? '1 Lücke gefunden' : `${gaps.length} Lücken gefunden` }),
+      el('small', { text: 'Tippen: Textfeld auf der Linie. Mit dem Stift schreiben: rastet auf der Linie ein.' })),
+    el('button.btn.primary.small', { text: 'Fertig', on: { click: exitGapMode } }));
+  $('editor').append(bar);
+}
+function exitGapMode() {
+  if (gapMode) snapAllGaps();
+  gapMode = false; gaps = []; gapGroups = new Map(); touchTap = null;
+  clearTimeout(gapTimer);
+  document.getElementById('edGaps')?.remove();
+  document.getElementById('gapBar')?.remove();
+}
+function drawGaps() {
+  document.getElementById('edGaps')?.remove();
+  if (!gapMode) return;
+  const ph = pageHeight(page);
+  const layer = el('div.gaplayer', { id: 'edGaps', 'aria-hidden': 'true' });
+  gaps.forEach((g, i) => {
+    const m = el('span.gapmark');
+    Object.assign(m.style, {
+      left: (g.x0 / PAGE_W * 100) + '%', width: ((g.x1 - g.x0) / PAGE_W * 100) + '%',
+      top: ((g.y - g.avail) / ph * 100) + '%', height: ((g.avail + 1.5) / ph * 100) + '%',
+      animationDelay: Math.min(i * 30, 400) + 'ms',
+    });
+    layer.append(m);
+  });
+  $('edPage').append(layer);
+}
+function openGapText(g) {
+  commitText();
+  const t = textForGap(g, lineHeight);
+  const st = { tool: 'text', color, size: t.size, lh: t.lh, text: '', pts: [r1(t.x), r1(t.y), 0, r1(t.x), r1(t.y + t.lh), 0] };
+  openText(t.x, t.y, st);
+}
+// Kurzer Tipp mit dem Stift in eine Lücke: Textfeld statt Punkt
+function gapTap(c) {
+  const p = c.pts;
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (let i = 0; i < p.length; i += 3) { x0 = Math.min(x0, p[i]); x1 = Math.max(x1, p[i]); y0 = Math.min(y0, p[i + 1]); y1 = Math.max(y1, p[i + 1]); }
+  if (x1 - x0 > 3 || y1 - y0 > 3 || p.length > 30) return false;
+  const g = gapAt(gaps, p[0], p[1]);
+  if (!g) return false;
+  if (textAt(p[0], p[1])) openText(p[0], p[1]); else openGapText(g);
+  return true;
+}
+function gapStroke(st) {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (let i = 0; i < st.pts.length; i += 3) { x0 = Math.min(x0, st.pts[i]); x1 = Math.max(x1, st.pts[i]); y0 = Math.min(y0, st.pts[i + 1]); y1 = Math.max(y1, st.pts[i + 1]); }
+  const g = gapAt(gaps, (x0 + x1) / 2, (y0 + y1) / 2, 14);
+  if (!g) return;
+  if (!gapGroups.has(g)) gapGroups.set(g, []);
+  gapGroups.get(g).push(st);
+  clearTimeout(gapTimer);
+  gapTimer = setTimeout(snapAllGaps, 700);
+}
+function snapAllGaps() {
+  clearTimeout(gapTimer);
+  let moved = false;
+  for (const [g, list0] of gapGroups) {
+    const list = list0.filter((s) => strokes.includes(s));
+    gapGroups.set(g, list);
+    const dy = baselineShift(list, g);
+    if (!dy) continue;
+    translate(list, 0, dy);
+    undo.push({ type: 'move', strokes: [...list], dx: 0, dy }); redo = [];
+    moved = true;
+  }
+  if (moved && page) { changed(); redrawInk(); updateToolbar(); }
+}
 
 // ---------- Lasso: Striche auswählen und verschieben ----------
 const inBox = (b, x, y) => x >= b[0] - 8 && x <= b[2] + 8 && y >= b[1] - 8 && y <= b[3] + 8;

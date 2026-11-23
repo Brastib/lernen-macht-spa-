@@ -169,3 +169,31 @@ export function shareReady(title, name, blob, { type = 'application/pdf', hint =
         h('button.btn.primary', { on: { click: async () => { try { if (await saveFile(name, blob, type)) close(true); } catch (e) { toast(e.message, 5000); } } } }, icon('share'), h('span', { text: button }))));
   });
 }
+
+// ---------- Scroll-Sperre ----------
+// Solange eine Vollbild-Ansicht (Editor, Leser, Scan …) offen ist, bleibt die Bibliothek dahinter stehen.
+// Sonst scrollt sie auf dem iPad mit, und man sieht sie oben durchschimmern.
+(function scrollLock() {
+  let locked = false, y = 0;
+  const update = () => {
+    const open = [...document.querySelectorAll('section.screen')].some((s) => !s.hidden);
+    if (open === locked) return;
+    locked = open;
+    const root = document.documentElement, body = document.body;
+    if (open) {
+      y = window.scrollY || root.scrollTop || 0;
+      body.style.top = `-${y}px`;
+      root.classList.add('scrlock');
+    } else {
+      root.classList.remove('scrlock');
+      body.style.top = '';
+      window.scrollTo(0, y);
+    }
+  };
+  const start = () => {
+    const mo = new MutationObserver(update);
+    document.querySelectorAll('section.screen').forEach((s) => mo.observe(s, { attributes: true, attributeFilter: ['hidden'] }));
+    update();
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
+})();

@@ -1,7 +1,7 @@
 // Scannen: Foto holen, Ecken anpassen, gerade ziehen, verkleinern, speichern.
 import * as db from './db.js';
 import { $, busy, toast, kb } from './ui.js';
-import { loadPhoto, rotateCanvas, detectPage, warp, enhance, compress, makeThumb } from './scanner.js';
+import { loadPhoto, rotateCanvas, detectPage, warp, enhance, compress, makeThumb, flatten, deskew, sharpen } from './scanner.js';
 
 const SVGNS = 'http://www.w3.org/2000/svg';
 
@@ -163,7 +163,7 @@ function processAndSave(canvas, cs, m) {
   chain = chain.then(async () => {
     try {
       const t0 = performance.now();
-      const flat = enhance(warp(canvas, cs), m);
+      const flat = sharpen(enhance(flatten(deskew(warp(canvas, cs))), m), m === 'gray' ? 0.8 : 0.6);
       const { blob, width, height } = await compress(flat);
       const thumb = await makeThumb(flat);
       await db.addPage({ bookId: target, image: blob, thumb, width, height });
