@@ -2285,3 +2285,22 @@ html.fxopen, html.fxopen body, html:has(> body > .gamefx), html:has(> body > .ga
 .gseg.glftools { grid-template-columns: repeat(6, minmax(0, 1fr)); }
 .tkhp { flex: 1 1 160px; max-width: 280px; }
 .tkhp .pkchip { max-width: 100%; }
+
+/* ---------- Paket 5: Bombenlabyrinth-Steuerung ---------- */
+.bmpad { gap: 8px; }
+.bmdpad { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: repeat(3, minmax(0, 1fr)); gap: 6px; aspect-ratio: 1; max-width: 190px; width: 100%; align-self: center; }
+.bmbtn { min-width: 0; min-height: 0; display: grid; place-items: center; border-radius: 14px; border: 2px solid var(--pc); background: color-mix(in srgb, var(--pc) 10%, var(--surface)); color: var(--pc); touch-action: none; user-select: none; -webkit-user-select: none; }
+.bmbtn .ic { width: 28px; height: 28px; stroke-width: 2.4; }
+.bmbtn.up { grid-area: 1 / 2; } .bmbtn.left { grid-area: 2 / 1; } .bmbtn.right { grid-area: 2 / 3; } .bmbtn.down { grid-area: 3 / 2; }
+.bmbtn.on, .bmbtn:active { background: color-mix(in srgb, var(--pc) 32%, var(--surface)); transform: scale(.95); }
+.bmbomb { min-height: 58px; display: flex; align-items: center; justify-content: center; gap: 10px; border-radius: 16px; border: 2px solid var(--text); background: var(--surface); color: var(--text); font: 800 17px 'Noteworthy', 'Marker Felt', system-ui, sans-serif; touch-action: none; user-select: none; -webkit-user-select: none; }
+.bmbomb.on, .bmbomb:active { background: color-mix(in srgb, #ff7a3c 25%, var(--surface)); transform: scale(.97); }
+.bmbombic { width: 22px; height: 22px; border-radius: 50%; background: #2a2d33; box-shadow: 0 0 0 2px var(--surface), 0 0 0 3px var(--line); position: relative; }
+.bmbombic::after { content: ''; position: absolute; right: -3px; top: -5px; width: 6px; height: 6px; border-radius: 50%; background: #ff8a00; }
+.sgwrap.tall .bmpad { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: center; }
+.sgwrap.tall .bmpad .pkchip, .sgwrap.tall .bmpad .sgscore, .sgwrap.tall .bmpad .sgkeys { grid-column: 1 / -1; }
+.sgwrap.tall .bmdpad { max-width: 150px; }
+.bmbomb { border-color: color-mix(in srgb, #ff7a3c 60%, var(--line)); background: color-mix(in srgb, #ff7a3c 10%, var(--surface)); }
+.bmbombic { background: #1d1f24; box-shadow: 0 0 0 2px #fff, 0 0 0 3px var(--line); }
+.hsturn { flex: 0 1 auto; min-width: 0; display: flex; }
+.hsturn .pkchip { max-width: 100%; }
