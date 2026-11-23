@@ -13,9 +13,29 @@ const DSHORT = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
 const WD = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
 
 // ================= Stundenplan =================
-const DEFAULT_PERIODS = [['07:55', '08:40'], ['08:45', '09:30'], ['09:50', '10:35'], ['10:40', '11:25'], ['11:40', '12:25'], ['12:30', '13:15'], ['13:45', '14:30'], ['14:30', '15:15']];
+const OLD_DEFAULT = [['07:55', '08:40'], ['08:45', '09:30'], ['09:50', '10:35'], ['10:40', '11:25'], ['11:40', '12:25'], ['12:30', '13:15'], ['13:45', '14:30'], ['14:30', '15:15']];
+// Eigene Schulzeiten: 3 Blöcke à 2 Schulstunden (45 + 45 Min) ab 07:55, je 20 Min Pause dazwischen
+const BLOCK = { start: '07:55', len: 45, blocks: 3, pauses: [20, 20] };
+function blockPeriods({ start, len, blocks, pauses }) {
+  const f = (m) => `${String(Math.floor(m / 60) % 24).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+  const out = []; let t = mins(start);
+  for (let b = 0; b < blocks; b++) {
+    for (let k = 0; k < 2; k++) { out.push({ s: f(t), e: f(t + len) }); t += len; }
+    t += pauses[b] ?? pauses[pauses.length - 1] ?? 0;
+  }
+  return out;
+}
+const DEFAULT_PERIODS = blockPeriods(BLOCK).map((p) => [p.s, p.e]);
 export async function getTimetable() {
   const t = await db.getMeta('timetable');
+  // Alte Standard-Zeiten (nie geändert) auf die neuen Schulzeiten umstellen
+  if (t && t.periods && t.periods.length === OLD_DEFAULT.length && t.periods.every((p, i) => p.s === OLD_DEFAULT[i][0] && p.e === OLD_DEFAULT[i][1]) && !t.timesSet) {
+    const used = Object.keys(t.cells || {}).some((k) => +k.split('-')[1] >= DEFAULT_PERIODS.length);
+    const fresh = DEFAULT_PERIODS.map(([s, e]) => ({ s, e }));
+    t.periods = used ? [...fresh, ...t.periods.slice(DEFAULT_PERIODS.length)] : fresh;
+    t.timesSet = 1;
+    await saveTT(t);
+  }
   return t || { id: 'timetable', days: 5, periods: DEFAULT_PERIODS.map(([s, e]) => ({ s, e })), cells: {} };
 }
 const saveTT = (t) => db.putItems('meta', t);
@@ -116,18 +136,42 @@ async function editCell(tt, d, p, subjects, after) {
 }
 
 async function editTimes(tt, after) {
+  let list = tt.periods.map((p) => ({ ...p }));
   const res = await sheet('Zeiten der Stunden', (body, close) => {
-    const rows = tt.periods.map((per, i) => {
-      const s = h('input.field', { type: 'time', value: per.s }), e = h('input.field', { type: 'time', value: per.e });
-      body.append(h('div.timerow', null, h('b', { text: `${i + 1}.` }), h('div.datewrap', null, s), h('span', { text: 'bis' }), h('div.datewrap', null, e)));
-      return [s, e];
-    });
-    body.append(h('div.dlgactions', null,
+    // Schnell-Vorlage: Doppelstunden mit Pausen
+    const st = h('input.field', { type: 'time', value: BLOCK.start });
+    const nb = h('select.field', null, ...[2, 3, 4].map((n) => h('option', { value: n, text: `${n} Blöcke` }))); nb.value = '3';
+    const p1 = h('input.field', { type: 'number', min: 0, max: 90, value: 20, inputmode: 'numeric' });
+    const p2 = h('input.field', { type: 'number', min: 0, max: 90, value: 20, inputmode: 'numeric' });
+    const box = h('div.ttpreset', null,
+      h('b', { text: 'Doppelstunden (2 × 45 Min)' }),
+      h('div.ttpgrid', null,
+        h('label', null, h('small', { text: 'Beginn' }), h('div.datewrap', null, st)),
+        h('label', null, h('small', { text: 'Anzahl' }), nb),
+        h('label', null, h('small', { text: '1. Pause (Min)' }), p1),
+        h('label', null, h('small', { text: 'Weitere Pausen' }), p2)),
+      h('button.btn.small', { text: 'Zeiten ausrechnen', on: { click: () => {
+        list = blockPeriods({ start: st.value || '07:55', len: 45, blocks: +nb.value, pauses: [+p1.value || 0, +p2.value || 0] });
+        draw();
+      } } }));
+    const rowsBox = h('div.ttrows');
+    let rows = [];
+    const draw = () => {
+      rowsBox.textContent = '';
+      rows = list.map((per, i) => {
+        const s = h('input.field', { type: 'time', value: per.s }), e = h('input.field', { type: 'time', value: per.e });
+        rowsBox.append(h('div.timerow', null, h('b', { text: `${i + 1}.` }), h('div.datewrap', null, s), h('span', { text: 'bis' }), h('div.datewrap', null, e)));
+        return [s, e];
+      });
+    };
+    draw();
+    body.append(box, rowsBox, h('div.dlgactions', null,
       h('button.btn', { text: 'Abbrechen', on: { click: () => close(null) } }),
       h('button.btn.primary', { text: 'Sichern', on: { click: () => close(rows.map(([s, e]) => ({ s: s.value || '08:00', e: e.value || '08:45' }))) } })));
   });
   if (!res) return;
   tt.periods = res;
+  tt.timesSet = 1;
   await saveTT(tt);
   after();
 }

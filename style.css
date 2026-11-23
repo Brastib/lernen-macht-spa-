@@ -1641,3 +1641,15 @@ html.scrlock, html.scrlock body { overflow: hidden; }
 html.scrlock body { position: fixed; left: 0; right: 0; width: 100%; }
 .screen, .edscroll, .readstage { overscroll-behavior: contain; }
 .screen > * { overscroll-behavior: contain; }
+
+/* Stundenplan: Doppelstunden-Vorlage */
+.ttpreset { display: flex; flex-direction: column; gap: 10px; padding: 14px; margin-bottom: 14px; border-radius: 14px; background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--line); }
+.ttpreset b { font-size: 14px; font-weight: 600; }
+.ttpgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 12px; }
+.ttpgrid label { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.ttpgrid small { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ttpgrid .field { width: 100%; min-width: 0; }
+.ttpreset .btn { align-self: flex-start; }
+.ttrows { display: flex; flex-direction: column; }
+@media (max-width: 600px) { .ttpgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.ttpreset .field { background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
