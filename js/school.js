@@ -2,7 +2,8 @@
 import * as db from './db.js';
 import { micButton } from './speech.js';
 import { editHomework } from './homework.js';
-import { $, h, icon, toast, plural, sheet, menu, confirmSheet } from './ui.js';
+import { syncTutoringReminder, tutoringReminderOf, toCalendar } from './reminders.js';
+import { $, h, icon, toast, plural, sheet, menu, confirmSheet, saveFile } from './ui.js';
 
 const DAY = 86400000;
 const pad = (n) => String(n).padStart(2, '0');
@@ -160,6 +161,7 @@ export async function editTutoring(tt, t, subjects, after) {
   const isNew = !t || !t.id;
   const cur = { weekly: true, day: Math.min(dayIdx(), 4), s: '15:00', e: '16:00', ...(t || {}) };
   if (!cur.date) cur.date = nextTutorDate({ weekly: true, day: cur.day });
+  const oldRem = isNew ? null : await tutoringReminderOf(t.id);
   const res = await sheet(isNew ? 'Nachhilfe eintragen' : 'Nachhilfe', (body, close) => {
     let pick = cur.subjectId || '', weekly = cur.weekly !== false, day = cur.day;
     const chips = h('div.chips.left.subjpick');
@@ -187,11 +189,15 @@ export async function editTutoring(tt, t, subjects, after) {
     const to = h('input.field', { type: 'time', id: 'tutTo', value: cur.e });
     const teacher = h('input.field', { type: 'text', id: 'tutTeacher', placeholder: 'z. B. Frau Weber', value: cur.teacher || '', autocomplete: 'off' });
     const place = h('input.field', { type: 'text', id: 'tutPlace', placeholder: 'z. B. Lernstudio, online', value: cur.place || '', autocomplete: 'off' });
+    const rem = h('select.field', { id: 'tutRem' },
+      ...[['', 'Nicht erinnern'], ['15', '15 Minuten vorher'], ['30', '30 Minuten vorher'], ['60', '1 Stunde vorher'], ['eve', 'Am Tag vorher um 17 Uhr']].map(([v, l]) => h('option', { value: v, text: l })));
+    rem.value = oldRem ? (oldRem.before || '30') : (isNew ? '30' : '');
+    const cal = h('input', { type: 'checkbox', id: 'tutCal' });
     const read = () => {
       if (!pick) { toast('Tipp an, für welches Fach die Nachhilfe ist.'); return null; }
       if (!from.value || !to.value || to.value <= from.value) { toast('Die Endzeit muss nach der Startzeit liegen.'); return null; }
       if (!weekly && !date.value) { toast('Wähl ein Datum.'); return null; }
-      return { subjectId: pick, weekly, day: weekly ? day : dayIdx(parseDate(date.value)), date: weekly ? null : date.value, s: from.value, e: to.value, teacher: teacher.value.trim(), place: place.value.trim() };
+      return { subjectId: pick, weekly, day: weekly ? day : dayIdx(parseDate(date.value)), date: weekly ? null : date.value, s: from.value, e: to.value, teacher: teacher.value.trim(), place: place.value.trim(), remBefore: rem.value, cal: cal.checked };
     };
     body.append(h('p.fieldlabel', { text: 'Fach' }), chips,
       h('p.fieldlabel', { text: 'Wie oft' }), seg, dayBox, dateBox,
@@ -201,6 +207,10 @@ export async function editTutoring(tt, t, subjects, after) {
       h('div.ttpgrid.tuttimes', null,
         h('label', { for: 'tutTeacher' }, h('span.fieldlabel', { text: 'Lehrer/in (optional)' }), teacher),
         h('label', { for: 'tutPlace' }, h('span.fieldlabel', { text: 'Ort (optional)' }), place)),
+      h('label.fieldlabel', { for: 'tutRem', text: 'Erinnern (mit offenen Nachhilfe-Hausaufgaben)' }), rem,
+      document.documentElement.dataset.artifact ? null : h('label.checkrow', { for: 'tutCal' }, cal, h('span', null,
+        h('b', { text: 'Erinnerung auch im iPad-Kalender eintragen' }),
+        h('small', { text: 'Dann klingelt es auch, wenn die App geschlossen ist.' }))),
       h('button.btn.tuthw', { on: { click: () => { const v = read(); if (v) close({ ...v, hw: true }); } } }, icon('homework'), 'Hausaufgabe von der Nachhilfe eintragen'),
       h('div.dlgactions', null,
         isNew ? null : h('button.btn.danger', { text: 'Löschen', on: { click: () => close('delete') } }),
@@ -211,12 +221,16 @@ export async function editTutoring(tt, t, subjects, after) {
   tt.tutoring = tt.tutoring || [];
   if (res === 'delete') {
     tt.tutoring = tt.tutoring.filter((x) => x.id !== t.id);
+    await syncTutoringReminder(t, '');
     await saveTT(tt); toast('Nachhilfe gelöscht'); after(); return;
   }
-  const { hw, ...vals } = res;
+  const { hw, remBefore, cal, ...vals } = res;
   const entry = { ...(t || {}), ...vals, id: (t && t.id) || 'tut' + Date.now().toString(36) };
   tt.tutoring = [...tt.tutoring.filter((x) => x.id !== entry.id), entry];
   await saveTT(tt);
+  const subj = subjects.find((x) => x.id === entry.subjectId);
+  const r = await syncTutoringReminder(entry, remBefore, { subjectName: subj && subj.name, firstDate: nextTutorDate(entry) });
+  if (r && cal) { try { await toCalendar(r, { saveFile, subjectName: subj && subj.name }); } catch (e) { toast(e.message || 'Kalender ging nicht'); } }
   if (!hw) toast(isNew ? 'Nachhilfe eingetragen' : 'Gesichert');
   after();
   if (hw) await editHomework({ subjectId: entry.subjectId, tut: true, due: nextTutorDate(entry, new Date(Date.now() + DAY)) || '' }, { after });
@@ -297,7 +311,7 @@ async function editTimes(tt, after) {
 // Kasten „Jetzt / Als Nächstes“ für die Startseite (aktualisiert sich jede Minute)
 export async function nowCard({ go, subjects }) {
   const tt = await getTimetable();
-  if (!Object.keys(tt.cells).length) {
+  if (!Object.keys(tt.cells).length && !(tt.tutoring || []).length) {
     return h('button.dash.nowcard.empty', { on: { click: () => go({ view: 'timetable' }) } },
       h('span.dashic', null, icon('grid')), h('span.dashtext', null, h('b', { text: 'Stundenplan eintragen' }), h('small', { text: 'Dann siehst du hier, was jetzt dran ist.' })));
   }
@@ -306,9 +320,25 @@ export async function nowCard({ go, subjects }) {
   const draw = () => {
     if (!el.isConnected && el.dataset.drawn) { clearInterval(el._t); return; }
     el.dataset.drawn = '1';
-    const { now, next, minute } = nowNext(tt);
+    let { now, next, minute } = nowNext(tt);
+    // Nachhilfe heute einbeziehen
+    let tNow = null, tNext = null;
+    for (const t of tutoringOn(tt, new Date())) {
+      if (!sm.has(t.subjectId)) continue;
+      const s0 = mins(t.s), e0 = mins(t.e);
+      if (s0 <= minute && minute < e0) tNow = { t, s: s0, e: e0 };
+      else if (s0 > minute && !tNext) tNext = { t, s: s0, e: e0 };
+    }
+    if (tNow && !now) now = { tut: tNow.t, s: tNow.s, e: tNow.e };
+    if (tNext && (!next || next.offset > 0 || tNext.s < next.s) && !(now && now.tut === tNext.t)) next = { tut: tNext.t, s: tNext.s, e: tNext.e, offset: 0 };
     el.textContent = '';
     const block = (label, x, extra) => {
+      if (x && x.tut) {
+        const s = sm.get(x.tut.subjectId);
+        return h('button.nowblock.tut', { style: { '--c': s.color }, on: { click: () => go({ view: 'timetable' }) } },
+          h('small', { text: label + ' · Nachhilfe' }), h('b', { text: s.name }),
+          h('span', { text: [x.tut.place, `${x.tut.s}–${x.tut.e}`, extra].filter(Boolean).join(' · ') }));
+      }
       const s = x && sm.get(x.cell.subjectId);
       if (!s) return null;
       return h('button.nowblock', { style: { '--c': s.color }, on: { click: () => go({ view: 'subject', subject: s }) } },
@@ -328,19 +358,85 @@ export async function nowCard({ go, subjects }) {
 }
 
 // ================= Prüfungen =================
-export const EXAM_KINDS = ['Klassenarbeit', 'Test', 'Klausur', 'Vokabeltest', 'Referat', 'Präsentation', 'Abgabe'];
+export const EXAM_KINDS = ['Klassenarbeit', 'Präsentation', 'Test', 'Vokabeltest', 'Referat', 'Klausur', 'Abgabe'];
+const MONTHS = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
+function isoWeek(d) { const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())); const n = t.getUTCDay() || 7; t.setUTCDate(t.getUTCDate() + 4 - n); const y0 = new Date(Date.UTC(t.getUTCFullYear(), 0, 1)); return Math.ceil(((t - y0) / DAY + 1) / 7); }
+// Datum schätzen: ab Start nur Tage, an denen das Fach im Stundenplan steht (sonst Mo–Fr), je Stunde „per“ Vorträge
+export async function estimateDate({ start, pos, per, subjectId }) {
+  if (!start || !pos || !per) return null;
+  const tt = await getTimetable();
+  const perDay = Array.from({ length: 7 }, (_, d) => (d < tt.days ? tt.periods.filter((_, p) => tt.cells[`${d}-${p}`] && tt.cells[`${d}-${p}`].subjectId === subjectId).length : 0));
+  const fromTT = perDay.some((n) => n > 0);
+  let need = pos, d = parseDate(start), guard = 0, days = 0;
+  for (;;) {
+    const i = dayIdx(d);
+    const slots = fromTT ? perDay[i] * per : (i < 5 ? per : 0);
+    if (slots) { days++; if (need <= slots) break; need -= slots; }
+    d.setDate(d.getDate() + 1);
+    if (++guard > 200) return null;
+  }
+  return { date: isoDate(d), note: fromTT ? `am ${days}. Tag mit dem Fach laut Stundenplan` : `am ${days}. Schultag (Fach nicht im Stundenplan, darum Mo–Fr gerechnet)` };
+}
+// Text fürs Datum, auch ungefähr: „ca. KW 50 (7.–11.12.)“ oder „ca. Anfang Dezember“
+export function approxLabel(ex) {
+  const d = parseDate(ex.date);
+  if (ex.approx === 'est') return `geschätzt ${WD[d.getDay()]} ${d.getDate()}.${d.getMonth() + 1}.`;
+  if (ex.approx === 'week') { const m = new Date(d); m.setDate(d.getDate() - dayIdx(d)); const f = new Date(m); f.setDate(m.getDate() + 4); return `ca. KW ${isoWeek(d)} (${m.getDate()}.${m.getMonth() + 1}.–${f.getDate()}.${f.getMonth() + 1}.)`; }
+  if (ex.approx === 'month') return `ca. ${d.getDate() <= 10 ? 'Anfang' : d.getDate() <= 20 ? 'Mitte' : 'Ende'} ${MONTHS[d.getMonth()]}`;
+  return `${WD[d.getDay()]} ${d.getDate()}.${d.getMonth() + 1}.`;
+}
 export function daysUntil(date) { const t0 = new Date(); t0.setHours(0, 0, 0, 0); return Math.round((parseDate(date) - t0) / DAY); }
 export function countdownText(n) { return n < 0 ? (n === -1 ? 'gestern' : `vor ${-n} Tagen`) : n === 0 ? 'heute' : n === 1 ? 'morgen' : `in ${n} Tagen`; }
 
 export async function editExam(ex, { subjects, after }) {
   const isNew = !ex.id;
   const oldRem = isNew ? null : (await db.listReminders()).find((r) => r.refId === ex.id && r.kind === 'lernen');
-  const res = await sheet(isNew ? 'Neue Prüfung' : 'Prüfung', (body, close) => {
+  const res = await sheet(isNew ? 'Arbeit oder Präsentation eintragen' : `${ex.kind || 'Termin'}`, (body, close) => {
     const subj = h('select.field', { id: 'exSubj' }, ...subjects.map((s) => h('option', { value: s.id, text: s.name })));
     subj.value = ex.subjectId || (subjects[0] && subjects[0].id) || '';
     const kind = h('select.field', { id: 'exKind' }, ...EXAM_KINDS.map((k) => h('option', { value: k, text: k })));
     kind.value = ex.kind || 'Klassenarbeit';
     const date = h('input.field', { type: 'date', id: 'exDate', value: ex.date || isoDate(new Date(Date.now() + 7 * DAY)) });
+    let approx = ex.approx || '';
+    const apSeg = h('div.gseg.exapprox');
+    const apHint = h('p.calm.small.exaphint');
+    const drawAp = () => {
+      apSeg.replaceChildren(...[['', 'Genau'], ['week', 'Ca. Woche'], ['month', 'Ca. Monat'], ...(approx === 'est' ? [['est', 'Geschätzt']] : [])].map(([k, l]) =>
+        h('button' + (approx === k ? '.on' : ''), { text: l, on: { click: () => { approx = k; drawAp(); } } })));
+      apHint.textContent = !approx || !date.value ? '' : approx === 'est' ? `Wird angezeigt als „${approxLabel({ date: date.value, approx })}“. Sobald du den Tag kennst, tipp auf „Genau“.` : `Wird angezeigt als „${approxLabel({ date: date.value, approx })}“. Wähl irgendeinen Tag in der Zeit. Später kannst du das genaue Datum eintragen.`;
+    };
+    date.addEventListener('change', drawAp);
+    drawAp();
+    // Reihenfolge (z. B. bei Präsentationen): freier Text + Schätzung
+    const order = h('input.field', { type: 'text', id: 'exOrder', placeholder: 'z. B. als Letzter von allen, nach Max, 3. von 20', value: ex.order || '', autocomplete: 'off' });
+    const est = ex.est || {};
+    const eStart = h('input.field', { type: 'date', id: 'exEStart', value: est.start || '' });
+    const ePos = h('input.field', { type: 'number', id: 'exEPos', min: 1, max: 60, inputmode: 'numeric', placeholder: 'z. B. 20', value: est.pos || '' });
+    const eTot = h('input.field', { type: 'number', id: 'exETot', min: 1, max: 60, inputmode: 'numeric', placeholder: 'z. B. 20', value: est.tot || '' });
+    const ePer = h('input.field', { type: 'number', id: 'exEPer', min: 1, max: 20, inputmode: 'numeric', placeholder: 'z. B. 3', value: est.per || '' });
+    const eOut = h('p.calm.small.exestout');
+    const last = h('button.pchip.small', { text: 'Ich bin Letzter', on: { click: () => { if (eTot.value) ePos.value = eTot.value; else toast('Trag erst ein, wie viele es insgesamt sind.'); if (!order.value) order.value = 'als Letzter von allen'; } } });
+    const calc = h('button.btn.small', { text: 'Datum schätzen', on: { click: async () => {
+      const r = await estimateDate({ start: eStart.value, pos: +ePos.value, per: +ePer.value, subjectId: subj.value });
+      if (!r) { eOut.textContent = 'Dafür brauche ich: Start der Vorträge, deinen Platz und wie viele pro Stunde drankommen.'; return; }
+      date.value = r.date; approx = 'est'; drawAp();
+      eOut.textContent = `Geschätzt: ${approxLabel({ date: r.date })}, ${r.note}. Das ist nur eine Schätzung, das Datum wird mit „geschätzt“ markiert.`;
+    } } });
+    const estBox = h('details.exest' + (ex.order || ex.est ? '[open]' : ''), null,
+      h('summary', { text: 'Reihenfolge (z. B. bei Präsentationen)' }),
+      h('label.fieldlabel', { for: 'exOrder', text: 'Wann bist du dran?' }), order,
+      h('div.chips.left.exquick', null, last,
+        ...['nach der Pause', 'in der ersten Stunde', 'wird noch ausgelost'].map((t) => h('button.pchip.small', { text: t, on: { click: () => { order.value = t; } } }))),
+      h('p.fieldlabel', { text: 'Datum schätzen lassen (freiwillig)' }),
+      h('div.fieldgrid', null,
+        h('div', null, h('label.fieldlabel', { for: 'exEStart', text: 'Start der Vorträge' }), h('div.datewrap', null, eStart)),
+        h('div', null, h('label.fieldlabel', { for: 'exEPer', text: 'Vorträge pro Stunde' }), ePer)),
+      h('div.fieldgrid', null,
+        h('div', null, h('label.fieldlabel', { for: 'exEPos', text: 'Dein Platz' }), ePos),
+        h('div', null, h('label.fieldlabel', { for: 'exETot', text: 'Von insgesamt' }), eTot)),
+      h('div.exestrow', null, calc), eOut);
+    if (estBox.hasAttribute('[open]')) estBox.removeAttribute('[open]');
+    if (ex.order || ex.est) estBox.open = true;
     const topic = h('textarea.field.area', { id: 'exTopic', rows: 2, placeholder: 'Thema, z. B. Lineare Funktionen, Buch S. 40–58' });
     topic.value = ex.topic || '';
     const learn = h('select.field', { id: 'exLearn' }, h('option', { value: '0', text: 'Keine Lernerinnerung' }),
@@ -348,7 +444,8 @@ export async function editExam(ex, { subjects, after }) {
     learn.value = oldRem ? String(oldRem.days || 5) : isNew ? '5' : '0';
     body.append(
       h('div.fieldgrid', null, h('div', null, h('label.fieldlabel', { for: 'exSubj', text: 'Fach' }), subj), h('div', null, h('label.fieldlabel', { for: 'exKind', text: 'Art' }), kind)),
-      h('label.fieldlabel', { for: 'exDate', text: 'Wann' }), h('div.datewrap', null, date),
+      h('label.fieldlabel', { for: 'exDate', text: 'Wann' }), apSeg, h('div.datewrap.exdate', null, date), apHint,
+      estBox,
       h('label.fieldlabel', { for: 'exTopic', text: 'Thema' }), h('div.micwrap', null, topic, micButton(topic)),
       h('label.fieldlabel', { for: 'exLearn', text: 'Lernerinnerung' }), learn,
       h('div.dlgactions', null,
@@ -357,7 +454,7 @@ export async function editExam(ex, { subjects, after }) {
         h('button.btn.primary', { text: isNew ? 'Eintragen' : 'Sichern', on: { click: () => {
           if (!subj.value) { toast('Leg zuerst ein Fach an'); return; }
           if (!date.value) { toast('Bitte ein Datum wählen'); return; }
-          close({ subjectId: subj.value, kind: kind.value, date: date.value, topic: topic.value.trim(), learnDays: +learn.value });
+          close({ subjectId: subj.value, kind: kind.value, date: date.value, approx, order: order.value.trim(), est: eStart.value || ePos.value || eTot.value || ePer.value ? { start: eStart.value, pos: +ePos.value || null, tot: +eTot.value || null, per: +ePer.value || null } : null, topic: topic.value.trim(), learnDays: +learn.value });
         } } })));
   });
   if (!res) return;
@@ -380,7 +477,7 @@ export async function editExam(ex, { subjects, after }) {
     if (!oldRem || oldRem.date !== r.date || oldRem.until !== r.until) { r.done = false; r.ack = 0; r.notified = 0; r.snoozeUntil = 0; }
     if (until >= t0) await db.putItems('reminders', r);
   } else if (oldRem) await db.deleteItems('reminders', oldRem.id);
-  toast(isNew ? 'Prüfung eingetragen' : 'Gesichert');
+  toast(isNew ? 'Eingetragen' : 'Gesichert');
   after && after();
 }
 
@@ -389,11 +486,12 @@ function examRow(ex, s, { subjects, after, onGrade, onPlan }) {
   const n = daysUntil(ex.date);
   const d = parseDate(ex.date);
   return h('div.examrow' + (n < 0 ? '.past' : n <= 3 ? '.soon' : ''), { style: s ? { '--c': s.color } : {} },
-    h('div.examcount', null, h('b', { text: n < 0 ? '✓' : String(n) }), h('small', { text: n < 0 ? 'vorbei' : n === 1 ? 'Tag' : 'Tage' })),
+    h('div.examcount', null, h('b', { text: n < 0 ? '✓' : (ex.approx ? '~' : '') + n }), h('small', { text: n < 0 ? 'vorbei' : n === 1 ? 'Tag' : 'Tage' })),
     h('button.exambody', { on: { click: () => editExam(ex, { subjects, after }) } },
       h('b', { text: `${ex.kind}${s ? ' · ' + s.name : ''}` }),
       ex.topic ? h('span', { text: ex.topic }) : null,
-      h('small', { text: `${WD[d.getDay()]} ${d.getDate()}.${d.getMonth() + 1}. · ${countdownText(n)}` })),
+      ex.order ? h('span.exorder', { text: 'Reihenfolge: ' + ex.order + (ex.est && ex.est.pos ? ` · Platz ${ex.est.pos}${ex.est.tot ? ' von ' + ex.est.tot : ''}` : '') }) : null,
+      h('small', { text: `${approxLabel(ex)} · ${ex.approx && ex.approx !== 'est' ? 'ungefähr ' : ''}${countdownText(n)}${ex.approx ? ' · antippen, wenn du das Datum weißt' : ''}` })),
     n > 0 && onPlan ? h('button.btn.small.planbtn' + (ex.plan ? '.has' : ''), { style: ex.plan ? { '--p': planPct(ex) + '%' } : {}, on: { click: () => onPlan(ex) } },
       icon('list'), h('span', { text: ex.plan ? `Lernplan ${planPct(ex)} %` : 'Lernplan' })) : null,
     n <= 0 && onGrade ? h('button.btn.small', { text: ex.gradeId ? 'Note ändern' : 'Note eintragen', on: { click: () => onGrade(ex) } }) : null);
@@ -407,8 +505,8 @@ export async function renderExams(ctx) {
   const past = exams.filter((x) => daysUntil(x.date) < 0).sort((a, b) => b.date.localeCompare(a.date));
   ctx.setHeader({
     back: { label: 'Bibliothek', go: () => ctx.go({ view: 'library' }) },
-    eyebrow: 'Planer', title: 'Prüfungen',
-    meta: upcoming.length ? `${plural(upcoming.length, 'Prüfung', 'Prüfungen')} geplant` : 'Nichts geplant',
+    eyebrow: 'Planer', title: 'Arbeiten und Termine',
+    meta: upcoming.length ? `${plural(upcoming.length, 'Termin', 'Termine')} geplant` : 'Nichts geplant',
     actions: [ctx.btn('Neu', 'plus', () => subjects.length ? editExam({}, { subjects, after: again }) : toast('Leg zuerst ein Fach an'), '.primary')],
   });
   const view = $('view');
@@ -416,9 +514,9 @@ export async function renderExams(ctx) {
   const onGrade = (ex) => gradeForExam(ex, again);
   const onPlan = (ex) => ctx.go({ view: 'plan', examId: ex.id });
   if (!exams.length) {
-    view.append(h('section.empty', null, h('h2', { text: 'Keine Prüfungen eingetragen' }),
-      h('p', { text: 'Trag Klassenarbeiten, Tests und Referate ein. Du siehst dann den Countdown, und die App erinnert dich jeden Tag ans Lernen.' }),
-      h('div.emptyactions', null, ctx.btn('Prüfung eintragen', 'plus', () => subjects.length ? editExam({}, { subjects, after: again }) : toast('Leg zuerst ein Fach an'), '.primary'))));
+    view.append(h('section.empty', null, h('h2', { text: 'Noch nichts eingetragen' }),
+      h('p', { text: 'Trag Klassenarbeiten und Präsentationen ein, auch wenn das Datum noch ungenau ist. Du siehst dann den Countdown, und die App erinnert dich jeden Tag ans Lernen.' }),
+      h('div.emptyactions', null, ctx.btn('Arbeit eintragen', 'plus', () => subjects.length ? editExam({}, { subjects, after: again }) : toast('Leg zuerst ein Fach an'), '.primary'))));
     return;
   }
   if (upcoming.length) {
@@ -445,13 +543,13 @@ export async function examCard({ go, subjects }) {
   const ex = (await db.listExams()).filter((x) => daysUntil(x.date) >= 0).sort((a, b) => a.date.localeCompare(b.date));
   if (!ex.length) {
     return h('button.dash.examcard.empty', { on: { click: () => go({ view: 'exams' }) } },
-      h('span.dashic', null, icon('bookmark')), h('span.dashtext', null, h('b', { text: 'Keine Prüfung geplant' }), h('small', { text: 'Klassenarbeiten und Tests eintragen' })));
+      h('span.dashic', null, icon('bookmark')), h('span.dashtext', null, h('b', { text: 'Keine Arbeit geplant' }), h('small', { text: 'Klassenarbeiten und Präsentationen eintragen' })));
   }
   const x = ex[0], s = subjects.find((y) => y.id === x.subjectId), n = daysUntil(x.date);
   return h('button.dash.examcard' + (n <= 3 ? '.soon' : ''), { style: s ? { '--c': s.color } : {}, on: { click: () => go({ view: 'exams' }) } },
-    h('div.examcount', null, h('b', { text: String(n) }), h('small', { text: n === 1 ? 'Tag' : 'Tage' })),
-    h('span.dashtext', null, h('small', { text: 'Nächste Prüfung' + (ex.length > 1 ? ` · ${ex.length - 1} weitere` : '') }), h('b', { text: `${x.kind}${s ? ' · ' + s.name : ''}` }),
-      h('span', { text: x.topic ? x.topic.split('\n')[0] : countdownText(n) })));
+    h('div.examcount', null, h('b', { text: (x.approx ? '~' : '') + n }), h('small', { text: n === 1 ? 'Tag' : 'Tage' })),
+    h('span.dashtext', null, h('small', { text: (x.kind === 'Präsentation' || x.kind === 'Referat' ? 'Nächste Präsentation' : 'Nächste Arbeit') + (ex.length > 1 ? ` · ${ex.length - 1} weitere` : '') }), h('b', { text: `${x.kind}${s ? ' · ' + s.name : ''}` }),
+      h('span', { text: x.approx ? `${approxLabel(x)} · noch ${n} Tage${x.order ? ' · ' + x.order : ''}` : x.order ? x.order : x.topic ? x.topic.split('\n')[0] : countdownText(n) })));
 }
 
 // ================= Noten =================
@@ -563,6 +661,6 @@ export async function subjectSchoolBox(s, { go, after }) {
   return h('section.subsec.schoolbox', null,
     h('button.sbitem', { on: { click: () => go({ view: 'grades' }) } }, h('small', { text: 'Schnitt' }), h('b', { text: avg == null ? '–' : cfg.scale === 'punkte' ? avg.toFixed(1).replace('.', ',') : fmt1(avg) }), h('span', { text: plural(g.length, 'Note', 'Noten') })),
     h('button.sbitem', { on: { click: () => (next ? editExam(next, { subjects, after }) : editExam({ subjectId: s.id }, { subjects, after })) } },
-      h('small', { text: 'Nächste Prüfung' }), h('b', { text: next ? countdownText(daysUntil(next.date)) : '–' }), h('span', { text: next ? next.kind : 'eintragen' })),
+      h('small', { text: 'Nächste Arbeit' }), h('b', { text: next ? (next.approx ? 'ca. ' : '') + countdownText(daysUntil(next.date)) : '–' }), h('span', { text: next ? next.kind : 'eintragen' })),
     h('button.sbitem.add', { on: { click: () => editGrade({ subjectId: s.id }, { subjects, after }) } }, icon('plus'), h('span', { text: 'Note eintragen' })));
 }

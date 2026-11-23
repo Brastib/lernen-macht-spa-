@@ -1960,3 +1960,60 @@ body:has(.gamefx) .toast { z-index: 430; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .wtag.tut, :root:not([data-theme="light"]) .tuttag { color: #c9a8ff; } }
 :root[data-theme="dark"] .wtag.tut, :root[data-theme="dark"] .tuttag { color: #c9a8ff; }
 .hwmeta .tuttag + .hwdue::before { content: "·"; margin-right: 6px; color: var(--muted); }
+
+/* ---------- Coins und Joker (v45) ---------- */
+.coins { display: inline-flex; align-items: center; gap: 5px; font-variant-numeric: tabular-nums; }
+.coins b { font-weight: 700; }
+.coinic { display: inline-block; flex: none; width: 16px; height: 16px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #fff3b0 0 18%, #f6c445 40%, #d99a1a 100%); box-shadow: inset 0 0 0 1.5px #c0841a; }
+.coins.hud { padding: 4px 10px; border-radius: 999px; background: color-mix(in srgb, #f2b632 18%, var(--surface)); color: var(--ink); }
+.coins.cost { font-size: 13px; color: var(--muted); }
+.coins.cost .coinic { width: 13px; height: 13px; }
+.jokers { display: flex; justify-content: center; gap: 8px; width: 100%; margin-bottom: 4px; }
+.joker { display: inline-flex; align-items: center; gap: 10px; min-height: 40px; padding: 0 14px; border-radius: 999px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); font: 600 14px var(--font); }
+.joker:disabled { opacity: .45; }
+.joker:not(:disabled):active { transform: scale(.97); }
+.hintline { margin-top: 8px !important; font: 500 16px/1.4 var(--font) !important; color: var(--accent); letter-spacing: .04em; white-space: pre-wrap; }
+.choice.gone { opacity: .25; text-decoration: line-through; }
+.verdict.saved { color: #b7801a; }
+.coinfloat { position: absolute; right: 18px; top: 14px; display: inline-flex; align-items: center; gap: 4px; font-weight: 700; color: #b7801a; pointer-events: none; animation: coinup 1.1s ease forwards; }
+.coinfloat .coinic { width: 18px; height: 18px; }
+@keyframes coinup { 0% { opacity: 0; transform: translateY(8px) scale(.8); } 20% { opacity: 1; transform: translateY(0) scale(1.1); } 100% { opacity: 0; transform: translateY(-34px) scale(1); } }
+.studycard { position: relative; }
+
+/* ---------- Quiz (v45) ---------- */
+.gseg.gseg6 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.qdecks { display: flex; flex-direction: column; gap: 12px; margin: 6px 0 10px; max-height: 46vh; overflow: auto; }
+.qsubj .fieldlabel { display: flex; align-items: center; gap: 8px; }
+.qsubj .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--c); }
+.qdecks .pchip small.qn { min-width: 22px; padding: 1px 6px; border-radius: 999px; background: var(--surface-2); color: var(--muted); font-size: 12px; text-align: center; }
+.qdecks .pchip.on small.qn { background: color-mix(in srgb, var(--bg) 25%, transparent); color: inherit; }
+.qtotal { margin: 0; color: var(--muted); font-size: 14px; }
+.qstage { flex: 1; display: flex; align-items: center; justify-content: center; padding: 20px; overflow: auto; }
+.qtopr { display: flex; align-items: center; gap: 10px; }
+.qinfo { font-size: 14px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.qcard { width: min(640px, 100%); display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 24px; margin: auto; border-radius: 22px; background: var(--surface); box-shadow: 0 0 0 1px var(--line), 0 12px 36px rgba(0,0,0,.08); text-align: center; animation: gfade .25s ease; }
+.qcard .choices { width: 100%; }
+.qq { margin: 6px 0; font: 600 clamp(22px, 3.6vw, 34px)/1.25 var(--font-display); overflow-wrap: anywhere; }
+.qtimer { width: 100%; height: 6px; border-radius: 99px; background: var(--surface-2); overflow: hidden; }
+.qtimer i { display: block; height: 100%; background: var(--accent); transform-origin: left; }
+.qtimer.low i { background: var(--danger); }
+.qbig { font: 700 24px/1.2 var(--font-display); }
+.qcard > small { color: var(--muted); font-size: 15px; }
+.qwho { width: 100%; }
+.qwrong { width: 100%; text-align: left; display: flex; flex-direction: column; gap: 6px; }
+.qwrow { display: flex; justify-content: space-between; gap: 12px; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); }
+.qwrow b { font-weight: 600; overflow-wrap: anywhere; }
+.qwrow span { color: var(--muted); text-align: right; overflow-wrap: anywhere; }
+.quizfx .gstage, .quizfx .qstage { background: var(--bg); }
+.gseg.exapprox { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); margin-bottom: 8px; }
+.exaphint { margin: 6px 0 0; }
+.exaphint:empty { display: none; }
+.exest { margin-top: 14px; padding: 4px 14px 14px; border-radius: 12px; background: var(--surface-2); }
+.exest summary { padding: 10px 0 4px; font-weight: 600; font-size: 15px; cursor: pointer; }
+.exest .fieldgrid { margin-top: 0; }
+.exquick { margin-top: 8px; }
+.exestrow { display: flex; justify-content: flex-end; margin-top: 10px; }
+.exestout:empty { display: none; }
+.exestout { margin: 8px 0 0; }
+.exorder { color: var(--accent) !important; }
+.exest .field { background: var(--surface); }

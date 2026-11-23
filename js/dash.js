@@ -75,7 +75,7 @@ async function weekData(subjects) {
       d, key, k, lessons,
       tut: tutoringOn(tt, d).filter((t) => sm.has(t.subjectId)),
       hw: hw.filter((x) => !x.done && x.due === key && sm.has(x.subjectId)),
-      ex: exams.filter((x) => x.date === key),
+      ex: exams.filter((x) => x.date === key && !x.approx),
     });
   }
   // überfällige Hausaufgaben zählen zu heute
@@ -96,7 +96,7 @@ export async function weekCard({ go, subjects, after }) {
       h('b', { text: String(day.d.getDate()) }),
       h('span.wbars', null, ...colors.map((c) => h('i', { style: { '--c': c } }))),
       h('span.wtags', null,
-        day.ex.length ? h('em.wtag.ex', { text: day.ex.length > 1 ? `${day.ex.length} Prüf.` : 'Prüfung' }) : null,
+        day.ex.length ? h('em.wtag.ex', { text: day.ex.length > 1 ? `${day.ex.length} Arbeiten` : (day.ex[0].kind === 'Präsentation' || day.ex[0].kind === 'Referat' ? 'Präsent.' : 'Arbeit') }) : null,
         nHw ? h('em.wtag.hw', { text: `${nHw} HA` }) : null,
         day.tut.length && (day.ex.length + (nHw ? 1 : 0)) < 2 ? h('em.wtag.tut', { text: 'Nachhilfe' }) : null,
         !day.ex.length && !nHw && !day.tut.length ? h('em.wtag.none', { text: day.lessons.length ? plural(day.lessons.length, 'Std.', 'Std.') : 'frei' }) : null)));
@@ -110,7 +110,7 @@ function daySheet(day, { sm, tt, go, subjects, after }) {
   return sheet(`${title}, ${day.d.getDate()}. ${MON[day.d.getMonth()]}`, (body, close) => {
     const open = (s) => { close(true); go({ view: 'subject', subject: s }); };
     if (day.ex.length) {
-      body.append(h('p.fieldlabel', { text: 'Prüfungen' }));
+      body.append(h('p.fieldlabel', { text: 'Arbeiten' }));
       for (const x of day.ex) {
         const s = sm.get(x.subjectId);
         body.append(h('button.dayrow.ex', { style: s ? { '--c': s.color } : {}, on: { click: () => { close(true); go({ view: 'exams' }); } } },

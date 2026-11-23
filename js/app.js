@@ -1,6 +1,6 @@
 // Hauptteil: Bibliothek mit Fächern, Büchern und Seiten.
 import * as db from './db.js';
-const APP_VERSION = '44';   // gleich wie VERSION in sw.js
+const APP_VERSION = '45';   // gleich wie VERSION in sw.js
 import { openEditor } from './editor.js';
 import { renderPage, PAPERS } from './paper.js';
 import { detectPage, defaultCorners } from './scanner.js';
@@ -155,7 +155,7 @@ async function renderLibrary() {
       const nHw = hwAll.filter((x) => x.subjectId === s.id && !x.done).length;
       const nEx = exAll.filter((x) => x.subjectId === s.id && x.date >= todayIso).length;
       grid.append(h('button.subject', { style: { '--c': s.color }, on: { click: () => go({ view: 'subject', subject: s }) } },
-        (nHw || nEx) ? h('span.sbadges', null, nEx ? h('em.sbadge.ex', { text: nEx > 1 ? `${nEx} Prüfungen` : 'Prüfung' }) : null, nHw ? h('em.sbadge', { text: `${nHw} HA` }) : null) : null,
+        (nHw || nEx) ? h('span.sbadges', null, nEx ? h('em.sbadge.ex', { text: nEx > 1 ? `${nEx} Arbeiten` : 'Arbeit' }) : null, nHw ? h('em.sbadge', { text: `${nHw} HA` }) : null) : null,
         h('span.mono', { text: s.name.slice(0, 2) }),
         h('span.sname', { text: s.name }),
         h('span.smeta', { text: `${plural(sb.length, 'Buch', 'Bücher')} · ${plural(n, 'Seite', 'Seiten')}` })));
@@ -170,7 +170,7 @@ async function renderLibrary() {
   const tile = (cls, ic, title, sub, view) => h('button.ptile' + cls, { on: { click: () => go({ view }) } }, h('span.ptileic', null, icon(ic)), h('b', { text: title }), h('small', { text: sub }));
   view.append(h('h2.section', { text: 'Planer' }), h('div.ptiles', null,
     tile('', 'grid', 'Stundenplan', 'Fächer, Räume, Zeiten', 'timetable'),
-    tile('', 'bookmark', 'Prüfungen', exams.length ? plural(exams.filter((x) => x.date >= new Date().toISOString().slice(0, 10)).length, 'geplant', 'geplant') : 'Arbeiten und Tests', 'exams'),
+    tile('', 'bookmark', 'Arbeiten', exams.length ? plural(exams.filter((x) => x.date >= new Date().toISOString().slice(0, 10)).length, 'geplant', 'geplant') : 'Arbeiten und Präsentationen', 'exams'),
     tile('', 'homework', 'Noten', grades.length ? plural(grades.length, 'Note', 'Noten') : 'Schnitt pro Fach', 'grades'),
     tile('.rementry', 'clock', 'Erinnerungen', openRems ? `${openRems} offen` : 'Für alles, was du nicht vergessen willst', 'reminders')));
   // Werkzeuge

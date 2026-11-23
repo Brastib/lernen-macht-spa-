@@ -148,7 +148,7 @@ export async function planSetup(ex, { subject }) {
     const upd = () => {
       const n = studyDays(ex.date, { skipWeekend: skip }).length;
       const t = topics.value.split('\n').map((x) => x.trim()).filter(Boolean).length;
-      info.textContent = n ? `${plural(n, 'Lerntag', 'Lerntage')} bis zur Prüfung · ${t ? plural(t, 'Thema', 'Themen') : 'noch keine Themen'} · etwa ${minutes} Minuten am Tag` : 'Die Prüfung ist heute, dafür gibt es keinen Plan mehr.';
+      info.textContent = n ? `${plural(n, 'Lerntag', 'Lerntage')} bis zum Termin · ${t ? plural(t, 'Thema', 'Themen') : 'noch keine Themen'} · etwa ${minutes} Minuten am Tag` : 'Der Termin ist heute, dafür gibt es keinen Plan mehr.';
       go.disabled = !n;
     };
     const seg = (items, cur, set) => {
@@ -183,7 +183,7 @@ export async function planSetup(ex, { subject }) {
   }, { wide: true }).then(async (res) => {
     if (!res) return null;
     if (res === 'delete') {
-      if (!(await confirmSheet('Lernplan löschen?', 'Der Plan und die Häkchen verschwinden. Die Prüfung bleibt.'))) return null;
+      if (!(await confirmSheet('Lernplan löschen?', 'Der Plan und die Häkchen verschwinden. Der Termin bleibt.'))) return null;
       delete ex.plan; await db.putItems('exams', ex); toast('Lernplan gelöscht'); return 'deleted';
     }
     const chosen = decks.filter((d) => res.deckIds.includes(d.id));
@@ -257,16 +257,16 @@ export async function renderPlan(ctx, examId) {
   if (s) view.style.setProperty('--c', s.color);
   const edit = async () => { const r = await planSetup(ex, { subject: s }); if (r) again(); };
   if (!ex.plan) {
-    ctx.setHeader({ back: { label: 'Prüfungen', go: () => ctx.go({ view: 'exams' }) }, eyebrow: 'Lernplan', title: `${ex.kind}${s ? ' · ' + s.name : ''}`, meta: '', actions: [] });
+    ctx.setHeader({ back: { label: 'Arbeiten', go: () => ctx.go({ view: 'exams' }) }, eyebrow: 'Lernplan', title: `${ex.kind}${s ? ' · ' + s.name : ''}`, meta: '', actions: [] });
     view.append(h('section.empty', null, h('h2', { text: 'Noch kein Lernplan' }),
-      h('p', { text: 'Gib die Themen ein. Die App verteilt sie auf die Tage bis zur Prüfung, mit Wiederholungen und einer Generalprobe am Schluss.' }),
+      h('p', { text: 'Gib die Themen ein. Die App verteilt sie auf die Tage bis zum Termin, mit Wiederholungen und einer Generalprobe am Schluss.' }),
       h('div.emptyactions', null, ctx.btn('Lernplan erstellen', 'list', edit, '.primary'))));
     return;
   }
   const st = planStats(ex.plan);
   const d = parse(ex.date);
   ctx.setHeader({
-    back: { label: 'Prüfungen', go: () => ctx.go({ view: 'exams' }) },
+    back: { label: 'Arbeiten', go: () => ctx.go({ view: 'exams' }) },
     eyebrow: 'Lernplan', title: `${ex.kind}${s ? ' · ' + s.name : ''}`,
     meta: `${WD[d.getDay()]} ${d.getDate()}.${d.getMonth() + 1}. · ${left < 0 ? 'vorbei' : left === 0 ? 'heute' : left === 1 ? 'morgen' : `noch ${left} Tage`}`,
     actions: [ctx.btn('Anpassen', 'edit', edit)],
@@ -276,7 +276,7 @@ export async function renderPlan(ctx, examId) {
   const head = h('section.planhead', null,
     ring(st.pct, `${Math.round(st.pct * 100)} %`),
     h('div.planheadtext', null,
-      h('b', { text: left <= 0 ? 'Die Prüfung ist da. Viel Erfolg!' : td ? (openToday ? `Heute: ${plural(openToday, 'Aufgabe', 'Aufgaben')} · etwa ${ex.plan.minutes} Min` : 'Heute ist alles erledigt') : 'Heute ist ein freier Tag' }),
+      h('b', { text: left <= 0 ? 'Heute ist es so weit. Viel Erfolg!' : td ? (openToday ? `Heute: ${plural(openToday, 'Aufgabe', 'Aufgaben')} · etwa ${ex.plan.minutes} Min` : 'Heute ist alles erledigt') : 'Heute ist ein freier Tag' }),
       h('small', { text: `${st.done} von ${st.total} erledigt${ex.topic ? ' · ' + ex.topic.split('\n')[0] : ''}` })));
   view.append(head);
   if (st.missed.length && left > 0) {

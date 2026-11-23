@@ -163,7 +163,16 @@ async function check() {
   if (onFire) onFire(fresh);
 }
 async function notify(r) {
-  toast('⏰ ' + r.text, 5000);
+  let body = r.text;
+  if (r.kind === 'nachhilfe') {
+    // offene Nachhilfe-Hausaufgaben für dieses Fach gleich mit anzeigen
+    try {
+      const open = (await db.listHomework()).filter((x) => x.tut && !x.done && x.subjectId === r.subjectId);
+      body += open.length ? ' Noch offen: ' + open.map((x) => x.text.split('\n')[0].slice(0, 40)).join(', ') : ' Keine Nachhilfe-Hausaufgabe offen.';
+    } catch (e) { /* egal */ }
+  }
+  toast('⏰ ' + body, 7000);
+  r = { ...r, text: body };
   if (!('Notification' in window) || Notification.permission !== 'granted') return;
   try {
     const reg = navigator.serviceWorker && await navigator.serviceWorker.getRegistration();
@@ -349,4 +358,23 @@ export async function syncHomeworkReminder(hw, when) {
 }
 export async function homeworkReminderOf(hwId) {
   return (await db.listReminders()).find((r) => r.refId === hwId && r.kind === 'hausaufgabe') || null;
+}
+
+// Nachhilfe: Erinnerung vor dem Termin. before: '' (keine), '15', '30', '60' (Minuten) oder 'eve' (Vortag 17 Uhr)
+export async function syncTutoringReminder(t, before, { subjectName, firstDate } = {}) {
+  const all = await db.listReminders();
+  const ex = all.find((r) => r.refId === t.id && r.kind === 'nachhilfe');
+  if (!before || !firstDate) { if (ex) await db.deleteItems('reminders', ex.id); return null; }
+  const [y, m, d] = firstDate.split('-').map(Number);
+  const [hh, mm] = t.s.split(':').map(Number);
+  const dt = before === 'eve' ? new Date(y, m - 1, d - 1, 17, 0) : new Date(y, m - 1, d, hh, mm - Number(before));
+  const r = { ...(ex || {}), kind: 'nachhilfe', refId: t.id, subjectId: t.subjectId, before,
+    text: `Nachhilfe ${subjectName || ''} ${before === 'eve' ? 'morgen' : 'um'} ${t.s}${t.place ? ' (' + t.place + ')' : ''}. Hausaufgaben fertig?`.replace(/\s+/g, ' '),
+    date: isoDate(dt), time: `${pad(dt.getHours())}:${pad(dt.getMinutes())}`, repeat: t.weekly ? 'weekly' : 'none' };
+  if (!ex || ex.date !== r.date || ex.time !== r.time || ex.repeat !== r.repeat) { r.done = false; r.ack = 0; r.notified = 0; r.snoozeUntil = 0; }
+  await db.putItems('reminders', r);
+  return r;
+}
+export async function tutoringReminderOf(id) {
+  return (await db.listReminders()).find((r) => r.refId === id && r.kind === 'nachhilfe') || null;
 }

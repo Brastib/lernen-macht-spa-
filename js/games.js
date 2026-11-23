@@ -11,6 +11,7 @@ export const GAMES = {
   wind: { name: 'Windflug', icon: 'wind', sub: 'Flieg durch Stifte und Bücher', run: windflug },
   plane: { name: 'Papierflieger', icon: 'plane', sub: 'Wer wirft am weitesten?', run: planeDuel },
   arena: { name: 'Strichkampf', icon: 'sword', sub: 'Figur und Waffe malen, dann kämpfen', run: (...a) => import('./arena.js').then((m) => m.arena(...a)) },
+  quiz: { name: 'Quiz', icon: 'cards', sub: 'Wer kann den Stoff? Fragen aus euren Lernkarten', run: (...a) => import('./quiz.js').then((m) => m.quizDuel(...a)) },
 };
 const MIX = ['ttt', 'wind', 'plane', 'arena'];
 
@@ -81,6 +82,12 @@ export async function renderGames(ctx) {
     h('div.gherotx', null, h('b', { text: 'Turnier starten' }), h('small', { text: 'Jeder gegen jeden, mit Tabelle. Sieg 3 Punkte, Unentschieden 1 Punkt.' })),
     h('button.btn.primary', { text: 'Neues Turnier', on: { click: async () => { if (await newTournament()) again(); } } })));
 
+  // Quiz allein
+  view.append(h('h2.section', { text: 'Für eine Arbeit üben' }), h('div.ghero.qhero', null,
+    h('span.gheroic', null, icon('cards')),
+    h('div.gherotx', null, h('b', { text: 'Quiz allein' }), h('small', { text: 'Fragen aus deinen Lernkarten, mit Zeit und Punkten. Falsche Karten kommen beim Lernen gleich wieder dran.' })),
+    h('button.btn.primary', { text: 'Quiz starten', on: { click: () => import('./quiz.js').then((m) => m.quizSolo()) } })));
+
   // Duelle
   view.append(h('h2.section', { text: 'Duell zu zweit' }), h('div.ptiles.gtiles', null,
     ...Object.entries(GAMES).map(([k, g]) => h('button.ptile', { on: { click: () => freeDuel(k, again) } },
@@ -125,8 +132,8 @@ function playerSheet(title, { withGame = false, okLabel = 'Sichern' } = {}) {
         h('button.btn.round', { 'aria-label': 'Mehr', text: '+', on: { click: () => { if (count < 8) { count++; draw(); } } } }))),
       list, dl);
     if (withGame) {
-      const seg = h('div.gseg');
-      const opts = [['ttt', 'Tic-Tac-Toe'], ['wind', 'Windflug'], ['plane', 'Flieger'], ['arena', 'Strichkampf'], ['mix', 'Gemischt']];
+      const seg = h('div.gseg.gseg6');
+      const opts = [['ttt', 'Tic-Tac-Toe'], ['wind', 'Windflug'], ['plane', 'Flieger'], ['arena', 'Strichkampf'], ['quiz', 'Quiz'], ['mix', 'Gemischt']];
       const drawSeg = () => seg.replaceChildren(...opts.map(([k, l]) => h('button' + (k === game ? '.on' : ''), { text: l, on: { click: () => { game = k; drawSeg(); } } })));
       drawSeg();
       const pw = h('label.gswitch', null, h('span', null, h('b', { text: 'Power-ups beim Papierflieger' }), h('small', { text: 'Vor jedem Wurf eins aus drei wählen, dazu Kugeln in der Luft' })),

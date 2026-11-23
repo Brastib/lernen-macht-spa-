@@ -7,6 +7,16 @@ import { editReminder } from './reminders.js';
 import { profile, newRun, hit, endRun, resultView, floatXp, multOf, playerCard } from './game.js';
 import { playMenu } from './play.js';
 
+// ---------- Coins: für richtige Antworten, einlösbar für Joker ----------
+export const JOKERS = { hint: 2, save: 5 };   // Preise
+export async function getCoins() { const m = await db.getMeta('coins'); return (m && m.n) || 0; }
+export async function addCoins(d) { const n = Math.max(0, (await getCoins()) + d); await db.putItems('meta', { id: 'coins', n }); return n; }
+export const coinTag = (n, cls = '') => h('span.coins' + cls, null, h('i.coinic'), h('b', { text: String(n) }));
+export function hintText(a) {
+  const w = String(a).trim();
+  return 'Tipp: ' + w.split(/\s+/).map((x) => x[0] + ' ' + '_ '.repeat(Math.max(0, x.length - 1)).trim()).join('   ') + `  (${w.replace(/\s/g, '').length} Zeichen)`;
+}
+
 export const INTERVALS = [0, 1, 2, 4, 8, 16, 32];   // Tage bis zur nächsten Wiederholung je Stufe
 export const LANGS = {
   'en-GB': 'Englisch', 'fr-FR': 'Französisch', 'es-ES': 'Spanisch', 'it-IT': 'Italienisch',
@@ -265,7 +275,7 @@ export async function startStudy(deck, cards, onDone) {
   for (let i = list.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [list[i], list[j]] = [list[j], list[i]]; }
   S = { deck, queue: list.map((c) => ({ c, rev: opts.dir === 'ba' || (opts.dir === 'mix' && Math.random() < 0.5), missed: false })),
     total: list.length, done: 0, right: 0, wrong: 0, mode: opts.mode, practice: opts.practice, onDone, shown: false, item: null,
-    all: cards, run: newRun() };
+    all: cards, run: newRun(), coins: await getCoins(), earned: 0 };
   hud();
   $('study').hidden = false;
   document.body.classList.add('studying');
@@ -322,6 +332,34 @@ function nextCard() {
     }
   };
   S.reveal = reveal;
+  const jokers = h('div.jokers');
+  const drawJokers = () => {
+    jokers.replaceChildren(
+      h('button.joker', { disabled: S.shown || it.hint || S.coins < JOKERS.hint, title: S.mode === 'choice' ? 'Zwei falsche Antworten weg' : 'Erster Buchstabe und Länge',
+        on: { click: () => useJoker('hint') } }, h('span', { text: S.mode === 'choice' ? '50 : 50' : 'Tipp' }), coinTag(JOKERS.hint, '.cost')),
+      h('button.joker', { disabled: S.shown || S.coins < JOKERS.save, title: 'Lösung zeigen, zählt nicht als Fehler',
+        on: { click: () => useJoker('save') } }, h('span', { text: 'Retter' }), coinTag(JOKERS.save, '.cost')));
+  };
+  const useJoker = async (kind) => {
+    if (S.shown || S.coins < JOKERS[kind]) return;
+    S.coins = await addCoins(-JOKERS[kind]); hud();
+    if (kind === 'hint') {
+      it.hint = true;
+      if (S.mode === 'choice') {
+        const wrong = [...act.querySelectorAll('.choice')].filter((b) => b.textContent !== a && !b.disabled);
+        wrong.sort(() => Math.random() - 0.5).slice(0, 2).forEach((b) => { b.disabled = true; b.classList.add('gone'); });
+      } else box.querySelector('.fside.q').append(h('p.hintline', { text: hintText(a) }));
+      drawJokers();
+    } else {
+      it.saved = true;
+      reveal(null);
+      act.textContent = '';
+      $('studyAnswer').prepend(h('div.verdict.saved', { text: 'Retter eingesetzt · zählt nicht als Fehler' }));
+      act.append(h('button.btn.big.primary', { text: 'Weiter', on: { click: () => skipSaved() } }));
+    }
+  };
+  S.drawJokers = drawJokers;
+  drawJokers();
   if (S.mode === 'choice') {
     const opts = choicesFor(it, S.all);
     const grid = h('div.choices');
@@ -335,17 +373,25 @@ function nextCard() {
         if (ok) { act.textContent = ''; setTimeout(() => { if (S && S.item === it) grade(true); }, 650); }
       } } }));
     }
-    act.append(grid);
+    act.append(jokers, grid);
   } else if (S.mode === 'type') {
     const inp = h('input.field.answer', { type: 'text', placeholder: 'Antwort eintippen', autocomplete: 'off', autocapitalize: 'off', spellcheck: false, id: 'studyInput' });
     const check = () => { if (!S.shown) { const g = inp.value.trim(); inp.disabled = true; reveal(checkAnswer(g, a), g); } };
     inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); check(); } });
-    act.append(inp, h('button.btn.big.primary', { text: 'Prüfen', on: { click: check } }));
+    act.append(jokers, inp, h('button.btn.big.primary', { text: 'Prüfen', on: { click: check } }));
     setTimeout(() => inp.focus(), 60);
   } else {
     box.firstChild.addEventListener('click', () => reveal(null));
-    act.append(h('button.btn.big.primary', { text: 'Lösung zeigen', on: { click: () => reveal(null) } }));
+    act.append(jokers, h('button.btn.big.primary', { text: 'Lösung zeigen', on: { click: () => reveal(null) } }));
   }
+}
+
+// Retter: Karte gilt als erledigt, ohne Punkte, ohne Stufe zu ändern
+async function skipSaved() {
+  const it = S.item;
+  if (!it) return;
+  S.item = null; S.done++;
+  if (S) nextCard();
 }
 
 async function grade(knew) {
@@ -358,6 +404,12 @@ async function grade(knew) {
   if (card) card.classList.add(knew ? 'won' : 'lost');
   if (gain) floatXp($('studyCard'), '+' + gain + (S.run.combo >= 5 ? ` · ×${multOf(S.run.combo - 1)}` : ''));
   hud();
+  if (knew && !it.missed && !it.hint) {
+    let c0 = S.mode === 'type' ? 2 : 1;
+    if (S.run.combo && S.run.combo % 5 === 0) c0 += 2;   // Combo-Bonus
+    S.coins = await addCoins(c0); S.earned += c0; hud();
+    floatCoin($('studyCard'), c0);
+  }
   if (knew) {
     S.done++; S.right++;
     if (!S.practice) {
@@ -378,13 +430,17 @@ async function grade(knew) {
   if (S) nextCard();
 }
 
+function floatCoin(host, n) {
+  const el = h('span.coinfloat', null, h('i.coinic'), h('b', { text: '+' + n }));
+  host.append(el); setTimeout(() => el.remove(), 1100);
+}
 // Combo und Punkte oben in der Leiste
 function hud() {
   const el = $('studyHud');
   if (!el || !S || !S.run) return;
   const R = S.run;
   el.textContent = '';
-  el.append(h('span.hudxp', { text: `${R.xp} XP` }));
+  el.append(coinTag(S.coins ?? 0, '.hud'), h('span.hudxp', { text: `${R.xp} XP` }));
   if (R.combo >= 2) {
     const c = h('span.combo' + (R.combo >= 5 ? '.hot' : ''), { text: `${R.combo}er Combo${R.combo >= 5 ? ' ×' + String(multOf(R.combo)).replace('.', ',') : ''}` });
     el.append(c);
@@ -408,7 +464,8 @@ async function finish() {
   box.append(resultView(R, {
     title: S.wrong ? 'Runde geschafft' : 'Fehlerlos',
     lines: [`${plural(S.total, 'Karte', 'Karten')} gelernt${S.wrong ? `, ${S.wrong}× nochmal ran` : ', alle beim ersten Mal gewusst'} · beste Combo ${R.best}.`,
-      S.practice ? '' : 'Was du gewusst hast, kommt erst in ein paar Tagen wieder. So bleibt es im Langzeitgedächtnis.'].filter(Boolean),
+      S.earned ? `${plural(S.earned, 'Coin', 'Coins')} gesammelt, du hast jetzt ${S.coins}. Damit kannst du Joker kaufen.` : '',
+      S.practice ? '' : 'Was du gewusst hast, kommt erst in ein paar Tagen wieder. Schwierige Karten kommen öfter. So bleibt es im Langzeitgedächtnis.'].filter(Boolean),
   }));
   act.append(h('button.btn.big.primary', { text: 'Fertig', on: { click: closeStudy } }));
 }
