@@ -1864,3 +1864,45 @@ body:has(.gamefx) .toast { z-index: 430; }
 .pdpickic .ic { width: 22px; height: 22px; stroke-width: 2.1; }
 .pdpick b { font-size: 14px; overflow-wrap: anywhere; }
 .pdpick small { color: var(--muted); font-size: 12px; line-height: 1.3; }
+.skinguide.round { transform: translate(-50%, -50%); border-radius: 50%; }
+.paintgrip { position: absolute; width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: 50%; background: #ff5a4a; box-shadow: 0 0 0 4px rgba(255,90,74,.25); pointer-events: none; z-index: 2; }
+.paintgriplbl { position: absolute; transform: translate(-50%, 16px); font: 600 11px var(--font); color: #d8453a; pointer-events: none; z-index: 2; text-transform: uppercase; letter-spacing: .05em; }
+.paintghost { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; opacity: .18; pointer-events: none; }
+.paintstats { display: flex; justify-content: center; gap: 14px; flex-wrap: wrap; margin-top: 8px; }
+.paintstat { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 90px; }
+.paintstat small { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; font-weight: 600; }
+.paintstat .pbar { width: 90px; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.paintstat .pbar i { display: block; height: 100%; border-radius: 3px; background: var(--accent); }
+.gseg { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+@media (max-width: 640px) { .gseg { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.ptiles.gtiles { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 1000px) { .ptiles.gtiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 520px) { .ptiles.gtiles { grid-template-columns: 1fr; } }
+/* Strichkampf */
+.arprep { margin: auto; width: 100%; max-width: 960px; padding: 20px; display: flex; flex-direction: column; align-items: center; gap: 16px; overflow-y: auto; max-height: 100%; }
+.arcards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; width: 100%; }
+@media (max-width: 560px) { .arcards { grid-template-columns: 1fr; } }
+.arcard { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 16px; border-radius: 20px; background: var(--surface); box-shadow: 0 0 0 1px var(--line); min-width: 0; }
+.arcardhead { display: flex; align-items: center; gap: 8px; align-self: stretch; min-width: 0; }
+.arcardhead b { font-size: 17px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.arprev { width: 100%; max-width: 280px; aspect-ratio: 440 / 400; height: auto; border-radius: 14px; background-color: #fbfaf5; background-image: linear-gradient(rgba(70,120,210,.12) 1px, transparent 1px), linear-gradient(90deg, rgba(70,120,210,.12) 1px, transparent 1px); background-size: 16px 16px; }
+:root[data-theme="dark"] .arprev { background-color: #1b1f28; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .arprev { background-color: #1b1f28; } }
+.arbtns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; width: 100%; }
+.arbtns .btn { justify-content: center; gap: 6px; padding: 0 10px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.arbtns .btn .ic { width: 18px; height: 18px; }
+.arhint { text-align: center; max-width: 560px; }
+.arstart { min-width: 220px; justify-content: center; gap: 8px; }
+.arwrap { position: relative; flex: 1; min-width: 0; touch-action: none; user-select: none; -webkit-user-select: none; }
+.arcv { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.arhud { position: absolute; top: 14px; left: 14px; right: 14px; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 14px; pointer-events: none; }
+.arhp { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 10px 12px; border-radius: 16px; background: var(--glass); box-shadow: 0 0 0 1px var(--line), var(--shadow); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+.arhp.r { align-items: flex-end; }
+.arhpname { display: flex; align-items: center; gap: 8px; min-width: 0; max-width: 100%; }
+.arhpname b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.arhpbar { width: 100%; height: 10px; border-radius: 5px; background: var(--line); overflow: hidden; display: flex; }
+.arhp.r .arhpbar { justify-content: flex-end; }
+.arhpbar i { display: block; height: 100%; border-radius: 5px; transition: width .25s ease; }
+.artime { min-width: 58px; padding: 8px 12px; border-radius: 14px; text-align: center; font: 700 24px var(--font-display); font-variant-numeric: tabular-nums; background: var(--glass); box-shadow: 0 0 0 1px var(--line), var(--shadow); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+.artip { position: absolute; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 18px); transform: translateX(-50%); margin: 0; padding: 10px 16px; border-radius: 999px; background: var(--glass); box-shadow: 0 0 0 1px var(--line), var(--shadow); color: var(--muted); font-size: 14px; white-space: nowrap; pointer-events: none; transition: opacity .4s ease; max-width: calc(100% - 32px); overflow: hidden; text-overflow: ellipsis; }
+.artip.gone { opacity: 0; }

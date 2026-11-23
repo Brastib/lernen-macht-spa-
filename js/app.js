@@ -1,6 +1,6 @@
 // Hauptteil: Bibliothek mit Fächern, Büchern und Seiten.
 import * as db from './db.js';
-const APP_VERSION = '38';   // gleich wie VERSION in sw.js
+const APP_VERSION = '39';   // gleich wie VERSION in sw.js
 import { openEditor } from './editor.js';
 import { renderPage, PAPERS } from './paper.js';
 import { detectPage, defaultCorners } from './scanner.js';
@@ -176,7 +176,7 @@ async function renderLibrary() {
   // Werkzeuge
   view.append(h('h2.section', { text: 'Werkzeuge' }), h('div.ptiles.kit', null,
     ...KIT_TABS.map(([k, l, ic, sub]) => h('button.ptile', { on: { click: () => go({ view: 'kit', tab: k }) } }, h('span.ptileic', null, icon(ic)), h('b', { text: l }), h('small', { text: sub })))));
-  view.append(h('button.gbanner', { on: { click: () => go({ view: 'games' }) } }, h('span.ptileic', null, icon('game')), h('span.gbantx', null, h('b', { text: 'Games' }), h('small', { text: 'Turnier, Tic-Tac-Toe, Windflug, Papierflieger-Duell' })), icon('right')));
+  view.append(h('button.gbanner', { on: { click: () => go({ view: 'games' }) } }, h('span.ptileic', null, icon('game')), h('span.gbantx', null, h('b', { text: 'Games' }), h('small', { text: 'Turnier, Tic-Tac-Toe, Windflug, Papierflieger, Strichkampf' })), icon('right')));
 
   // Programmieren
   const nCode = (await db.listCode()).length;

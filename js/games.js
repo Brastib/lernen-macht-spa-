@@ -10,8 +10,9 @@ export const GAMES = {
   ttt: { name: 'Tic-Tac-Toe', icon: 'ttt', sub: 'Drei in einer Reihe gewinnt', run: ticTacToe },
   wind: { name: 'Windflug', icon: 'wind', sub: 'Flieg durch Stifte und Bücher', run: windflug },
   plane: { name: 'Papierflieger', icon: 'plane', sub: 'Wer wirft am weitesten?', run: planeDuel },
+  arena: { name: 'Strichkampf', icon: 'sword', sub: 'Figur und Waffe malen, dann kämpfen', run: (...a) => import('./arena.js').then((m) => m.arena(...a)) },
 };
-const MIX = ['ttt', 'wind', 'plane'];
+const MIX = ['ttt', 'wind', 'plane', 'arena'];
 
 const players = () => store.get('gPlayers', []);
 const names = () => store.get('gNames', []);
@@ -46,86 +47,13 @@ function skinImage(name) {
 }
 const SKIN_MIN = 0.5;   // Zeichnung muss mindestens die Hälfte der Malfläche überspannen
 // Skin malen. Ergebnis: true, wenn gespeichert oder gelöscht
-export function skinEditor(p) {
-  return sheet(`Skin für ${p.name}`, (body, close) => {
-    const S = 600;   // interne Auflösung
-    const cv = h('canvas.skincv', { width: S, height: S });
-    const x = cv.getContext('2d');
-    const strokes = [];
-    let col = p.color || '#4f7cff', size = 14, erase = false, cur = null;
-    const old = skinOf(p.name);
-    if (old) { const im = new Image(); im.onload = () => { strokes.push({ img: im }); redraw(); }; im.src = old; }
-    const meter = h('div.skinmeter', null, h('span.skinbar', null, h('i')), h('small'));
-    const save = h('button.btn.primary', { text: 'Skin sichern', disabled: true });
-    function redraw() {
-      x.clearRect(0, 0, S, S);
-      for (const st of strokes) {
-        if (st.img) { const k = Math.min(S * 0.8 / st.img.width, S * 0.8 / st.img.height); const w = st.img.width * k, hh = st.img.height * k; x.drawImage(st.img, (S - w) / 2, (S - hh) / 2, w, hh); continue; }
-        x.save(); x.globalCompositeOperation = st.erase ? 'destination-out' : 'source-over';
-        x.strokeStyle = st.col; x.fillStyle = st.col; x.lineCap = 'round'; x.lineJoin = 'round';
-        const pts = st.pts;
-        if (pts.length === 1) { x.beginPath(); x.arc(pts[0][0], pts[0][1], pts[0][2] / 2, 0, Math.PI * 2); x.fill(); }
-        for (let i = 1; i < pts.length; i++) { x.lineWidth = pts[i][2]; x.beginPath(); x.moveTo(pts[i - 1][0], pts[i - 1][1]); x.lineTo(pts[i][0], pts[i][1]); x.stroke(); }
-        x.restore();
-      }
-      check();
-    }
-    function bbox() {
-      const d = x.getImageData(0, 0, S, S).data;
-      let x0 = S, y0 = S, x1 = -1, y1 = -1, n = 0;
-      for (let y = 0; y < S; y += 2) for (let xx = 0; xx < S; xx += 2) if (d[(y * S + xx) * 4 + 3] > 40) { n++; if (xx < x0) x0 = xx; if (xx > x1) x1 = xx; if (y < y0) y0 = y; if (y > y1) y1 = y; }
-      return x1 < 0 ? null : { x0, y0, x1: x1 + 2, y1: y1 + 2, n };
-    }
-    let box = null;
-    function check() {
-      box = bbox();
-      const span = box ? Math.max(box.x1 - box.x0, box.y1 - box.y0) / S : 0;
-      const ok = box && span >= SKIN_MIN && box.n > 120;
-      meter.querySelector('i').style.width = Math.min(100, span / SKIN_MIN * 100) + '%';
-      meter.classList.toggle('ok', !!ok);
-      meter.querySelector('small').textContent = !box ? 'Mal deine Figur in das Feld.' : ok ? 'Groß genug. Du kannst sichern.' : 'Noch zu klein. Mal größer, mindestens bis zur gestrichelten Linie.';
-      save.disabled = !ok;
-    }
-    const pos = (e) => { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) * S / r.width, (e.clientY - r.top) * S / r.height]; };
-    cv.addEventListener('pointerdown', (e) => {
-      if (e.pointerType === 'touch' && e.width > 40) return;   // Handballen ignorieren
-      e.preventDefault(); cv.setPointerCapture(e.pointerId);
-      const [a, b] = pos(e), pr = e.pointerType === 'pen' ? 0.5 + e.pressure : 1;
-      cur = { col, erase, pts: [[a, b, (erase ? size * 2.4 : size) * pr]] };
-      strokes.push(cur); redraw();
-    });
-    cv.addEventListener('pointermove', (e) => {
-      if (!cur) return;
-      for (const ev of (e.getCoalescedEvents ? e.getCoalescedEvents() : [e])) { const [a, b] = pos(ev), pr = ev.pointerType === 'pen' ? 0.5 + ev.pressure : 1; cur.pts.push([a, b, (erase ? size * 2.4 : size) * pr]); }
-      redraw();
-    });
-    const up = () => { cur = null; };
-    cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
-    const sw = h('div.skintools');
-    const drawTools = () => sw.replaceChildren(h('div.skinrow', null,
-      ...['#1d1d1f', '#ffffff', ...COLORS.slice(0, 6), '#8a5a2b'].map((c) => h('button.swatch' + (!erase && c === col ? '.on' : ''), { 'aria-label': 'Farbe', style: { '--sw': c }, on: { click: () => { col = c; erase = false; drawTools(); } } }))), h('div.skinrow', null,
-      ...[[7, 'Dünn'], [14, 'Mittel'], [28, 'Dick']].map(([v, l]) => h('button.skinsize' + (size === v ? '.on' : ''), { 'aria-label': l, title: l, on: { click: () => { size = v; drawTools(); } } }, h('i', { style: { width: v / 2 + 4 + 'px', height: v / 2 + 4 + 'px' } }))),
-      h('span.skinsep'),
-      h('button.icbtn' + (erase ? '.on' : ''), { 'aria-label': 'Radierer', title: 'Radierer', on: { click: () => { erase = !erase; drawTools(); } } }, icon('eraser')),
-      h('button.icbtn', { 'aria-label': 'Rückgängig', title: 'Rückgängig', on: { click: () => { strokes.pop(); redraw(); } } }, icon('undo')),
-      h('button.icbtn', { 'aria-label': 'Alles löschen', title: 'Alles löschen', on: { click: () => { strokes.length = 0; redraw(); } } }, icon('trash'))));
-    drawTools();
-    save.addEventListener('click', () => {
-      if (!box) return;
-      const pad = 8, w = box.x1 - box.x0 + pad * 2, hh = box.y1 - box.y0 + pad * 2, k = Math.min(1, 240 / Math.max(w, hh));
-      const out = document.createElement('canvas'); out.width = Math.round(w * k); out.height = Math.round(hh * k);
-      out.getContext('2d').drawImage(cv, box.x0 - pad, box.y0 - pad, w, hh, 0, 0, out.width, out.height);
-      if (setSkin(p.name, out.toDataURL('image/png'))) { toast('Skin gesichert'); close(true); }
-    });
-    body.append(
-      h('p.calm', { text: 'Mal deine Spielfigur. Sie fliegt nach rechts. Die Zeichnung muss mindestens bis zur gestrichelten Linie reichen.' }),
-      h('div.skinpad', null, cv, h('span.skinguide')),
-      meter, sw,
-      h('div.dlgactions', null,
-        old ? h('button.btn', { text: 'Standard-Flieger', on: { click: () => { setSkin(p.name, null); toast('Skin entfernt'); close(true); } } }) : null,
-        h('button.btn', { text: 'Abbrechen', on: { click: () => close(null) } }), save));
-    redraw();
-  });
+export async function skinEditor(p) {
+  const { paintSheet } = await import('./gpaint.js');
+  const r = await paintSheet({ title: `Skin für ${p.name}`, color: p.color, old: skinOf(p.name), min: SKIN_MIN, saveLabel: 'Skin sichern', removeLabel: 'Standard-Flieger',
+    text: 'Mal deine Spielfigur. Sie fliegt nach rechts. Die Zeichnung muss mindestens bis zur gestrichelten Linie reichen.' });
+  if (r === 'remove') { setSkin(p.name, null); toast('Skin entfernt'); return true; }
+  if (r && setSkin(p.name, r.url)) { toast('Skin gesichert'); return true; }
+  return false;
 }
 
 // ---------- Übersicht ----------
@@ -198,7 +126,7 @@ function playerSheet(title, { withGame = false, okLabel = 'Sichern' } = {}) {
       list, dl);
     if (withGame) {
       const seg = h('div.gseg');
-      const opts = [['ttt', 'Tic-Tac-Toe'], ['wind', 'Windflug'], ['plane', 'Flieger'], ['mix', 'Gemischt']];
+      const opts = [['ttt', 'Tic-Tac-Toe'], ['wind', 'Windflug'], ['plane', 'Flieger'], ['arena', 'Strichkampf'], ['mix', 'Gemischt']];
       const drawSeg = () => seg.replaceChildren(...opts.map(([k, l]) => h('button' + (k === game ? '.on' : ''), { text: l, on: { click: () => { game = k; drawSeg(); } } })));
       drawSeg();
       const pw = h('label.gswitch', null, h('span', null, h('b', { text: 'Power-ups beim Papierflieger' }), h('small', { text: 'Vor jedem Wurf eins aus drei wählen, dazu Kugeln in der Luft' })),
@@ -227,7 +155,7 @@ async function newTournament() {
   const pairs = roundRobin(n);
   store.set('gTour', {
     game: r.game, power: r.power !== false, players: r.players, done: false, started: Date.now(),
-    matches: pairs.map(([a, b], i) => ({ a, b, game: r.game === 'mix' ? MIX[i % 3] : r.game, res: null })),
+    matches: pairs.map(([a, b], i) => ({ a, b, game: r.game === 'mix' ? MIX[i % MIX.length] : r.game, res: null })),
   });
   return true;
 }
