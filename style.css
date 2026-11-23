@@ -2304,3 +2304,26 @@ html.fxopen, html.fxopen body, html:has(> body > .gamefx), html:has(> body > .ga
 .bmbombic { background: #1d1f24; box-shadow: 0 0 0 2px #fff, 0 0 0 3px var(--line); }
 .hsturn { flex: 0 1 auto; min-width: 0; display: flex; }
 .hsturn .pkchip { max-width: 100%; }
+
+/* ---------- Paket 6 (Teil 1): Rennen, Kissenschlacht, Windbogen, Sternenduell ---------- */
+.ptile { position: relative; }
+.kbbadge { position: absolute; top: 12px; right: 12px; width: 28px; height: 28px; display: grid; place-items: center; border-radius: 50%; background: var(--plot-grid2); color: var(--muted); }
+.kbbadge svg { width: 16px; height: 16px; }
+.kbcard .kblock { color: var(--muted); transition: color .2s ease, transform .3s cubic-bezier(.2,1.4,.4,1); }
+.kbcard.open .kblock { color: #2fbf71; transform: scale(1.15); }
+.kbkeys { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin-top: 6px; }
+.kbkeys kbd { min-width: 34px; height: 34px; display: grid; place-items: center; padding: 0 6px; border-radius: 9px; background: var(--surface); box-shadow: 0 0 0 1.5px var(--ink, currentColor), 0 3px 0 0 var(--line); font: 800 16px/1 'Noteworthy', 'Marker Felt', system-ui, sans-serif; }
+.kbkeys kbd:nth-child(4) { margin-right: 14px; }
+.hsstat.rcstat { box-shadow: inset 0 0 0 2px var(--pc); max-width: 100%; min-width: 0; }
+.hsstat.rcstat small { overflow: hidden; text-overflow: ellipsis; }
+.hsstat.rcstat.on { background: color-mix(in srgb, var(--pc) 22%, var(--surface)); }
+.sppad { overflow: hidden; }
+.sppad .pkchip { max-width: 100%; }
+.spbtns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.spbtn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-height: 64px; padding: 6px 4px; border-radius: 16px; background: var(--plot-grid2); box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--pc) 55%, transparent); color: inherit; touch-action: none; user-select: none; -webkit-user-select: none; }
+.spbtn svg { width: 24px; height: 24px; }
+.spbtn span { font-size: 12px; font-weight: 700; }
+.spbtn.on { background: color-mix(in srgb, var(--pc) 30%, var(--surface)); transform: scale(.96); }
+.sgwrap.tall .sppad { flex-direction: row; flex-wrap: wrap; align-items: center; }
+.sgwrap.tall .sppad .spbtns { grid-template-columns: repeat(4, minmax(0, 1fr)); flex: 1 1 100%; }
+.sgwrap.tall .sppad .spbtn { min-height: 56px; }
