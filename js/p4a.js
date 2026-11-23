@@ -13,7 +13,7 @@ function cellsOf(s) { const out = []; for (let k = 0; k < s.len; k++) out.push([
 function fits(ships, s, skip) {
   const cs = cellsOf(s);
   if (cs.some(([x, y]) => x < 0 || y < 0 || x >= N || y >= N)) return false;
-  for (const o of ships) { if (o === skip) continue; for (const [a, b] of cellsOf(o)) for (const [x, y] of cs) if (Math.abs(a - x) <= 1 && Math.abs(b - y) <= 1) return false; }
+  for (const o of ships) { if (o === skip) continue; for (const [a, b] of cellsOf(o)) for (const [x, y] of cs) if (a === x && b === y) return false; }
   return true;
 }
 function randomFleet(R) {
@@ -78,7 +78,7 @@ function placeFleet(fx, p, R) {
   return new Promise((resolve) => {
     const dark = isDark();
     let ships = randomFleet(R);
-    const info = h('p.bshint', { text: 'Schiff ziehen = verschieben, kurz tippen = drehen. Schiffe dürfen sich nicht berühren.' });
+    const info = h('p.bshint', { text: 'Schiff ziehen = verschieben, kurz tippen = drehen. Schiffe dürfen direkt aneinander liegen.' });
     const btnR = h('button.btn', { text: 'Neu verteilen', on: { click: () => { ships = randomFleet(R); draw(); } } });
     const btnOk = h('button.btn.primary', { text: 'Fertig', on: { click: () => { cleanup(); resolve(ships); } } });
     const host = h('div.bsplace');
@@ -99,7 +99,7 @@ function placeFleet(fx, p, R) {
     const up = () => {
       if (!drag) return; const s = drag.s;
       if (!drag.moved) { s.v = !s.v; if (!fits(ships, s, s)) { s.v = !s.v; info.textContent = 'Hier passt das gedrehte Schiff nicht hin.'; } }
-      else if (!fits(ships, s, s)) { s.x = drag.ox; s.y = drag.oy; info.textContent = 'Da geht es nicht: Schiffe dürfen sich nicht berühren.'; }
+      else if (!fits(ships, s, s)) { s.x = drag.ox; s.y = drag.oy; info.textContent = 'Da geht es nicht: Schiffe dürfen sich nicht überlappen.'; }
       drag = null; draw();
     };
     C.cv.addEventListener('pointerup', up); C.cv.addEventListener('pointercancel', up);
@@ -133,8 +133,7 @@ export function ships(fx, A, B, o = {}) {
         if (cand.length) return cand[(R() * cand.length) | 0];
       }
       const all = []; for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) if (open(x, y) && (x + y) % 2 === 0) {
-        // keine Felder direkt neben versenkten Schiffen
-        if (fleet.some((s) => s.sunk && cellsOf(s).some(([a, b]) => Math.abs(a - x) <= 1 && Math.abs(b - y) <= 1))) continue; all.push([x, y]);
+        all.push([x, y]);
       }
       if (!all.length) for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) if (open(x, y)) all.push([x, y]);
       return all[(R() * all.length) | 0];
@@ -146,7 +145,6 @@ export function ships(fx, A, B, o = {}) {
       if (!s) return 'miss';
       if (cellsOf(s).every(([a, b]) => me.shots[b * N + a] === 2)) {
         s.sunk = true;
-        cellsOf(s).forEach(([a, b]) => { for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { const xx = a + dx, yy = b + dy; if (xx >= 0 && yy >= 0 && xx < N && yy < N && !me.shots[yy * N + xx]) me.shots[yy * N + xx] = 1; } });
         return foe.fleet.every((q) => q.sunk) ? 'win' : 'sunk';
       }
       return 'hit';
@@ -172,18 +170,17 @@ export function ships(fx, A, B, o = {}) {
           const x2 = B2.begin(); drawSea(x2, B2.cw, B2.ch, dark, { ships: vw.fleet, shots: tg.shots, color: vw.p.color, label: cpu ? 'Deine Flotte' : `Flotte von ${vw.p.name}` });
         };
         const ro = new ResizeObserver(draw); ro.observe(wrap);
-        status.textContent = busy ? 'Der Computer überlegt …' : 'Tippe auf ein Feld im Meer des Gegners. Treffer = nochmal schießen.';
+        status.textContent = busy ? 'Der Computer überlegt …' : 'Tippe auf ein Feld im Meer des Gegners. Jeder hat einen Schuss pro Zug.';
         updLegend();
         const cell = (e) => { const r = B1.cv.getBoundingClientRect(); return [Math.floor((e.clientX - r.left - geo.X0) / geo.cs), Math.floor((e.clientY - r.top - geo.Y0) / geo.cs)]; };
         const finish = (v) => { ro.disconnect(); B1.ro.disconnect(); B2.ro.disconnect(); resolve(v); };
         const after = async (r, x, y) => {
           const name = `${COLS[x]}${y + 1}`;
           lastRes = r;
-          status.textContent = r === 'miss' ? `${name}: Wasser.` : r === 'hit' ? `${name}: Treffer! Nochmal.` : r === 'sunk' ? `${name}: Versenkt! Nochmal.` : `${name}: Alle Schiffe versenkt!`;
+          status.textContent = r === 'miss' ? `${name}: Wasser.` : r === 'hit' ? `${name}: Treffer!` : r === 'sunk' ? `${name}: Versenkt!` : `${name}: Alle Schiffe versenkt!`;
           updLegend(); draw();
           if (r === 'win') { await wait(1200, fx.signal); return finish('win'); }
-          if (r === 'miss') { busy = true; await wait(1000, fx.signal); return finish('next'); }
-          busy = cpu && turn === 1; if (busy) cpuTurn();
+          busy = true; await wait(r === 'miss' ? 1000 : 1300, fx.signal); return finish('next');
         };
         const cpuTurn = async () => { await wait(650, fx.signal); if (fx.signal.aborted) return; const [x, y] = cpuPick(me.shots, foe.fleet); const r = fire(1, x, y); if (r !== 'miss') ai.hits.push([x, y]); after(r, x, y); };
         B1.cv.addEventListener('pointermove', (e) => { if (busy || e.pointerType !== 'mouse') return; const c = cell(e); hover = c[0] >= 0 && c[1] >= 0 && c[0] < N && c[1] < N ? c : null; draw(); });

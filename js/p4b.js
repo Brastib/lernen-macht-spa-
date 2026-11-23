@@ -124,7 +124,8 @@ function playHole(fx, p, c, n, info) {
     fx.stage.replaceChildren(wrap);
     const C = canvasBox(host), x = C.x;
     const ball = { x: c.start[0], y: c.start[1], vx: 0, vy: 0, z: 1 };
-    let strokes = 0, lastPos = [...c.start], aim = null, raf = 0, last = 0, done = false, sink = 0, msg = '', msgT = 0;
+    let strokes = 0, lastPos = [...c.start], aim = null, raf = 0, last = 0, done = false, sink = 0, msg = '', msgT = 0, splash = null, sandPuff = null, inSand = false;
+    const hdist = () => Math.hypot(ball.x - c.hole[0], ball.y - c.hole[1]);
     const segs = []; c.walls.forEach((w) => { for (let k = 1; k < w.length; k++) segs.push([w[k - 1], w[k]]); });
     const toW = (e) => { const g = fieldGeo(C), r = C.cv.getBoundingClientRect(); return [(e.clientX - r.left - g.ox) / g.U, (e.clientY - r.top - g.oy) / g.U]; };
     const moving = () => Math.hypot(ball.vx, ball.vy) > 2;
@@ -148,7 +149,10 @@ function playHole(fx, p, c, n, info) {
       for (let s = 0; s < n2; s++) {
         const mx = Math.floor(ball.x / CELL), my = Math.floor(ball.y / CELL), m = mx >= 0 && my >= 0 && mx < MW && my < MH ? c.mask[my * MW + mx] : 0;
         const sp = Math.hypot(ball.vx, ball.vy);
-        if (sp > 0) { const dec = (m === 1 ? 900 : 95) * d + sp * (m === 1 ? 2.5 : 0.55) * d; const k = Math.max(0, sp - dec) / sp; ball.vx *= k; ball.vy *= k; }
+        if (m === 2 && hdist() > HOLE + 4) { splash = { x: ball.x, y: ball.y, t: 0 }; strokes++; st.textContent = String(strokes); ball.vx = ball.vy = 0; ball.x = lastPos[0]; ball.y = lastPos[1]; msg = 'Platsch! Ins Wasser, +1 Schlag'; msgT = 1.3; if (strokes >= MAXS) finish(MAXS, `${MAXS} Schläge, weiter geht’s`); return; }
+        if (m === 1 && sp > 240) { const k = 240 / sp; ball.vx *= k; ball.vy *= k; if (!inSand) { sandPuff = { x: ball.x, y: ball.y, t: 0 }; } }
+        inSand = m === 1;
+        if (sp > 0) { const dec = (m === 1 ? 700 : 95) * d + sp * (m === 1 ? 3.2 : 0.55) * d; const k = Math.max(0, sp - dec) / sp; ball.vx *= k; ball.vy *= k; }
         ball.x += ball.vx * d; ball.y += ball.vy * d;
         // Rand
         if (ball.x < BR) { ball.x = BR; ball.vx = Math.abs(ball.vx) * 0.8; } if (ball.x > GW - BR) { ball.x = GW - BR; ball.vx = -Math.abs(ball.vx) * 0.8; }
@@ -182,6 +186,8 @@ function playHole(fx, p, c, n, info) {
       const dt = Math.min(0.033, last ? (t - last) / 1000 : 0); last = t;
       step(dt); msgT = Math.max(0, msgT - dt); sink = Math.max(0, sink - dt);
       const g = fieldGeo(C); drawFrame(x, C, dark, g); drawCourse(x, c, dark, { ink });
+      if (splash) { splash.t += dt; const k = splash.t / 0.9; x.strokeStyle = '#2f7cf6'; x.lineWidth = 3; for (let r = 0; r < 3; r++) { x.globalAlpha = Math.max(0, 1 - k) * (1 - r * 0.25); x.beginPath(); x.ellipse(splash.x, splash.y, 6 + (k * 40 + r * 10), (6 + k * 40 + r * 10) * 0.6, 0, 0, Math.PI * 2); x.stroke(); } x.fillStyle = '#2f7cf6'; for (let q = 0; q < 6; q++) { const a = q / 6 * Math.PI * 2; x.globalAlpha = Math.max(0, 1 - k); x.beginPath(); x.arc(splash.x + Math.cos(a) * k * 30, splash.y + Math.sin(a) * k * 18 - Math.sin(k * Math.PI) * 26, 3, 0, Math.PI * 2); x.fill(); } x.globalAlpha = 1; if (k >= 1) splash = null; }
+      if (sandPuff) { sandPuff.t += dt; const k = sandPuff.t / 0.6; x.fillStyle = '#d9b46a'; for (let q = 0; q < 8; q++) { const a = q / 8 * Math.PI * 2; x.globalAlpha = Math.max(0, 1 - k) * 0.8; x.beginPath(); x.arc(sandPuff.x + Math.cos(a) * k * 22, sandPuff.y + Math.sin(a) * k * 22, 2.5, 0, Math.PI * 2); x.fill(); } x.globalAlpha = 1; if (k >= 1) sandPuff = null; }
       if (aim && !moving()) {
         const dx = aim.from[0] - aim.to[0], dy = aim.from[1] - aim.to[1], L = Math.hypot(dx, dy), k = Math.min(1, L / 260);
         if (L > 12) {
@@ -243,8 +249,19 @@ function guessRound(fx, { drawer, guesser, word, R, replay = null, time = 60, ti
       h('button.btn.drbtn', { on: { click: () => { color = 'erase'; width = 26; tools.querySelectorAll('.drcol').forEach((b) => b.classList.remove('on')); } } }, icon('eraser'), h('span', { text: 'Radierer' })),
       h('button.btn.drbtn', { on: { click: () => { strokes = []; } } }, icon('trash'), h('span', { text: 'Leeren' })));
     tools.firstChild.classList.add('on');
-    const ansEls = opts.map((w) => h('button.drans', { text: w, on: { pointerdown: (e) => { e.preventDefault(); answer(w, e.currentTarget); } } }));
-    const ansBox = h('div.drsideans', null, h('small.drwho', null, chip(guesser, h('small', { text: 'rät: Was ist das?' }))), h('div.dranswers', null, ...ansEls));
+    // Allein (Bild abspielen): Antworten zum Antippen. Zu zweit: der Maler entscheidet mit Richtig / Falsch.
+    const ansEls = replay ? opts.map((w) => h('button.drans', { text: w, on: { pointerdown: (e) => { e.preventDefault(); answer(w, e.currentTarget); } } })) : [];
+    let wrong = 0;
+    const wrongEl = h('small.drwrong', { text: 'Sag deine Antwort laut!' });
+    const peek = h('button.drans.drpeek', { text: 'Wort zeigen (halten)' });
+    const showW = (on) => { peek.textContent = on ? word : 'Wort zeigen (halten)'; };
+    peek.addEventListener('pointerdown', (e) => { e.preventDefault(); showW(true); }); ['pointerup', 'pointerleave', 'pointercancel'].forEach((ev) => peek.addEventListener(ev, () => showW(false)));
+    const judge = replay ? null : h('div.dranswers.drjudge', null,
+      h('button.drans.drok', { on: { pointerdown: (e) => { e.preventDefault(); if (!done) end(true, `Richtig: ${word}!`); } } }, icon('check'), h('span', { text: 'Richtig' })),
+      h('button.drans.drno', { on: { pointerdown: (e) => { e.preventDefault(); if (done) return; wrong++; wrongEl.textContent = `${wrong}× falsch geraten`; msg = 'Falsch! Weiter raten'; msgT = 1; } } }, icon('close'), h('span', { text: 'Falsch' })),
+      peek, wrongEl);
+    const ansBox = h('div.drsideans', null, h('small.drwho', null, chip(guesser, h('small', { text: replay ? 'rät: Was ist das?' : 'rät laut' }))), replay ? h('div.dranswers', null, ...ansEls) : judge,
+      replay ? null : h('small.drjudgehint', { text: `${drawer ? drawer.name : 'Der Maler'} drückt Richtig oder Falsch.` }));
     const host = h('div.drboard');
     const wrap = h('div.hswrap.drwrap', null,
       h('div.hshud', null, drawer ? chip(drawer, h('small', { text: 'malt' })) : h('span.pkchip', null, h('b', { text: title || 'Bilder raten' })), h('span.bsspacer'), h('span.hsstat', null, h('small', { text: 'Zeit' }), timeEl), h('button.btn.hsfin', { text: 'Aufgeben', on: { click: () => end(false, 'Aufgegeben') } })),
