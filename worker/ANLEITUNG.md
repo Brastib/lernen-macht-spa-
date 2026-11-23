@@ -57,7 +57,8 @@ Auch auf der Startseite bei „Jetzt / Als Nächstes“.
 
 1. https://dash.cloudflare.com → **Workers & Pages** → `vertretung` → **Code bearbeiten**.
 2. Alles löschen, den Code von diesem Link neu einfügen:
-   https://raw.githubusercontent.com/Brastib/lernen-macht-spa-/main/worker/vertretungsplan-worker.js
+   https://raw.githubusercontent.com/Brastib/lernen-macht-spa-/main/worker/vertretungsplan-worker.js?v=71
+   (Die Zahl hinten immer erhöhen, sonst zeigt GitHub manchmal noch den alten Code.)
 3. **Bereitstellen**. Die Geheimnisse bleiben, die musst du nicht neu eintragen.
 
 ## Wenn etwas nicht klappt
@@ -74,6 +75,7 @@ Auch auf der Startseite bei „Jetzt / Als Nächstes“.
 - Der Worker antwortet nur, wenn der richtige App-Schlüssel mitkommt. Und er nimmt nur Anfragen von deiner App-Seite an.
 - Der App-Schlüssel steht in der App und in deinen App-Sicherungen. Wer ihn hat, kann deinen Vertretungsplan lesen (nicht dein Passwort).
   Wenn er mal weg ist: bei Cloudflare einen neuen eintragen und in der App neu verbinden.
-- Der Worker liest nur. Er schickt keine Nachrichten. Beim Lesen einer Nachricht kann das Schulportal sie als gelesen markieren. Er fragt höchstens alle 5 Minuten nach.
+- Der Worker liest. Nachrichten schickt er nur, wenn du in der App auf „Senden …“ tippst UND danach „Ja, senden“ bestätigst (dort steht, an wen es geht).
+  Beim Lesen einer Nachricht kann das Schulportal sie als gelesen markieren. Er fragt höchstens alle 5 Minuten nach.
 - Das ist kein offizielles Angebot des Schulportals. Es nutzt denselben Weg wie die Open-Source-Apps „Lanis-Mobile“ und „pylanis“.
   Wenn das Schulportal seinen Login ändert, kann es aufhören zu klappen.

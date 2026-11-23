@@ -2508,3 +2508,17 @@ textarea.field.vpboth { min-height: 64px; padding: 12px 14px; resize: vertical; 
 .msgbubble small { display: block; color: var(--muted); font-size: .8em; margin-bottom: 4px; }
 .msgbubble p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .dlgactions.left { justify-content: flex-start; }
+.msginput { width: 100%; min-height: 84px; padding: 10px 14px; box-sizing: border-box; resize: vertical; margin-top: 6px; font: inherit; line-height: 1.4; }
+.msgto { margin: 4px 0 0; }
+.msgconfirm p { margin: 0 0 10px; overflow-wrap: anywhere; }
+.msgconfirm p small { display: block; color: var(--muted); font-size: .8em; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 2px; }
+.msgconfirm .msgbubble { max-width: 100%; margin-bottom: 12px; max-height: 40vh; overflow-y: auto; }
+.msglabel { display: block; font-size: .8em; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin: 14px 0 6px; }
+.msgchips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; min-height: 28px; align-items: center; }
+.msgchip { display: inline-flex; align-items: center; gap: 2px; padding: 3px 4px 3px 12px; border-radius: 999px; background: var(--accent-soft); color: var(--ink); max-width: 100%; }
+.msgchip > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.msgchip .icbtn { width: 28px; height: 28px; flex: none; }
+.msgresults { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+.msgresult { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; padding: 10px 12px; border-radius: 12px; background: var(--surface-2); text-align: left; min-width: 0; }
+.msgresult b { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.msgresult small { color: var(--muted); flex: none; }
