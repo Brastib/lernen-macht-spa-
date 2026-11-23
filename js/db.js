@@ -110,6 +110,31 @@ export async function deletePage(id) {
   const db = await openDB();
   const tx = db.transaction(['pages', 'images', 'thumbs', 'ink'], 'readwrite');
   for (const s of ['pages', 'images', 'thumbs', 'ink']) tx.objectStore(s).delete(id);
+  tx.objectStore('images').delete(id + ':orig');
+  await done(tx);
+}
+
+// Bild einer Seite ersetzen (z. B. gesäubert). keepOrig: altes Bild als Original aufheben (nur einmal).
+export async function replaceImage(id, image, thumb, { keepOrig = false, cleaned } = {}) {
+  const db = await openDB();
+  const old = keepOrig ? await getImage(id) : null;
+  const hasOrig = keepOrig ? !!(await reqP(db.transaction('images').objectStore('images').get(id + ':orig'))) : false;
+  const tx = db.transaction(['pages', 'images', 'thumbs'], 'readwrite');
+  if (old && !hasOrig) tx.objectStore('images').put(old, id + ':orig');
+  tx.objectStore('images').put(image, id);
+  tx.objectStore('thumbs').put(thumb, id);
+  const ps = tx.objectStore('pages'), r = ps.get(id);
+  r.onsuccess = () => { const p = r.result; if (p) { p.size = image.size; p.type = image.type; if (cleaned != null) { if (cleaned) p.cleaned = Date.now(); else delete p.cleaned; } ps.put(p); } };
+  await done(tx);
+}
+export async function getOrig(id) {
+  const db = await openDB();
+  return reqP(db.transaction('images').objectStore('images').get(id + ':orig'));
+}
+export async function dropOrig(id) {
+  const db = await openDB();
+  const tx = db.transaction('images', 'readwrite');
+  tx.objectStore('images').delete(id + ':orig');
   await done(tx);
 }
 
@@ -265,7 +290,7 @@ async function deletePagesOf(bookIds) {
   const all = await listAllPages();
   const ids = all.filter((p) => bookIds.includes(p.bookId)).map((p) => p.id);
   const tx = db.transaction(['pages', 'images', 'thumbs', 'ink'], 'readwrite');
-  for (const id of ids) for (const s of ['pages', 'images', 'thumbs', 'ink']) tx.objectStore(s).delete(id);
+  for (const id of ids) { for (const s of ['pages', 'images', 'thumbs', 'ink']) tx.objectStore(s).delete(id); tx.objectStore('images').delete(id + ':orig'); }
   await done(tx);
   return ids.length;
 }

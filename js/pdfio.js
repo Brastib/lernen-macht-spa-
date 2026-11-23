@@ -4,7 +4,7 @@
 // Export: eigene kleine PDF-Erzeugung ohne Bibliothek. Jede Seite (Scan oder Blatt + Pencil + Text)
 //   wird als JPEG-Bild in eine A4-Seite gelegt.
 import * as db from './db.js';
-import { compress, makeThumb } from './scanner.js';
+import { compress, makeThumb, looksScanned, cleanCanvas } from './scanner.js';
 import { renderPage, blobToImage } from './paper.js';
 
 let libPromise = null;
@@ -30,7 +30,8 @@ function pdfLib() {
 }
 
 // PDF-Datei in ein Buch übernehmen. onProgress(seite, gesamt)
-export async function importPdf(file, bookId, onProgress = () => {}) {
+export async function importPdf(file, bookId, onProgress = () => {}, { autoClean = true } = {}) {
+  let nClean = 0;
   const lib = await pdfLib();
   const doc = await lib.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
   const n = doc.numPages;
@@ -39,19 +40,33 @@ export async function importPdf(file, bookId, onProgress = () => {}) {
     onProgress(i, n);
     const page = await doc.getPage(i);
     const v1 = page.getViewport({ scale: 1 });
-    const vp = page.getViewport({ scale: Math.min(4, 1700 / Math.max(v1.width, v1.height)) });
+    const vp = page.getViewport({ scale: Math.min(4, 2200 / Math.max(v1.width, v1.height)) });
     const c = document.createElement('canvas');
     c.width = Math.round(vp.width); c.height = Math.round(vp.height);
     const ctx = c.getContext('2d');
     ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
     await page.render({ canvasContext: ctx, viewport: vp }).promise;
-    const out = await compress(c);
-    const thumb = await makeThumb(c);
-    added.push(await db.addPage({ bookId, image: out.blob, thumb, width: out.width, height: out.height }));
+    // Eingescannte PDF-Seiten automatisch säubern, das Original bleibt gespeichert
+    let clean = null;
+    if (autoClean && looksScanned(c)) {
+      const cc = document.createElement('canvas'); cc.width = c.width; cc.height = c.height; cc.getContext('2d').drawImage(c, 0, 0);
+      clean = cleanCanvas(cc);
+    }
+    const out = await compress(clean || c);
+    const thumb = await makeThumb(clean || c);
+    const pg = await db.addPage({ bookId, image: out.blob, thumb, width: out.width, height: out.height });
+    if (clean) {
+      const orig = await compress(c);
+      await db.replaceImage(pg.id, orig.blob, thumb);           // Original kurz hinlegen …
+      await db.replaceImage(pg.id, out.blob, thumb, { keepOrig: true, cleaned: true });   // … und als Original aufheben
+      pg.cleaned = Date.now(); nClean++;
+    }
+    added.push(pg);
     page.cleanup();
     c.width = c.height = 1;
   }
   await doc.destroy();
+  added.cleaned = nClean;
   return added;
 }
 

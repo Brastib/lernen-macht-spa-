@@ -1,6 +1,6 @@
 // Hauptteil: Bibliothek mit Fächern, Büchern und Seiten.
 import * as db from './db.js';
-const APP_VERSION = '33';   // gleich wie VERSION in sw.js
+const APP_VERSION = '34';   // gleich wie VERSION in sw.js
 import { openEditor } from './editor.js';
 import { renderPage, PAPERS } from './paper.js';
 import { detectPage, defaultCorners } from './scanner.js';
@@ -429,6 +429,8 @@ async function renderBook() {
     { label: 'Inhaltsverzeichnis', icon: 'list', onClick: async () => { const i = await tocSheet(pages, b.title); if (i != null) openBook(i); } },
     { label: 'Als PDF speichern', icon: 'pdf', onClick: () => pdfExportFlow(pages, b.title) },
     { label: 'Text erkennen (für die Suche)', icon: 'search', onClick: () => ocrFlow(pages) },
+    ...(pages.some((p) => p.kind !== 'blank') ? [{ label: 'Seiten säubern (schärfer, weißes Papier)', icon: 'auto', onClick: () => cleanFlow(selecting && selected.size ? pages.filter((p) => selected.has(p.id)) : pages) }] : []),
+    ...(pages.some((p) => p.cleaned) ? [{ label: 'Säubern rückgängig (Original)', icon: 'restore', onClick: () => uncleanFlow(selecting && selected.size ? pages.filter((p) => selected.has(p.id)) : pages) }] : []),
     ...(b.kind === 'folder' ? [{ label: 'Nach Datum sortieren', icon: 'clock', onClick: async () => {
       const ids = [...pages].sort((x, y) => (x.created || 0) - (y.created || 0)).map((x) => x.id);
       await db.setOrder(b.id, ids); toast('Nach Datum sortiert'); render();
@@ -741,6 +743,61 @@ async function ocrFlow(list) {
   }
 }
 
+// ---------- Seiten säubern ----------
+async function cleanFlow(list) {
+  const todo = list.filter((p) => p.kind !== 'blank' && !p.cleaned);
+  if (!todo.length) { toast('Diese Seiten sind schon gesäubert.'); return; }
+  const ok = await confirmSheet('Seiten säubern?', `${plural(todo.length, 'Seite wird', 'Seiten werden')} verbessert: Schatten weg, Papier weiß, Schrift schärfer, schiefe Seiten gerade. Das Original bleibt gespeichert, du kannst es jederzeit zurückholen.`, 'Säubern', false);
+  if (!ok) return;
+  const { cleanCanvas, compress, makeThumb } = await import('./scanner.js');
+  const { blobToImage } = await import('./paper.js');
+  let stop = false, n = 0;
+  busy(true, 'Seiten werden gesäubert …');
+  const cancel = h('button.btn.ghost.busystop', { text: 'Abbrechen', on: { click: () => { stop = true; cancel.disabled = true; } } });
+  $('busy').append(cancel);
+  try {
+    for (const p of todo) {
+      if (stop) break;
+      $('busyText').textContent = `Seite ${n + 1} von ${todo.length} wird gesäubert …`;
+      const blob = await db.getImage(p.id); if (!blob) continue;
+      const img = await blobToImage(blob);
+      const c = document.createElement('canvas'); c.width = img.naturalWidth; c.height = img.naturalHeight;
+      c.getContext('2d').drawImage(img, 0, 0);
+      // Beschriftete Seiten nicht drehen, sonst passen die Striche nicht mehr
+      const out = cleanCanvas(c, { straighten: !p.strokes });
+      const { blob: nb } = await compress(out);
+      const th = await makeThumb(out);
+      await db.replaceImage(p.id, nb, th, { keepOrig: true, cleaned: true });
+      dropThumb(p.id);
+      n++;
+      await new Promise((r) => setTimeout(r, 0));
+    }
+    toast(`${plural(n, 'Seite', 'Seiten')} gesäubert.`, 3000);
+  } catch (err) { toast('Säubern fehlgeschlagen: ' + err.message, 5000); }
+  finally { cancel.remove(); busy(false); render(); }
+}
+async function uncleanFlow(list) {
+  const todo = list.filter((p) => p.cleaned);
+  if (!todo.length) return;
+  const ok = await confirmSheet('Originale zurückholen?', `${plural(todo.length, 'Seite bekommt', 'Seiten bekommen')} wieder das ursprüngliche Bild.`, 'Zurückholen', false);
+  if (!ok) return;
+  const { makeThumb } = await import('./scanner.js');
+  const { blobToImage } = await import('./paper.js');
+  busy(true, 'Originale werden zurückgeholt …');
+  let n = 0;
+  try {
+    for (const p of todo) {
+      const orig = await db.getOrig(p.id); if (!orig) continue;
+      const img = await blobToImage(orig);
+      const c = document.createElement('canvas'); c.width = img.naturalWidth; c.height = img.naturalHeight; c.getContext('2d').drawImage(img, 0, 0);
+      await db.replaceImage(p.id, orig, await makeThumb(c), { cleaned: false });
+      await db.dropOrig(p.id);
+      dropThumb(p.id); n++;
+    }
+    toast(`${plural(n, 'Original', 'Originale')} zurückgeholt.`, 3000);
+  } finally { busy(false); render(); }
+}
+
 // ---------- PDF ----------
 let pdfTarget = INBOX;
 $('filePdf').addEventListener('change', async (e) => {
@@ -750,7 +807,7 @@ $('filePdf').addEventListener('change', async (e) => {
   try {
     const added = await importPdf(f, pdfTarget, (i, n) => { $('busyText').textContent = `PDF wird übernommen … Seite ${i} von ${n}`; });
     busy(false);
-    toast(`${plural(added.length, 'Seite', 'Seiten')} aus „${f.name}“ übernommen`, 3500);
+    toast(`${plural(added.length, 'Seite', 'Seiten')} aus „${f.name}“ übernommen` + (added.cleaned ? `, ${added.cleaned === added.length ? 'alle' : added.cleaned} gesäubert` : ''), 3500);
     render();
   } catch (err) {
     busy(false);

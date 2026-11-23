@@ -278,34 +278,39 @@ export function flatten(canvas) {
   const w = canvas.width, h = canvas.height;
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
   const img = ctx.getImageData(0, 0, w, h), d = img.data;
-  const S = 8, sw = Math.ceil(w / S), sh = Math.ceil(h / S);
-  // kleine Kopie: hellster Wert je Block = Papier
-  const small = new Float32Array(sw * sh);
-  for (let by = 0; by < sh; by++) for (let bx = 0; bx < sw; bx++) {
-    let mx = 0;
-    for (let y = by * S; y < Math.min(h, by * S + S); y += 2) for (let x = bx * S; x < Math.min(w, bx * S + S); x += 2) {
-      const i = (y * w + x) * 4, l = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
-      if (l > mx) mx = l;
+  const S = 8, sw = Math.ceil(w / S), sh = Math.ceil(h / S), R = 3;
+  // Je Farbkanal: hellster Wert je Block = Papier. So verschwindet auch ein Farbstich (gelbes Licht).
+  const bgs = [0, 1, 2].map((ch) => {
+    const small = new Float32Array(sw * sh);
+    for (let by = 0; by < sh; by++) for (let bx = 0; bx < sw; bx++) {
+      let mx = 0;
+      for (let y = by * S; y < Math.min(h, by * S + S); y += 2) for (let x = bx * S; x < Math.min(w, bx * S + S); x += 2) { const v = d[(y * w + x) * 4 + ch]; if (v > mx) mx = v; }
+      small[by * sw + bx] = mx;
     }
-    small[by * sw + bx] = mx;
-  }
-  // Text-Lücken schließen (Maximum über Nachbarn), dann weich machen
-  const dil = new Float32Array(sw * sh), R = 3;
-  for (let y = 0; y < sh; y++) for (let x = 0; x < sw; x++) {
-    let mx = 0;
-    for (let yy = Math.max(0, y - R); yy <= Math.min(sh - 1, y + R); yy++) for (let xx = Math.max(0, x - R); xx <= Math.min(sw - 1, x + R); xx++) if (small[yy * sw + xx] > mx) mx = small[yy * sw + xx];
-    dil[y * sw + x] = mx;
-  }
-  const bg = boxBlur(dil, sw, sh, 4);
+    const dil = new Float32Array(sw * sh);
+    for (let y = 0; y < sh; y++) for (let x = 0; x < sw; x++) {
+      let mx = 0;
+      for (let yy = Math.max(0, y - R); yy <= Math.min(sh - 1, y + R); yy++) for (let xx = Math.max(0, x - R); xx <= Math.min(sw - 1, x + R); xx++) if (small[yy * sw + xx] > mx) mx = small[yy * sw + xx];
+      dil[y * sw + x] = mx;
+    }
+    return boxBlur(dil, sw, sh, 4);
+  });
+  const [bR, bG, bB] = bgs;
   for (let y = 0; y < h; y++) {
     const fy = Math.min(sh - 1.001, Math.max(0, y / S - 0.5)), y0 = fy | 0, ty = fy - y0;
     for (let x = 0; x < w; x++) {
       const fx = Math.min(sw - 1.001, Math.max(0, x / S - 0.5)), x0 = fx | 0, tx = fx - x0;
-      const a = bg[y0 * sw + x0], b = bg[y0 * sw + x0 + 1], c = bg[(y0 + 1) * sw + x0], e = bg[(y0 + 1) * sw + x0 + 1];
-      const L = (a + (b - a) * tx) * (1 - ty) + (c + (e - c) * tx) * ty;
-      const k = L < 110 ? Math.min(1.25, 250 / Math.max(1, L)) : Math.min(2.2, 250 / L);   // dunkle Flächen (Bilder) kaum anfassen
+      const i0 = y0 * sw + x0, i1 = i0 + 1, i2 = i0 + sw, i3 = i2 + 1;
+      const w0 = (1 - tx) * (1 - ty), w1 = tx * (1 - ty), w2 = (1 - tx) * ty, w3 = tx * ty;
+      const r = bR[i0] * w0 + bR[i1] * w1 + bR[i2] * w2 + bR[i3] * w3;
+      const g = bG[i0] * w0 + bG[i1] * w1 + bG[i2] * w2 + bG[i3] * w3;
+      const bb = bB[i0] * w0 + bB[i1] * w1 + bB[i2] * w2 + bB[i3] * w3;
+      const L = 0.299 * r + 0.587 * g + 0.114 * bb;
+      const lim = L < 110 ? 1.25 : 2.4;   // dunkle Flächen (Bilder) kaum anfassen
       const i = (y * w + x) * 4;
-      d[i] = Math.min(255, d[i] * k); d[i + 1] = Math.min(255, d[i + 1] * k); d[i + 2] = Math.min(255, d[i + 2] * k);
+      d[i] = Math.min(255, d[i] * Math.min(lim, 250 / Math.max(1, r)));
+      d[i + 1] = Math.min(255, d[i + 1] * Math.min(lim, 250 / Math.max(1, g)));
+      d[i + 2] = Math.min(255, d[i + 2] * Math.min(lim, 250 / Math.max(1, bb)));
     }
   }
   ctx.putImageData(img, 0, 0);
@@ -369,6 +374,30 @@ export function sharpen(canvas, amount = 0.6) {
   }
   ctx.putImageData(img, 0, 0);
   return canvas;
+}
+
+// Sieht die Seite nach Foto/Scan aus (graues oder ungleich helles Papier)? Saubere digitale PDFs bleiben dann unverändert.
+export function looksScanned(canvas) {
+  const W = 400, f = Math.min(1, W / canvas.width);
+  const w = Math.max(8, Math.round(canvas.width * f)), h = Math.max(8, Math.round(canvas.height * f));
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const x = c.getContext('2d', { willReadFrequently: true });
+  x.drawImage(canvas, 0, 0, w, h);
+  const d = x.getImageData(0, 0, w, h).data, S = 10, vals = [];
+  for (let by = 0; by + S <= h; by += S) for (let bx = 0; bx + S <= w; bx += S) {
+    let mx = 0;
+    for (let y = by; y < by + S; y++) for (let xx = bx; xx < bx + S; xx++) { const i = (y * w + xx) * 4, l = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]; if (l > mx) mx = l; }
+    vals.push(mx);
+  }
+  if (!vals.length) return false;
+  vals.sort((a, b) => a - b);
+  const q = (t) => vals[Math.min(vals.length - 1, Math.floor(vals.length * t))];
+  const paper = q(0.7), spread = q(0.9) - q(0.35);
+  return paper < 244 || spread > 16;
+}
+// Komplett säubern: gerade drehen (optional), Schatten weg, Kontrast, schärfen
+export function cleanCanvas(canvas, { straighten = true } = {}) {
+  return sharpen(enhance(flatten(straighten ? deskew(canvas) : canvas), 'color'), 0.5);
 }
 
 // ---------- Verkleinern ----------
