@@ -11,12 +11,13 @@ export const GAMES = {
   wind: { name: 'Windflug', icon: 'wind', sub: 'Flieg durch Stifte und Bücher', run: windflug },
   plane: { name: 'Papierflieger', icon: 'plane', sub: 'Wer wirft am weitesten?', run: planeDuel },
   arena: { name: 'Strichkampf', icon: 'sword', sub: 'Figur und Waffe malen, dann kämpfen', run: (...a) => import('./arena.js').then((m) => m.arena(...a)) },
+  run: { name: 'Kritzelsprint', icon: 'run', sub: 'Rennen und springen, wer kommt weiter?', run: (...a) => import('./runner.js').then((m) => m.runDuel(...a)) },
   stack: { name: 'Hochstapler', icon: 'stack', sub: 'Blöcke stapeln, wer baut höher?', run: (...a) => import('./stack.js').then((m) => m.stackDuel(...a)) },
   chess: { name: 'Schach', icon: 'chess', sub: 'Mit allen Regeln, zu zweit', run: (...a) => import('./chess.js').then((m) => m.chessDuel(...a)) },
   wall: { name: 'Mauerlauf', icon: 'wall', sub: 'Schritt oder Mauer: wer kommt zuerst rüber?', run: (...a) => import('./wall.js').then((m) => m.wallGame(...a)) },
   quiz: { name: 'Quiz', icon: 'cards', sub: 'Wer kann den Stoff? Fragen aus euren Lernkarten', run: (...a) => import('./quiz.js').then((m) => m.quizDuel(...a)) },
 };
-const MIX = ['ttt', 'wind', 'stack', 'plane', 'wall', 'arena'];
+const MIX = ['ttt', 'wind', 'stack', 'run', 'plane', 'wall', 'arena'];
 
 const players = () => store.get('gPlayers', []);
 const names = () => store.get('gNames', []);
@@ -97,6 +98,7 @@ export async function renderGames(ctx) {
   view.append(h('h2.section', { text: 'Allein spielen' }), h('div.ptiles.gtiles', null,
     soloTile('wind', 'Windflug', best('gWindBest') ? `Dein Rekord: ${best('gWindBest')} Punkte` : 'So weit fliegen, wie du kannst', () => soloScore('wind')),
     soloTile('plane', 'Papierflieger', best('gPlaneBest') ? `Dein Rekord: ${String(best('gPlaneBest')).replace('.', ',')} m` : 'Wie weit fliegt dein Flieger?', () => soloScore('plane')),
+    soloTile('run', 'Kritzelsprint', best('gRunBest') ? `Dein Rekord: ${best('gRunBest')} m` : 'Rennen und springen, so weit es geht', () => soloScore('run')),
     soloTile('stack', 'Hochstapler', best('gStackBest') ? `Dein Rekord: ${best('gStackBest')} Blöcke` : 'So hoch stapeln, wie du kannst', () => soloStack()),
     soloTile('ttt', 'Tic-Tac-Toe', 'Gegen den Computer', () => vsCpu('ttt')),
     soloTile('sword', 'Strichkampf', 'Dein Kämpfer gegen den Computer', () => vsCpu('arena')),
@@ -148,7 +150,7 @@ function playerSheet(title, { withGame = false, okLabel = 'Sichern' } = {}) {
       list, dl);
     if (withGame) {
       const seg = h('div.gseg.gseg6');
-      const opts = [['ttt', 'Tic-Tac-Toe'], ['wind', 'Windflug'], ['plane', 'Flieger'], ['arena', 'Strichkampf'], ['stack', 'Hochstapler'], ['chess', 'Schach'], ['wall', 'Mauerlauf'], ['quiz', 'Quiz'], ['mix', 'Gemischt']];
+      const opts = [['ttt', 'Tic-Tac-Toe'], ['wind', 'Windflug'], ['plane', 'Flieger'], ['arena', 'Strichkampf'], ['stack', 'Hochstapler'], ['run', 'Kritzelsprint'], ['chess', 'Schach'], ['wall', 'Mauerlauf'], ['quiz', 'Quiz'], ['mix', 'Gemischt']];
       const drawSeg = () => seg.replaceChildren(...opts.map(([k, l]) => h('button' + (k === game ? '.on' : ''), { text: l, on: { click: () => { game = k; drawSeg(); } } })));
       drawSeg();
       const pw = h('label.gswitch', null, h('span', null, h('b', { text: 'Power-ups beim Papierflieger' }), h('small', { text: 'Vor jedem Wurf eins aus drei wählen, dazu Kugeln in der Luft' })),
@@ -288,6 +290,7 @@ const CPU = { name: 'Computer', color: '#8a8f98' };
 // Rekord-Spiele: Windflug und Papierflieger allein
 const SOLO = {
   wind: { title: 'Windflug', key: 'gWindBest', run: (fx, p) => windflug(fx, p, null), fmt: (x) => `${x} ${x === 1 ? 'Punkt' : 'Punkte'}` },
+  run: { title: 'Kritzelsprint', key: 'gRunBest', run: (fx, p) => import('./runner.js').then((m) => m.runSolo(fx, p)), fmt: (x) => `${x} m` },
   plane: { title: 'Papierflieger', key: 'gPlaneBest', run: (fx, p) => planeDuel(fx, p, null), fmt: (x) => x.toFixed(1).replace('.', ',') + ' m' },
 };
 async function soloScore(k) {
