@@ -29,6 +29,27 @@ export function weaponStats(info = {}, kind = info.kind || 'melee') {
   }
   return { kind, len, weight, reach: len * S * KW, dmg: 7 + 11 * weight + 5 * len, swing: 0.28 + 0.4 * weight + 0.15 * len };
 }
+// Munition für selbst gemalte Schusswaffen
+export const AMMO = {
+  bullet: { name: 'Kugeln', sub: 'normal' },
+  shot: { name: 'Schrot', sub: 'viele kleine, kurz' },
+  laser: { name: 'Laser', sub: 'schnell, gerade' },
+  rocket: { name: 'Raketen', sub: 'Explosion, langsam' },
+  nade: { name: 'Granaten', sub: 'im Bogen, Explosion' },
+};
+export function applyAmmo(st, ammo = 'bullet', n = 1) {
+  const o = { ...st };
+  if (ammo === 'shot') Object.assign(o, { pellets: 5, spread: 0.14, dmg: st.dmg * 0.42, speed: st.speed * 0.9, life: 0.55, mag: Math.max(2, Math.round(st.mag * 0.7)) });
+  if (ammo === 'laser') Object.assign(o, { laser: true, grav: 0, speed: 1700, size: 3, dmg: st.dmg * 0.75, rate: st.rate * 0.7, spread: 0.01 });
+  if (ammo === 'rocket') Object.assign(o, { boom: 80, dmg: 15 + 6 * (st.weight || 0), speed: 560, rate: Math.max(0.9, st.rate * 2.2), mag: 1, reload: st.reload + 0.6, size: 6, grav: 60 });
+  if (ammo === 'nade') Object.assign(o, { grenade: true, boom: 90, dmg: 15, rate: 0.9, mag: 2, reload: 1.6, size: 7 });
+  // mehrere Mündungen: jeder Schuss etwas schwächer, damit es fair bleibt
+  if (n > 1) o.dmg = o.dmg * (1.35 / n);
+  return o;
+}
+const arsenal = () => store.get('gArsenal', []);
+function saveArsenal(list) { return store.set('gArsenal', list); }
+
 const bar = (label, v) => h('span.paintstat', null, h('small', { text: label }), h('span.pbar', null, h('i', { style: { width: Math.round(Math.max(0.06, Math.min(1, v)) * 100) + '%' } })));
 const statBars = (st) => st.kind === 'gun'
   ? [bar('Schaden', (st.dmg * (st.pellets || 1) + (st.boom ? 6 : 0)) / 26), bar('Tempo', 1 - (st.rate - 0.07) / 1.05), bar('Munition', st.mag / 20)]
@@ -65,38 +86,147 @@ async function editArm(p) {
   if (r) return setPart(p, 'arm', { url: r.url, w: r.w, h: r.h, grip: r.grip, hand: r.muzzle });
   return false;
 }
-async function editWeapon(p) {
-  const f = getFighter(p);
+async function editWeapon(p, fresh = false) {
+  const f = fresh ? {} : getFighter(p);
   const r = await paintSheet({ title: `Waffe für ${p.name}`, color: '#1d1d1f', old: f.weap && f.weap.url, oldGrip: f.weap && f.weap.grip, grip: GRIP, saveLabel: 'Waffe sichern', removeLabel: 'Standard-Schwert',
     kinds: [['melee', 'Nahkampf'], ['gun', 'Schusswaffe']], kind: (f.weap && f.weap.kind) || 'melee',
     minFor: (k) => (k === 'gun' ? 0.22 : 0.3),
     small: 'Noch zu kurz. Mal die Waffe mindestens bis zum gestrichelten Kreis.', empty: 'Fang beim roten Punkt an, dort hält die Figur die Waffe.',
     stats: (info, kind) => statBars(weaponStats(info, kind)),
+    pins: { label: 'Mündung', button: 'Mündungen setzen', max: 4, kind: 'gun' }, oldPins: f.weap && f.weap.muzzles,
     textFor: (k) => k === 'gun'
       ? 'Mal die Schusswaffe vom Griff (roter Punkt) aus. Der Punkt, der am weitesten weg ist, wird die Mündung (blau). Dort kommen die Schüsse raus. Dick heißt mehr Schaden, aber weniger Munition.'
       : 'Mal die Waffe vom Griff (roter Punkt) aus. Lang heißt mehr Reichweite, dick und schwer heißt mehr Schaden, aber langsamer.' });
   if (r === 'remove') return setPart(p, 'weap', null);
-  if (r) return setPart(p, 'weap', { url: r.url, w: r.w, h: r.h, grip: r.grip, muzzle: r.muzzle, kind: r.kind, info: { ...r.info, kind: r.kind } });
-  return false;
+  if (!r) return false;
+  const w = { url: r.url, w: r.w, h: r.h, grip: r.grip, muzzle: r.muzzle, muzzles: r.kind === 'gun' ? r.pins : null, kind: r.kind, info: { ...r.info, kind: r.kind } };
+  const fin = await finishWeapon(w, f.weap && f.weap.url ? f.weap : null);
+  if (!fin) return false;
+  return setPart(p, 'weap', fin);
+}
+// Name, Munition und „im Arsenal speichern“
+function finishWeapon(w, old) {
+  return import('./ui.js').then(({ sheet }) => sheet('Waffe fertig', (body, close) => {
+    let ammo = (old && old.ammo) || 'bullet', keep = true;
+    const name = h('input.field', { type: 'text', id: 'wName', maxlength: 22, placeholder: w.kind === 'gun' ? 'z. B. Blitz-Blaster' : 'z. B. Donnerschwert', value: (old && old.name) || '', autocomplete: 'off' });
+    const seg = h('div.ammogrid');
+    const stats = h('div.paintstats');
+    const drawAmmo = () => {
+      seg.replaceChildren(...Object.entries(AMMO).map(([k, a]) => h('button.ammotile' + (k === ammo ? '.on' : ''), { on: { click: () => { ammo = k; drawAmmo(); } } }, h('i.ammoic.' + k), h('b', { text: a.name }), h('small', { text: a.sub }))));
+      stats.replaceChildren(...statBars(applyAmmo(weaponStats(w.info, w.kind), ammo, (w.muzzles || []).length || 1)));
+    };
+    const keepBox = h('input', { type: 'checkbox', id: 'wKeep', checked: true, on: { change: (e) => { keep = e.target.checked; } } });
+    body.append(h('label.fieldlabel', { for: 'wName', text: 'Name der Waffe' }), name);
+    if (w.kind === 'gun') {
+      drawAmmo();
+      body.append(h('p.fieldlabel', { text: 'Munition' + ((w.muzzles || []).length > 1 ? ` · schießt aus ${w.muzzles.length} Mündungen` : '') }), seg, stats);
+    }
+    body.append(h('label.checkrow', { for: 'wKeep' }, keepBox, h('span', null, h('b', { text: 'Im Arsenal speichern' }), h('small', { text: 'Dann kannst du sie später wieder auswählen, auch für andere Spieler.' }))),
+      h('div.dlgactions', null,
+        h('button.btn', { text: 'Abbrechen', on: { click: () => close(null) } }),
+        h('button.btn.primary', { text: 'Fertig', on: { click: () => {
+          const nm = name.value.trim() || (w.kind === 'gun' ? 'Eigene Schusswaffe' : 'Eigene Waffe');
+          const out = { ...w, name: nm, ammo: w.kind === 'gun' ? ammo : null };
+          if (keep) {
+            const list = arsenal();
+            const id = (old && old.savedId && list.some((x) => x.id === old.savedId)) ? old.savedId : 'w' + Date.now().toString(36);
+            out.savedId = id;
+            if (!saveArsenal([{ ...out, id }, ...list.filter((x) => x.id !== id)].slice(0, 24))) delete out.savedId;
+          }
+          close(out);
+        } } })));
+  }));
 }
 
-// Waffe aussuchen: fertige Waffen oder selbst malen
+// Waffe aussuchen: eine Waffenkammer, die jemand mit Bleistift auf ein Blatt gemalt hat
+const SVGNS = 'http://www.w3.org/2000/svg';
+function rnd(seed) { let x = seed * 9301 + 49297; return () => { x = (x * 9301 + 49297) % 233280; return x / 233280; }; }
+// krakelige Bleistiftlinie (zwei leicht versetzte Striche wie von Hand)
+function sketch(cls, seed, { w = 1000, hh = 24, rows = [12], legs = 0, hooks = 0 } = {}) {
+  const r = rnd(seed), svg = document.createElementNS(SVGNS, 'svg');
+  svg.setAttribute('viewBox', `0 0 ${w} ${hh}`); svg.setAttribute('preserveAspectRatio', 'none'); svg.setAttribute('aria-hidden', 'true');
+  svg.classList.add(cls);
+  const line = (d, wd = 2.2, op = 1) => { const pa = document.createElementNS(SVGNS, 'path'); pa.setAttribute('d', d); pa.setAttribute('stroke-width', wd); pa.setAttribute('opacity', op); pa.setAttribute('vector-effect', 'non-scaling-stroke'); svg.append(pa); };
+  for (const y of rows) for (let k = 0; k < 2; k++) {
+    let d = `M${4 + r() * 10} ${y + (r() - 0.5) * 3}`;
+    for (let x = 80; x <= w - 6; x += 80 + r() * 60) d += ` L${Math.min(w - 4, x)} ${y + (r() - 0.5) * (k ? 3 : 2)}`;
+    line(d, k ? 1.3 : 2.2, k ? 0.55 : 0.9);
+  }
+  for (let i = 0; i < legs; i++) { const x = (i + 0.5) * w / legs + (r() - 0.5) * 20; line(`M${x} ${rows[0]} L${x + 4} ${hh - 2} M${x - 26} ${rows[0]} L${x} ${hh - 6}`, 1.6, 0.8); }
+  for (let i = 0; i < hooks; i++) { const x = (i + 0.5) * w / hooks; line(`M${x} ${rows[0]} L${x} ${rows[0] + 10} Q${x} ${rows[0] + 16} ${x + 6} ${rows[0] + 12}`, 1.8, 0.85); }
+  return svg;
+}
+function scribbleCircle(seed) {
+  const r = rnd(seed), svg = document.createElementNS(SVGNS, 'svg');
+  svg.setAttribute('viewBox', '0 0 200 140'); svg.setAttribute('preserveAspectRatio', 'none'); svg.setAttribute('aria-hidden', 'true'); svg.classList.add('arcircle');
+  let d = '';
+  for (let i = 0; i <= 44; i++) {
+    const t = -0.4 + i / 40 * Math.PI * 2, rr = 1 + (r() - 0.5) * 0.06 + i * 0.002;
+    d += (i ? ' L' : 'M') + (100 + Math.cos(t) * 92 * rr).toFixed(1) + ' ' + (70 + Math.sin(t) * 62 * rr).toFixed(1);
+  }
+  const pa = document.createElementNS(SVGNS, 'path'); pa.setAttribute('d', d); pa.setAttribute('vector-effect', 'non-scaling-stroke'); svg.append(pa);
+  return svg;
+}
+const ARMORY = [
+  ['Nahkampf', 'Am Haken', ['dagger', 'short', 'sword', 'long'], 'hooks'],
+  ['Pistolen', null, ['g17', 'g18']],
+  ['MPs', null, ['mp5', 'uzi']],
+  ['Gewehre', null, ['ak', 'm14', 'shot', 'dshot']],
+  ['Schweres Zeug', 'Vorsicht!', ['rpg', 'nade']],
+];
+const thumbCache = new Map();
+function presetThumb(id) { if (!thumbCache.has(id)) thumbCache.set(id, presetImage(id).img.toDataURL('image/png')); return thumbCache.get(id); }
+
 function chooseWeapon(p) {
-  return import('./ui.js').then(({ sheet }) => sheet(`Waffe für ${p.name}`, (body, close) => {
+  return import('./ui.js').then(({ sheet, confirmSheet }) => sheet(`Waffenkammer von ${p.name}`, (body, close) => {
+    const dlg = body.closest('.dlg'); if (dlg) dlg.classList.add('armory');
     const cur = getFighter(p).weap;
-    const tile = (id) => {
-      const P = PRESETS[id], im = presetImage(id);
-      const st = { pellets: 1, ...P.st };
-      const tag = P.kind === 'gun' ? (st.boom ? 'Explosion' : st.pellets > 1 ? 'Schrot' : st.rate < 0.15 ? 'Dauerfeuer' : 'Schuss') : 'Nahkampf';
-      return h('button.wtile' + (cur && cur.preset === id ? '.on' : ''), { on: { click: () => { setPart(p, 'weap', { preset: id }); close(true); } } },
-        h('span.wimg', null, h('img', { src: im.img.toDataURL('image/png'), alt: '' })),
-        h('b', { text: P.name }), h('small', { text: P.sub || tag }));
+    let seed = 7;
+    const item = (sel, onPick, img, name, sub, extra = []) => {
+      const b = h('button.aritem' + (sel ? '.on' : ''), { on: { click: onPick } },
+        h('span.arpic', null, img), h('b', { text: name }), sub ? h('small', { text: sub }) : null);
+      if (sel) b.append(scribbleCircle(seed++));
+      return h('div.arslot', null, b, extra.length ? h('div.arminis', null, ...extra) : null);
     };
+    const shelf = (title, note, kids, hooks) => h('section.arshelf' + (hooks ? '.hooks' : ''), null,
+      h('div.arsign', null, h('span', { text: title }), note ? h('small', { text: note }) : null),
+      hooks ? sketch('arrack', seed++, { hh: 12, rows: [6] }) : null,
+      h('div.arrow', null, ...kids),
+      sketch('arplank', seed++, { hh: 30, rows: [6, 13], legs: 2 }));
+    const presetItem = (id) => {
+      const P = PRESETS[id], st = { pellets: 1, ...P.st };
+      const tag = P.kind === 'gun' ? (st.boom ? 'Explosion' : st.pellets > 1 ? 'Schrot' : st.rate < 0.15 ? 'Dauerfeuer' : 'Schuss') : null;
+      return item(cur && cur.preset === id, () => { setPart(p, 'weap', { preset: id }); close(true); },
+        h('img', { src: presetThumb(id), alt: '' }), P.name, P.sub ? P.sub.replace(/^wie /, 'wie ') : tag);
+    };
+    const own = () => {
+      const list = arsenal(), kids = [];
+      const curId = cur && cur.url ? cur.savedId : null;
+      if (cur && cur.url && !(curId && list.some((x) => x.id === curId))) {
+        kids.push(item(true, () => close(true), h('img', { src: cur.url, alt: '' }), cur.name || 'Deine Waffe', 'nicht gespeichert',
+          [h('button.armini', { 'aria-label': 'Ändern', title: 'Ändern', on: { click: () => close('own') } }, icon('pen'))]));
+      }
+      for (const w of list) {
+        const sub = w.kind === 'gun' ? (AMMO[w.ammo || 'bullet'].name + ((w.muzzles || []).length > 1 ? ` · ${w.muzzles.length} Mündungen` : '')) : 'Nahkampf';
+        const pick = () => { const { id, ...rest } = w; setPart(p, 'weap', { ...rest, savedId: id }); };
+        kids.push(item(curId === w.id, () => { pick(); close(true); }, h('img', { src: w.url, alt: '' }), w.name || 'Eigene Waffe', sub, [
+          h('button.armini', { 'aria-label': 'Ändern', title: 'Ändern', on: { click: () => { pick(); close('own'); } } }, icon('pen')),
+          h('button.armini.del', { 'aria-label': 'Aus dem Arsenal löschen', title: 'Löschen', on: { click: async () => {
+            if (!(await confirmSheet('Waffe löschen?', `„${w.name || 'Eigene Waffe'}“ wird aus dem Arsenal entfernt.`))) return;
+            saveArsenal(arsenal().filter((x) => x.id !== w.id));
+            if (curId === w.id) { const c = getFighter(p).weap; if (c) { delete c.savedId; setPart(p, 'weap', c); } }
+            ownBox.replaceWith(ownBox = ownShelf());
+          } } }, icon('close'))]));
+      }
+      kids.push(h('div.arslot', null, h('button.aritem.new', { on: { click: () => close('new') } },
+        h('span.arpic', null, icon('pen')), h('b', { text: 'Neue malen' }), h('small', { text: 'Nahkampf oder Schusswaffe' }))));
+      return kids;
+    };
+    const ownShelf = () => shelf('Eigene Waffen', arsenal().length ? `${arsenal().length} gespeichert` : 'Selbst gemalt', own());
+    let ownBox = ownShelf();
     body.append(
-      h('div.wgrid', null,
-        h('button.wtile.own' + (cur && cur.url ? '.on' : ''), { on: { click: () => close('own') } },
-          h('span.wimg', null, icon('pen')), h('b', { text: 'Selbst malen' }), h('small', { text: cur && cur.url ? 'Deine gemalte Waffe ändern' : 'Nahkampf oder Schusswaffe' })),
-        ...PRESET_IDS.map(tile)));
+      h('p.arnote', { text: 'Tipp auf eine Waffe zum Nehmen. Was du selbst malst, kannst du hier speichern.' }),
+      ownBox, ...ARMORY.map(([t, n, ids, hk]) => shelf(t, n, ids.map(presetItem), hk)));
   }, { wide: true }));
 }
 
@@ -125,11 +255,13 @@ async function makeFighter0(p, side) {
   }
   const [img, wimg] = await Promise.all([loadImg(fig.url), loadImg(weap.url)]);
   const kind = weap.kind || 'melee';
-  const st = { life: 3, grav: 260, ...weaponStats(weap.info || {}, kind) };
   const ww = weap.w * S * KW, wh = weap.h * S * KW, grip = weap.grip || [0, 1];
-  const mz = weap.muzzle || [1, 0];
-  const mdx = (mz[0] - grip[0]) * ww, mdy = (mz[1] - grip[1]) * wh;
-  return fighterObj(p, side, fig, img, wimg, st, kind, { anim: kind, ww, wh, grip, wang0: kind === 'gun' ? 0 : ((weap.info && weap.info.ang) || -Math.PI / 4), mdx, mdy, wname: kind === 'gun' ? 'Eigene Schusswaffe' : 'Eigene Waffe' });
+  const list = kind === 'gun' && weap.muzzles && weap.muzzles.length ? weap.muzzles : [weap.muzzle || [1, 0]];
+  const mzs = list.map((mz) => [(mz[0] - grip[0]) * ww, (mz[1] - grip[1]) * wh]);
+  const st0 = { life: 3, grav: 260, ...weaponStats(weap.info || {}, kind) };
+  const st = kind === 'gun' ? applyAmmo(st0, weap.ammo || 'bullet', mzs.length) : st0;
+  const far = mzs.reduce((a, b) => (Math.hypot(...b) > Math.hypot(...a) ? b : a));
+  return fighterObj(p, side, fig, img, wimg, st, kind, { anim: kind === 'gun' && weap.ammo === 'nade' ? 'nade' : kind, ww, wh, grip, wang0: kind === 'gun' ? 0 : ((weap.info && weap.info.ang) || -Math.PI / 4), mdx: far[0], mdy: far[1], mzs, wname: weap.name || (kind === 'gun' ? 'Eigene Schusswaffe' : 'Eigene Waffe') });
 }
 function fighterObj(p, side, fig, img, wimg, st, kind, w) {
   const fw = Math.min(170, Math.max(40, FIG_H * fig.w / fig.h));
@@ -234,7 +366,7 @@ export function arena(fx, A, B) {
           h('div.arbtns', null,
             h('button.btn', { title: 'Figur malen', on: { click: async () => { if (await editFigure(p)) drawPrep(); } } }, icon('pen'), 'Figur'),
             h('button.btn', { title: 'Arm malen', on: { click: async () => { if (await editArm(p)) drawPrep(); } } }, icon('edit'), f.arm ? 'Arm ✓' : 'Arm'),
-            h('button.btn', { on: { click: async () => { const r = await chooseWeapon(p); if (r === 'own') await editWeapon(p); if (r) drawPrep(); } } }, icon('sword'), 'Waffe')));
+            h('button.btn', { on: { click: async () => { const r = await chooseWeapon(p); if (r === 'own' || r === 'new') await editWeapon(p, r === 'new'); if (r) drawPrep(); } } }, icon('sword'), 'Waffe')));
       });
       if (fx.signal.aborted) return;
       prep.replaceChildren(
@@ -447,24 +579,27 @@ export function arena(fx, A, B) {
       const { hand } = armPose(f);
       let ang = f.aim;
       const ca = Math.cos(ang), sa = Math.sin(ang);
-      const lx = hand[0] + ca * f.mdx - sa * f.mdy, ly = hand[1] + sa * f.mdx + ca * f.mdy;
-      const mx = f.x + f.face * lx, my = f.y + ly;
-      if (st.grenade) {
-        // im Bogen werfen
-        const d = Math.max(80, Math.abs(o.x - mx)), th = 0.8, v = Math.max(320, Math.min(900, Math.sqrt(st.grav * d / Math.sin(2 * th))));
-        shots.push({ x: mx, y: my, vx: f.face * Math.cos(th) * v, vy: -Math.sin(th) * v, owner: f, r: st.size, c: f.p.color, t: 0, trail: [], nade: true, rot: 0 });
-      } else {
-        for (let k = 0; k < (st.pellets || 1); k++) {
-          const a = ang + (Math.random() - 0.5) * 2 * (st.spread || 0);
-          const sp = st.speed * (st.pellets > 1 ? 0.85 + Math.random() * 0.3 : 1);
-          shots.push({ x: mx, y: my, vx: f.face * Math.cos(a) * sp, vy: Math.sin(a) * sp, owner: f, r: st.size, c: f.p.color, t: 0, trail: [], rocket: !!st.boom });
+      let mx = 0, my = 0;
+      for (const [dx, dy] of (f.mzs || [[f.mdx, f.mdy]])) {
+        const lx = hand[0] + ca * dx - sa * dy, ly = hand[1] + sa * dx + ca * dy;
+        mx = f.x + f.face * lx; my = f.y + ly;
+        if (st.grenade) {
+          // im Bogen werfen
+          const d = Math.max(80, Math.abs(o.x - mx)), th = 0.8, v = Math.max(320, Math.min(900, Math.sqrt(st.grav * d / Math.sin(2 * th))));
+          shots.push({ x: mx, y: my, vx: f.face * Math.cos(th) * v * (0.95 + Math.random() * 0.1), vy: -Math.sin(th) * v, owner: f, r: st.size, c: f.p.color, t: 0, trail: [], nade: true, rot: 0 });
+        } else {
+          for (let k = 0; k < (st.pellets || 1); k++) {
+            const a = ang + (Math.random() - 0.5) * 2 * (st.spread || 0);
+            const sp = st.speed * (st.pellets > 1 ? 0.85 + Math.random() * 0.3 : 1);
+            shots.push({ x: mx, y: my, vx: f.face * Math.cos(a) * sp, vy: Math.sin(a) * sp, owner: f, r: st.size, c: f.p.color, t: 0, trail: [], rocket: !!st.boom, laser: !!st.laser });
+          }
         }
       }
       f.ammo--; f.cd = st.rate; f.recoil = st.boom || st.pellets > 1 ? 1.4 : 1; f.flash = st.grenade ? 0 : 1;
       f.vx -= f.face * (40 + 160 * (st.weight || 0.3));
       if (f.ammo <= 0) f.reloadT = st.reload;
       if (Math.random() < (st.rate > 0.25 ? 0.6 : 0.15)) {
-        const w = st.grenade ? ['Hepp!', 'Fang!'] : st.boom ? ['WUSCH!', 'Fauch!'] : st.pellets > 1 ? ['BAMM!', 'Wumm!'] : ['Peng!', 'Piu!', 'Puff!'];
+        const w = st.grenade ? ['Hepp!', 'Fang!'] : st.boom ? ['WUSCH!', 'Fauch!'] : st.laser ? ['Bzzt!', 'Pew!', 'Ziiing!'] : st.pellets > 1 ? ['BAMM!', 'Wumm!'] : ['Peng!', 'Piu!', 'Puff!'];
         pops.push({ x: mx + f.face * 20, y: my - 18, t: 0.15, txt: w[(Math.random() * w.length) | 0], c: f.p.color, small: true });
       }
     }
@@ -474,7 +609,7 @@ export function arena(fx, A, B) {
       shake = 1;
       puff(x, y + 10, 14);
       for (let i = 0; i < 18; i++) parts.push({ x, y, vx: (Math.random() - 0.5) * 700, vy: -Math.random() * 600, t: Math.random() * 0.2, c: Math.random() < 0.5 ? '#f2a516' : owner.p.color, r: 3 + Math.random() * 5, star: Math.random() < 0.5 });
-      pops.push({ x, y: y - 40, t: 0, txt: ['BUMM!', 'KAWUMM!', 'BOOM!'][(Math.random() * 3) | 0], c: '#f2a516', big: true });
+      if (!pops.some((q) => q.boom && q.t < 0.3)) pops.push({ x, y: y - 40, t: 0, txt: ['BUMM!', 'KAWUMM!', 'BOOM!'][(Math.random() * 3) | 0], c: '#f2a516', big: true, boom: true });
       for (const o of F) {
         if (o === owner || o.ko) continue;
         const dx = o.x - x, dy = (o.y - o.fh / 2) - y, d = Math.hypot(dx, dy);
@@ -496,7 +631,7 @@ export function arena(fx, A, B) {
       for (const s of shots) {
         s.t += dt; s.vy += (s.owner.st.grav || 260) * dt; s.x += s.vx * dt; s.y += s.vy * dt;
         if (s.nade) s.rot += s.vx * dt * 0.05;
-        s.trail.push([s.x, s.y]); if (s.trail.length > (s.rocket ? 14 : 8)) s.trail.shift();
+        s.trail.push([s.x, s.y]); if (s.trail.length > (s.rocket ? 14 : s.laser ? 5 : 8)) s.trail.shift();
         if (s.rocket && Math.random() < 0.5) dust.push({ x: s.x - Math.sign(s.vx) * 10, y: s.y, vx: -s.vx * 0.05, t: 0.1, r: 4 });
         const o = F.find((q) => q !== s.owner);
         const boomy = s.rocket || s.nade;
@@ -539,7 +674,8 @@ export function arena(fx, A, B) {
       for (let i = 0; i < 12; i++) parts.push({ x: at[0], y: at[1], vx: (Math.random() - 0.5) * 420 + f.face * 160, vy: -Math.random() * 380, t: Math.random() * 0.2, c: Math.random() < 0.5 ? f.p.color : ink, r: 2 + Math.random() * 4, star: Math.random() < 0.3 });
       const big = dmg > 17;
       const words = f.kind === 'gun' ? ['Plopp!', 'Tock!', 'Bonk!'] : big ? ['KRACH!', 'BUMM!', 'WUMMS!'] : ['Zack!', 'Pow!', 'Klong!', 'Patsch!'];
-      pops.push({ x: at[0], y: at[1] - 20, t: 0, txt: words[(Math.random() * words.length) | 0], c: f.p.color, big });
+      // pro Salve nur ein Wort, sonst stapeln sich die Wörter bei mehreren Mündungen
+      if (!pops.some((q) => q.hit && q.c === f.p.color && q.t < 0.3)) pops.push({ x: at[0], y: at[1] - 20, t: 0, txt: words[(Math.random() * words.length) | 0], c: f.p.color, big, hit: true });
       if (o.hp <= 0) { o.hp = 0; o.ko = true; o.vy = -520; o.vx = f.face * 380; slow = 0.3; finish(F.indexOf(f)); }
     }
 
@@ -597,6 +733,13 @@ export function arena(fx, A, B) {
           ctx.fillStyle = '#7d8a4e'; ctx.strokeStyle = ink; ctx.lineWidth = 2;
           ctx.beginPath(); ctx.moveTo(14, 0); ctx.lineTo(2, -6); ctx.lineTo(-12, -6); ctx.lineTo(-12, 6); ctx.lineTo(2, 6); ctx.closePath(); ctx.fill(); ctx.stroke();
           ctx.fillStyle = '#ffcf4a'; ctx.beginPath(); ctx.moveTo(-12, -4); ctx.lineTo(-22 - Math.random() * 8, 0); ctx.lineTo(-12, 4); ctx.fill();
+          ctx.restore(); continue;
+        }
+        if (s.laser) {
+          const t0 = s.trail[0] || [s.x, s.y];
+          ctx.save(); ctx.lineCap = 'round';
+          ctx.strokeStyle = s.c; ctx.globalAlpha = 0.35; ctx.lineWidth = 9; ctx.beginPath(); ctx.moveTo(...t0); ctx.lineTo(s.x, s.y); ctx.stroke();
+          ctx.globalAlpha = 1; ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(...t0); ctx.lineTo(s.x, s.y); ctx.stroke();
           ctx.restore(); continue;
         }
         ctx.fillStyle = s.c; ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2); ctx.fill();
@@ -676,7 +819,7 @@ export function arena(fx, A, B) {
         // Mündungsfeuer
         if (f.kind === 'gun' && f.flash > 0) {
           c.rotate(phi); c.fillStyle = '#ffcf4a'; c.globalAlpha = f.flash; c.shadowBlur = 0;
-          star(c, f.mdx + 6, f.mdy, 10 + f.flash * 8, f.t * 20);
+          for (const [dx, dy] of (f.mzs || [[f.mdx, f.mdy]])) star(c, dx + 6, dy, 10 + f.flash * 8, f.t * 20);
         }
         c.restore();
       }

@@ -1,5 +1,5 @@
 // Malfläche für Games: Skins, Kämpfer und Waffen. Prüft eine Mindestgröße.
-import { h, icon, sheet } from './ui.js';
+import { h, icon, sheet, toast } from './ui.js';
 
 const PALETTE = ['#1d1d1f', '#ffffff', '#4f7cff', '#ff6b5a', '#2fbf71', '#f2b632', '#a46bff', '#ff7ac8', '#8a5a2b', '#8a8f98'];
 const S = 600;   // interne Auflösung
@@ -15,6 +15,8 @@ export function paintSheet(opts) {
     const x = cv.getContext('2d', { willReadFrequently: true });
     const strokes = [];
     let col = opts.color || '#1d1d1f', size = 14, erase = false, cur = null, box = null, pinMode = false, pin = null;
+    const pins = [];   // mehrere Punkte (z. B. Mündungen)
+    const multiOn = () => !!opts.pins && (!opts.pins.kind || opts.pins.kind === kind);
     if (opts.old) { const im = new Image(); im.onload = () => { strokes.push({ img: im, grip: opts.oldGrip }); redraw(); }; im.src = opts.old; }
     const meter = h('div.skinmeter', null, h('span.skinbar', null, h('i')), h('small'));
     const statBox = h('div.paintstats');
@@ -30,6 +32,7 @@ export function paintSheet(opts) {
           if (G && st.grip) x.drawImage(st.img, G[0] - st.grip[0] * w, G[1] - st.grip[1] * hh, w, hh);
           else x.drawImage(st.img, (S - w) / 2, (S - hh) / 2, w, hh);
           if (opts.pin && opts.oldPin && !pin && !st.pinDone) { st.pinDone = true; pin = [(S - w) / 2 + opts.oldPin[0] * w, (S - hh) / 2 + opts.oldPin[1] * hh]; }
+          if (opts.pins && opts.oldPins && !st.pinsDone) { st.pinsDone = true; const ox = G && st.grip ? G[0] - st.grip[0] * w : (S - w) / 2, oy = G && st.grip ? G[1] - st.grip[1] * hh : (S - hh) / 2; for (const q of opts.oldPins) pins.push([ox + q[0] * w, oy + q[1] * hh]); }
           continue;
         }
         x.save(); x.globalCompositeOperation = st.erase ? 'destination-out' : 'source-over';
@@ -65,7 +68,8 @@ export function paintSheet(opts) {
           : ok ? 'Groß genug. Du kannst sichern.' : (opts.small || 'Noch zu klein. Mal größer, mindestens bis zur gestrichelten Linie.');
       save.disabled = !ok;
       if (opts.stats) statBox.replaceChildren(...(ok ? opts.stats(info(), kind) : []));
-      const showM = (kind === 'gun' || opts.farLabel) && box;
+      const showM = (kind === 'gun' || opts.farLabel) && box && !(multiOn() && pins.length);
+      drawPins();
       pinEl.hidden = pinL.hidden = !pin;
       if (pin) for (const el of [pinEl, pinL]) { el.style.left = `${pin[0] / S * 100}%`; el.style.top = `${pin[1] / S * 100}%`; }
       muz.hidden = !showM; muzL.hidden = !showM;
@@ -79,6 +83,11 @@ export function paintSheet(opts) {
       if (e.pointerType === 'touch' && e.width > 40) return;   // Handballen ignorieren
       e.preventDefault(); cv.setPointerCapture(e.pointerId);
       const [a, b] = pos(e);
+      if (pinMode && multiOn()) {
+        const k = pins.findIndex((q) => Math.hypot(q[0] - a, q[1] - b) < 34);
+        if (k >= 0) pins.splice(k, 1); else if (pins.length < (opts.pins.max || 4)) pins.push([a, b]); else toast(`Höchstens ${opts.pins.max || 4}. Tipp einen Punkt an, um ihn zu entfernen.`);
+        check(); return;
+      }
       if (pinMode) { pin = [a, b]; check(); return; }
       cur = { col, erase, pts: [[a, b, width(e)]] };
       strokes.push(cur); redraw();
@@ -106,7 +115,7 @@ export function paintSheet(opts) {
       const w = Math.min(S, box.x1 + pad) - sx, hh = Math.min(S, box.y1 + pad) - sy, k = Math.min(1, 260 / Math.max(w, hh));
       const out = document.createElement('canvas'); out.width = Math.max(1, Math.round(w * k)); out.height = Math.max(1, Math.round(hh * k));
       out.getContext('2d').drawImage(cv, sx, sy, w, hh, 0, 0, out.width, out.height);
-      close({ url: out.toDataURL('image/png'), w: w / S, h: hh / S, grip: G ? [(G[0] - sx) / w, (G[1] - sy) / hh] : null, muzzle: G ? [(box.fx - sx) / w, (box.fy - sy) / hh] : null, pin: pin ? [(pin[0] - sx) / w, (pin[1] - sy) / hh] : null, kind, info: info() });
+      close({ url: out.toDataURL('image/png'), w: w / S, h: hh / S, grip: G ? [(G[0] - sx) / w, (G[1] - sy) / hh] : null, muzzle: G ? [(box.fx - sx) / w, (box.fy - sy) / hh] : null, pin: pin ? [(pin[0] - sx) / w, (pin[1] - sy) / hh] : null, pins: multiOn() && pins.length ? pins.map((q) => [(q[0] - sx) / w, (q[1] - sy) / hh]) : null, kind, info: info() });
     });
     const guide = h('span.skinguide' + (G ? '.round' : ''));
     function placeGuide() {
@@ -115,22 +124,34 @@ export function paintSheet(opts) {
     }
     const muz = h('span.paintmuz', { hidden: true }), muzL = h('span.paintgriplbl.muz', { text: opts.farLabel || 'Mündung', hidden: true });
     const pinEl = h('span.paintpin', { hidden: true }), pinL = h('span.paintgriplbl.pin', { text: opts.pin ? opts.pin.label : '', hidden: true });
-    const pad = h('div.skinpad', null, cv, guide, muz, muzL, pinEl, pinL);
+    const pinLayer = h('div.paintpins');
+    function drawPins() {
+      pinLayer.replaceChildren(...(multiOn() ? pins : []).flatMap((q, i) => [
+        h('span.paintmuz', { style: { left: `${q[0] / S * 100}%`, top: `${q[1] / S * 100}%` } }),
+        h('span.paintgriplbl.muz', { text: `${opts.pins.label} ${i + 1}`, style: { left: `${q[0] / S * 100}%`, top: `${q[1] / S * 100}%` } })]));
+    }
+    const pad = h('div.skinpad', null, cv, guide, muz, muzL, pinEl, pinL, pinLayer);
     if (G) pad.append(h('span.paintgrip', { style: { left: `${G[0] / S * 100}%`, top: `${G[1] / S * 100}%` } }), h('span.paintgriplbl', { text: opts.gripLabel || 'Griff', style: { left: `${G[0] / S * 100}%`, top: `${G[1] / S * 100}%` } }));
     if (opts.ghost) pad.prepend(h('img.paintghost', { src: opts.ghost, alt: '' }));
-    let kindSeg = null;
+    let kindSeg = null, drawMode = () => {};
     if (opts.kinds) {
       kindSeg = h('div.gseg.paintkind');
-      const drawKind = () => kindSeg.replaceChildren(...opts.kinds.map(([k, l]) => h('button' + (k === kind ? '.on' : ''), { text: l, on: { click: () => { kind = k; drawKind(); textEl.textContent = opts.textFor ? opts.textFor(kind) : opts.text; check(); } } })));
+      const drawKind = () => kindSeg.replaceChildren(...opts.kinds.map(([k, l]) => h('button' + (k === kind ? '.on' : ''), { text: l, on: { click: () => { kind = k; drawKind(); textEl.textContent = opts.textFor ? opts.textFor(kind) : opts.text; drawMode(); check(); } } })));
       drawKind();
     }
     const textEl = h('p.calm', { text: opts.textFor ? opts.textFor(kind) : opts.text });
     let modeSeg = null;
-    if (opts.pin) {
+    const P = opts.pin || opts.pins;
+    if (P) {
       modeSeg = h('div.gseg.paintkind.paintmode');
-      const drawMode = () => modeSeg.replaceChildren(
-        h('button' + (!pinMode ? '.on' : ''), { on: { click: () => { pinMode = false; pad.classList.remove('pinning'); drawMode(); } } }, icon('pen'), 'Malen'),
-        h('button' + (pinMode ? '.on' : ''), { on: { click: () => { pinMode = true; pad.classList.add('pinning'); drawMode(); } } }, icon('plus'), opts.pin.button));
+      drawMode = () => {
+        const show = !!opts.pin || multiOn();
+        modeSeg.hidden = !show;
+        if (!show && pinMode) { pinMode = false; pad.classList.remove('pinning'); }
+        modeSeg.replaceChildren(
+          h('button' + (!pinMode ? '.on' : ''), { on: { click: () => { pinMode = false; pad.classList.remove('pinning'); drawMode(); } } }, icon('pen'), 'Malen'),
+          h('button' + (pinMode ? '.on' : ''), { on: { click: () => { pinMode = true; pad.classList.add('pinning'); drawMode(); } } }, icon('plus'), P.button));
+      };
       drawMode();
     }
     body.append(...[
