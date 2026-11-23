@@ -2,26 +2,31 @@
 // Zu zweit an einem iPad (mit „Gib das iPad weiter“-Karten) oder gegen den Computer.
 import { h, icon } from './ui.js';
 import { FONT, UIFONT, isDark, inkOf, paper, pline, prect, pcirc, hatch, shade, canvasBox, chip, rng, turnCard } from './sketch.js';
+import { STD_FLEET, rot, dims, drawShip } from './shipart.js';
+import { shipFleet } from './hub.js';
 
 const wait = (ms, sig) => new Promise((r) => { const t = setTimeout(r, ms); sig.addEventListener('abort', () => { clearTimeout(t); r(); }, { once: true }); });
 
 // ======================================================================
 // Schiffe versenken
 // ======================================================================
-const N = 10, FLEET = [5, 4, 3, 3, 2], COLS = 'ABCDEFGHIJ';
-function cellsOf(s) { const out = []; for (let k = 0; k < s.len; k++) out.push([s.x + (s.v ? 0 : k), s.y + (s.v ? k : 0)]); return out; }
+const N = 10, COLS = 'ABCDEFGHIJ';
+// Schiff: { shape: Kästchen-Form, r: Drehung 0-3, x, y }
+const shapeOf = (s) => rot(s.shape, s.r);
+function cellsOf(s) { return shapeOf(s).map(([a, b]) => [s.x + a, s.y + b]); }
 function fits(ships, s, skip) {
   const cs = cellsOf(s);
   if (cs.some(([x, y]) => x < 0 || y < 0 || x >= N || y >= N)) return false;
   for (const o of ships) { if (o === skip) continue; for (const [a, b] of cellsOf(o)) for (const [x, y] of cs) if (a === x && b === y) return false; }
   return true;
 }
-function randomFleet(R) {
+function randomFleet(R, shapes = STD_FLEET) {
+  const order = shapes.map((sh, i) => i).sort((i, j) => shapes[j].length - shapes[i].length);   // große zuerst
   for (let tries = 0; tries < 200; tries++) {
-    const ships = []; let ok = true;
-    for (const len of FLEET) {
+    const ships = new Array(shapes.length); let ok = true;
+    for (const i of order) {
       let placed = false;
-      for (let k = 0; k < 300 && !placed; k++) { const s = { len, v: R() < 0.5, x: (R() * N) | 0, y: (R() * N) | 0, seed: (R() * 1e6) | 0 }; if (fits(ships, s)) { ships.push(s); placed = true; } }
+      for (let k = 0; k < 300 && !placed; k++) { const s = { shape: shapes[i], r: (R() * 4) | 0, x: (R() * N) | 0, y: (R() * N) | 0 }; if (fits(ships.filter(Boolean), s)) { ships[i] = s; placed = true; } }
       if (!placed) { ok = false; break; }
     }
     if (ok) return ships;
@@ -46,22 +51,7 @@ function drawSea(x, cw, ch, dark, { ships = [], shots = null, showShips = true, 
   // Schiffe
   for (const s of ships) {
     if (!showShips && !(sunkOnly && s.sunk)) continue;
-    const w = s.v ? cs : s.len * cs, hh = s.v ? s.len * cs : cs, X = X0 + s.x * cs, Y = Y0 + s.y * cs, p = cs * 0.14;
-    x.save();
-    x.fillStyle = s.sunk ? (dark ? '#3a3f4a' : '#c9ccd3') : (dark ? shade(color, -0.4) : shade(color, 0.6));
-    const hull = () => {
-      x.beginPath();
-      if (s.v) { x.moveTo(X + w / 2, Y + p * 0.6); x.quadraticCurveTo(X + w - p, Y + cs * 0.6, X + w - p, Y + cs); x.lineTo(X + w - p, Y + hh - p * 1.6); x.quadraticCurveTo(X + w / 2, Y + hh - p * 0.4, X + p, Y + hh - p * 1.6); x.lineTo(X + p, Y + cs); x.quadraticCurveTo(X + p, Y + cs * 0.6, X + w / 2, Y + p * 0.6); }
-      else { x.moveTo(X + w - p * 0.6, Y + hh / 2); x.quadraticCurveTo(X + w - cs * 0.6, Y + hh - p, X + w - cs, Y + hh - p); x.lineTo(X + p * 1.6, Y + hh - p); x.quadraticCurveTo(X + p * 0.4, Y + hh / 2, X + p * 1.6, Y + p); x.lineTo(X + w - cs, Y + p); x.quadraticCurveTo(X + w - cs * 0.6, Y + p, X + w - p * 0.6, Y + hh / 2); }
-      x.closePath();
-    };
-    hull(); x.fill();
-    x.save(); hull(); x.clip(); hatch(x, X, Y, w, hh, s.sunk ? ink : color, 6, s.sunk ? 0.25 : 0.7, 1.3); x.restore();
-    x.strokeStyle = ink; x.lineWidth = 2.2; hull(); x.stroke();
-    // Bullaugen / Aufbau
-    x.lineWidth = 1.5;
-    for (let k = 0; k < s.len; k++) { const cx = X + (s.v ? w / 2 : (k + 0.5) * cs), cy = Y + (s.v ? (k + 0.5) * cs : hh / 2); if (k === Math.floor(s.len / 2)) { x.strokeRect(cx - cs * 0.18, cy - cs * 0.18, cs * 0.36, cs * 0.36); } else { x.beginPath(); x.arc(cx, cy, cs * 0.1, 0, Math.PI * 2); x.stroke(); } }
-    x.restore();
+    drawShip(x, cellsOf(s), X0, Y0, cs, { color, dark, sunk: !!s.sunk });
   }
   // Schüsse
   if (shots) for (let y = 0; y < N; y++) for (let xx = 0; xx < N; xx++) {
@@ -74,18 +64,18 @@ function drawSea(x, cw, ch, dark, { ships = [], shots = null, showShips = true, 
   return { X0, Y0, cs };
 }
 // Schiffe setzen (ziehen = verschieben, tippen = drehen)
-function placeFleet(fx, p, R) {
+function placeFleet(fx, p, R, shapes) {
   return new Promise((resolve) => {
     const dark = isDark();
-    let ships = randomFleet(R);
+    let ships = randomFleet(R, shapes);
     const info = h('p.bshint', { text: 'Schiff ziehen = verschieben, kurz tippen = drehen. Schiffe dürfen direkt aneinander liegen.' });
-    const btnR = h('button.btn', { text: 'Neu verteilen', on: { click: () => { ships = randomFleet(R); draw(); } } });
+    const btnR = h('button.btn', { text: 'Neu verteilen', on: { click: () => { ships = randomFleet(R, shapes); draw(); } } });
     const btnOk = h('button.btn.primary', { text: 'Fertig', on: { click: () => { cleanup(); resolve(ships); } } });
     const host = h('div.bsplace');
     const wrap = h('div.bswrap.place', null, h('div.hshud', null, chip(p, h('small', { text: 'setzt die Flotte' })), h('span.bsspacer'), btnR, btnOk), info, host);
     fx.stage.replaceChildren(wrap);
     const C = canvasBox(host); let geo = null, drag = null;
-    const draw = () => { const x = C.begin(); geo = drawSea(x, C.cw, C.ch, dark, { ships, color: p.color }); if (drag && !drag.ok) { x.strokeStyle = '#e0483e'; x.lineWidth = 3; const s = drag.s, X = geo.X0 + s.x * geo.cs, Y = geo.Y0 + s.y * geo.cs; x.strokeRect(X, Y, (s.v ? 1 : s.len) * geo.cs, (s.v ? s.len : 1) * geo.cs); } };
+    const draw = () => { const x = C.begin(); geo = drawSea(x, C.cw, C.ch, dark, { ships, color: p.color }); if (drag && !drag.ok) { x.strokeStyle = '#e0483e'; x.lineWidth = 3; const s = drag.s; cellsOf(s).forEach(([a, b]) => x.strokeRect(geo.X0 + a * geo.cs + 2, geo.Y0 + b * geo.cs + 2, geo.cs - 4, geo.cs - 4)); } };
     const ro = new ResizeObserver(draw); ro.observe(host);
     const cell = (e) => { const r = C.cv.getBoundingClientRect(); return [Math.floor((e.clientX - r.left - geo.X0) / geo.cs), Math.floor((e.clientY - r.top - geo.Y0) / geo.cs)]; };
     C.cv.addEventListener('pointerdown', (e) => {
@@ -94,11 +84,16 @@ function placeFleet(fx, p, R) {
     });
     C.cv.addEventListener('pointermove', (e) => {
       if (!drag) return; const [cx, cy] = cell(e), nx = cx - drag.gx, ny = cy - drag.gy;
-      if (nx !== drag.s.x || ny !== drag.s.y) { drag.moved = true; drag.s.x = Math.max(0, Math.min(N - (drag.s.v ? 1 : drag.s.len), nx)); drag.s.y = Math.max(0, Math.min(N - (drag.s.v ? drag.s.len : 1), ny)); drag.ok = fits(ships, drag.s, drag.s); draw(); }
+      if (nx !== drag.s.x || ny !== drag.s.y) { drag.moved = true; const [dw, dh] = dims(shapeOf(drag.s)); drag.s.x = Math.max(0, Math.min(N - dw, nx)); drag.s.y = Math.max(0, Math.min(N - dh, ny)); drag.ok = fits(ships, drag.s, drag.s); draw(); }
     });
     const up = () => {
       if (!drag) return; const s = drag.s;
-      if (!drag.moved) { s.v = !s.v; if (!fits(ships, s, s)) { s.v = !s.v; info.textContent = 'Hier passt das gedrehte Schiff nicht hin.'; } }
+      if (!drag.moved) {
+        // um das angetippte Feld drehen, dann notfalls ins Brett schieben
+        const old = { r: s.r, x: s.x, y: s.y }; s.r = (s.r + 1) % 4;
+        const [dw, dh] = dims(shapeOf(s)); s.x = Math.max(0, Math.min(N - dw, s.x)); s.y = Math.max(0, Math.min(N - dh, s.y));
+        if (!fits(ships, s, s)) { Object.assign(s, old); info.textContent = 'Hier passt das gedrehte Schiff nicht hin.'; }
+      }
       else if (!fits(ships, s, s)) { s.x = drag.ox; s.y = drag.oy; info.textContent = 'Da geht es nicht: Schiffe dürfen sich nicht überlappen.'; }
       drag = null; draw();
     };
@@ -114,9 +109,10 @@ export function ships(fx, A, B, o = {}) {
     const P = [A, B].map((p) => ({ p, fleet: null, shots: new Uint8Array(N * N), n: 0 }));
     // Flotten setzen
     for (const [i, q] of P.entries()) {
-      if (cpu && i === 1) { q.fleet = randomFleet(R); continue; }
+      const shapes = (!(cpu && i === 1) && shipFleet(q.p.name)) || STD_FLEET;
+      if (cpu && i === 1) { q.fleet = randomFleet(R, shapes); continue; }
       if (!cpu) { const ok = await turnCard(fx, q.p, `${q.p.name} setzt die Schiffe`, `${P[1 - i].p.name} schaut bitte weg!`, 'Ich bin bereit', 'grid'); if (!ok) return null; }
-      q.fleet = await placeFleet(fx, q.p, R); if (!q.fleet) return null;
+      q.fleet = await placeFleet(fx, q.p, R, shapes); if (!q.fleet) return null;
     }
     // Computer-Gedächtnis
     const ai = { hits: [] };

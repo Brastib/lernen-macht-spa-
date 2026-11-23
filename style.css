@@ -2410,3 +2410,27 @@ html.fxopen, html.fxopen body, html:has(> body > .gamefx), html:has(> body > .ga
 .vptext { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .vptext b { font-size: 15px; overflow-wrap: anywhere; }
 .vptext small { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+
+/* Skin-Hub: Flotten-Baukasten */
+.hubfleet { display: block; max-width: 100%; height: auto; border-radius: 12px; background: var(--plot-grid2); }
+.sedwrap { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.sedtabs { display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 6px; min-width: 0; }
+.sedtab { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-width: 64px; min-height: 64px; padding: 6px 8px; border-radius: 14px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); color: inherit; }
+.sedtab.on { box-shadow: inset 0 0 0 3px var(--accent); }
+.sedtab.bad small { color: #e0483e; }
+.sedtab .hubfleet { background: transparent; max-height: 40px; width: auto; }
+.sedtab small { font-size: 12px; color: var(--muted); }
+.sedemp { font-weight: 700; font-size: 20px; color: var(--muted); }
+.sedmain { display: grid; grid-template-columns: minmax(0, 1fr) 220px; gap: 14px; align-items: start; }
+.sedgridbox { min-width: 0; display: flex; justify-content: center; }
+.sedgrid { width: min(100%, 420px); aspect-ratio: 1; touch-action: none; display: block; }
+.sedside { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.sedside .btn { justify-content: center; }
+.sedcount { display: flex; flex-direction: column; padding: 10px 12px; border-radius: 14px; background: var(--plot-grid2); }
+.sedcount small { color: var(--muted); font-size: 12px; }
+.sedcount b { font-size: 22px; }
+.sedcount b.ok { color: #2f9e5f; }
+.sedcount b.bad { color: #e0483e; }
+.sedmsg { color: #c0392b; font-size: 13px; overflow-wrap: anywhere; min-height: 2.6em; }
+.sedmsg.ok { color: #2f9e5f; }
+@media (max-width: 700px) { .sedmain { grid-template-columns: 1fr; } }
