@@ -78,10 +78,14 @@ export function periodsOf(stunde) {
   return out;
 }
 
+// Ohne Vertreter ist die Stunde Entfall (so wie in deinem Schulportal), auch wenn nicht „Entfall“ dasteht.
+// Nur eine reine Raumänderung bleibt orange.
+const noSub = (v) => !v || /^[\s\-–—+_.?]*$/.test(v) || /^(keine?|kein lehrer|niemand|n\.?\s*n\.?|entf(ä|ae)llt|---)$/i.test(v.trim());
 export function kindOf(e) {
-  const t = `${e.art} ${e.hinweis}`.toLowerCase();
-  if (/entfall|fällt aus|faellt aus|ausfall|frei|eva\b|selbstständig|selbststaendig/.test(t)) return 'aus';
-  if (/raum/.test(e.art.toLowerCase()) && !e.vertreter) return 'raum';
+  const art = String(e.art || '').toLowerCase();
+  const t = `${art} ${e.hinweis || ''} ${e.vertreter || ''}`.toLowerCase();
+  if (/entfall|fällt aus|faellt aus|ausfall|frei|eva\b|selbstständig|selbststaendig|keine vertretung|ohne vertretung/.test(t)) return 'aus';
+  if (noSub(e.vertreter)) return /raum/.test(art) && !/vertret/.test(art) ? 'raum' : 'aus';
   return 'vt';
 }
 export const KIND_LABEL = { aus: 'Entfall', raum: 'Raumänderung', vt: 'Vertretung' };
