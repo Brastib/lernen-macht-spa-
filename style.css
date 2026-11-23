@@ -2535,3 +2535,19 @@ textarea.field.vpboth { min-height: 64px; padding: 12px 14px; resize: vertical; 
 .ewctrl .tkweap button { display: inline-flex; align-items: center; gap: 6px; }
 .ewctrl .tkweap svg { width: 16px; height: 16px; }
 .ewtip { flex: 1 1 100%; color: var(--muted); font-size: 13px; text-align: center; min-height: 1.3em; }
+
+/* Paket 7: Kritzel-Kart */
+.gkfield { touch-action: none; }
+.gkpads { display: flex; justify-content: space-between; gap: 12px; padding-bottom: calc(env(safe-area-inset-bottom) + 4px); }
+.gkpad { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 8px; border-radius: 18px; background: var(--surface); box-shadow: inset 0 0 0 2px var(--pc); }
+.gkpad.r { align-items: flex-end; }
+.gkrow { display: flex; gap: 8px; align-items: stretch; }
+.gkbtn { width: 76px; height: 64px; display: grid; place-items: center; border-radius: 16px; background: var(--bg); box-shadow: inset 0 0 0 1px var(--line); color: inherit; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.gkbtn svg { width: 28px; height: 28px; }
+.gkbtn.on { background: var(--pc); color: #fff; box-shadow: none; }
+.gkink { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-width: 92px; padding: 4px 10px; border-radius: 16px; background: var(--bg); box-shadow: inset 0 0 0 1px var(--line); color: inherit; font-size: 13px; font-weight: 600; }
+.gkink svg { width: 20px; height: 20px; }
+.gkink.on { background: var(--pc); color: #fff; box-shadow: none; animation: gkpulse 1s ease-in-out infinite; }
+.gkink:disabled { opacity: .45; }
+@keyframes gkpulse { 50% { transform: scale(1.05); } }
+@media (max-width: 600px) { .gkbtn { width: 58px; height: 54px; } .gkink { min-width: 74px; } .gkpad .pkchip { display: none; } }
