@@ -4,6 +4,7 @@ import { micButton } from './speech.js';
 import { editHomework } from './homework.js';
 import { syncTutoringReminder, tutoringReminderOf, toCalendar } from './reminders.js';
 import { $, h, icon, toast, plural, sheet, menu, confirmSheet, saveFile } from './ui.js';
+import { vplanBox, vplanCfg, vplanCached, vplanSetup, entriesByDate, weekMarks, periodsOf, kindOf, shortText, showEntries, refreshIfOld, isoDate as vpIso } from './vplan.js';
 
 const DAY = 86400000;
 const pad = (n) => String(n).padStart(2, '0');
@@ -81,6 +82,7 @@ export async function renderTimetable(ctx) {
       { label: 'Stunde hinzufügen', icon: 'plus', onClick: async () => { const l = tt.periods[tt.periods.length - 1]; const e = mins(l.e); tt.periods.push({ s: hm(e), e: hm(e + 45) }); await saveTT(tt); again(); } },
       { label: 'Letzte Stunde entfernen', icon: 'trash', onClick: async () => { if (tt.periods.length > 1) { tt.periods.pop(); await saveTT(tt); again(); } } },
       { label: tt.days === 6 ? 'Ohne Samstag' : 'Mit Samstag', icon: 'list', onClick: async () => { tt.days = tt.days === 6 ? 5 : 6; await saveTT(tt); again(); } },
+      { label: 'Vertretungsplan verbinden', icon: 'list', onClick: () => vplanSetup(again) },
     ])), ctx.btn('Nachhilfe', 'plus', () => editTutoring(tt, null, subjects, again)) ],
   });
   const view = $('view');
@@ -88,6 +90,11 @@ export async function renderTimetable(ctx) {
   if (!subjects.length) { view.append(h('p.calm', { text: 'Leg zuerst deine Fächer in der Bibliothek an.' })); return; }
   const nn = nowNext(tt);
   const today = dayIdx();
+  // Vertretungsplan: Markierungen für diese Woche (am Wochenende für die nächste)
+  const [vpCfg, vpRec] = await Promise.all([vplanCfg(), vplanCached()]);
+  const vpMonday = new Date(); vpMonday.setHours(0, 0, 0, 0); vpMonday.setDate(vpMonday.getDate() - today + (today >= tt.days ? 7 : 0));
+  const vpMarks = vpCfg && vpCfg.url ? weekMarks(entriesByDate(vpRec && vpRec.data, vpCfg.klasse), vpMonday, tt.days) : new Map();
+  const RANK = { aus: 3, vt: 2, raum: 1 };
   const grid = h('div.tt', { style: { '--days': String(tt.days) } });
   grid.append(h('div.tthead.corner'));
   for (let d = 0; d < tt.days; d++) grid.append(h('div.tthead' + (d === today ? '.ttday' : ''), null, h('b', { text: DSHORT[d] }), h('small', { text: DAYS[d] })));
@@ -97,9 +104,14 @@ export async function renderTimetable(ctx) {
       const c = tt.cells[`${d}-${p}`];
       const s = c && sm.get(c.subjectId);
       const isNow = nn.now && nn.now.day === d && nn.now.p === p;
-      grid.append(h('button.ttcell' + (s ? '.set' : '') + (isNow ? '.now' : '') + (d === today ? '.ttcur' : ''), { style: s ? { '--c': s.color } : {}, on: { click: () => editCell(tt, d, p, subjects, again) } },
-        s ? h('b', { text: s.name }) : h('span.plus', { text: '+' }),
-        s && c.room ? h('small', { text: c.room }) : null));
+      const vp = vpMarks.get(`${d}-${p}`);
+      const vk = vp && vp.map(kindOf).sort((a, b) => RANK[b] - RANK[a])[0];
+      const vpDate = vp && new Date(vpMonday.getFullYear(), vpMonday.getMonth(), vpMonday.getDate() + d);
+      const click = vp ? () => showEntries(`${DAYS[d]} ${vpDate.getDate()}.${vpDate.getMonth() + 1}., ${p + 1}. Stunde`, vp, { onEdit: () => editCell(tt, d, p, subjects, again) }) : () => editCell(tt, d, p, subjects, again);
+      grid.append(h('button.ttcell' + (s ? '.set' : '') + (isNow ? '.now' : '') + (d === today ? '.ttcur' : '') + (vp ? '.vp.vp-' + vk : ''), { style: s ? { '--c': s.color } : {}, on: { click } },
+        s ? h('b', { text: s.name }) : (vp ? null : h('span.plus', { text: '+' })),
+        s && vk !== 'raum' && ((vp && (vp.find((x) => x.raum) || {}).raum) || c.room) ? h('small', { text: (vp && (vp.find((x) => x.raum) || {}).raum) || c.room }) : null,
+        vp ? h('span.vpbadge', { text: shortText(vp.find((x) => kindOf(x) === vk)) + (vp.length > 1 ? ` +${vp.length - 1}` : '') }) : null));
     }
   });
   // Nachhilfe-Zeile unter dem Unterricht (diese Woche)
@@ -132,8 +144,11 @@ export async function renderTimetable(ctx) {
     }
   } else tutBox.append(h('p.calm', { text: 'Noch keine Nachhilfe eingetragen. Sie erscheint dann in der Zeile „NH“ unter deinem Unterricht.' }));
   view.append(h('div.ttwrap', null, grid),
-    h('p.calm.small', { text: 'Tipp auf ein Feld, um ein Fach und den Raum einzutragen. Auf eine Stundennummer, um die Zeiten zu ändern. In der Zeile „NH“ trägst du Nachhilfe ein.' }),
+    h('p.calm.small', { text: 'Tipp auf ein Feld, um ein Fach und den Raum einzutragen. Auf eine Stundennummer, um die Zeiten zu ändern. In der Zeile „NH“ trägst du Nachhilfe ein.' + (vpMarks.size && today >= tt.days ? ' Die Vertretungen oben gelten für nächste Woche.' : '') }),
+    await vplanBox({ onChange: () => { if (grid.isConnected) again(); } }),
     tutBox);
+  // Vertretungsplan im Hintergrund nachladen, wenn er älter als 10 Minuten ist
+  refreshIfOld(10, () => { if (grid.isConnected) again(); });
 }
 
 // ================= Nachhilfe =================
@@ -317,6 +332,18 @@ export async function nowCard({ go, subjects }) {
   }
   const sm = new Map(subjects.map((s) => [s.id, s]));
   const el = h('div.dash.nowcard');
+  // Vertretungsplan (gespeicherter Stand; im Hintergrund nachladen, wenn älter als 20 Minuten)
+  let vpBy = new Map();
+  const vpLoad = async () => { const [c, r] = await Promise.all([vplanCfg(), vplanCached()]); vpBy = c && c.url ? entriesByDate(r && r.data, c.klasse) : new Map(); };
+  await vpLoad();
+  refreshIfOld(20, async () => { await vpLoad(); if (el.isConnected) draw(); });
+  const vpFor = (x) => {
+    const d = new Date(); d.setDate(d.getDate() + (x.offset || 0));
+    const e = vpBy.get(vpIso(d));
+    const hit = e && e.list.filter((v) => periodsOf(v.stunde).includes(x.p + 1));
+    if (!hit || !hit.length) return null;
+    return hit.find((v) => kindOf(v) === 'aus') || hit[0];
+  };
   const draw = () => {
     if (!el.isConnected && el.dataset.drawn) { clearInterval(el._t); return; }
     el.dataset.drawn = '1';
@@ -341,9 +368,11 @@ export async function nowCard({ go, subjects }) {
       }
       const s = x && sm.get(x.cell.subjectId);
       if (!s) return null;
-      return h('button.nowblock', { style: { '--c': s.color }, on: { click: () => go({ view: 'subject', subject: s }) } },
-        h('small', { text: label }), h('b', { text: s.name }),
-        h('span', { text: [x.cell.room, `${tt.periods[x.p].s}–${tt.periods[x.p].e}`, extra].filter(Boolean).join(' · ') }));
+      const vp = vpFor(x);
+      const vk = vp && kindOf(vp);
+      return h('button.nowblock' + (vp ? '.vp-' + vk : ''), { style: { '--c': s.color }, on: { click: () => (vp ? go({ view: 'timetable' }) : go({ view: 'subject', subject: s })) } },
+        h('small', { text: label + (vp ? ' · ' + shortText(vp) : '') }), h('b', { text: s.name }),
+        h('span', { text: [vk === 'raum' && vp.raum ? vp.raum : x.cell.room, `${tt.periods[x.p].s}–${tt.periods[x.p].e}`, extra].filter(Boolean).join(' · ') }));
     };
     const whenNext = next && (next.offset === 0 ? `in ${next.s - minute} min` : next.offset === 1 ? 'morgen' : DAYS[next.day]);
     const nowB0 = now && block('Jetzt', now, `noch ${now.e - minute} min`);

@@ -2343,3 +2343,26 @@ html.fxopen, html.fxopen body, html:has(> body > .gamefx), html:has(> body > .ga
 .tdbtn.go > svg { background: rgba(255,255,255,.2); color: #fff; }
 .tdbtn:disabled { opacity: .5; }
 .bdhint { min-height: 1.4em; }
+/* ---------- Vertretungsplan (v58) ---------- */
+.ttcell.vp, .vprow, .nowblock[class*="vp-"] { --vpc: #d48a00; }
+.ttcell.vp-aus, .vprow.aus, .nowblock.vp-aus { --vpc: var(--danger); }
+.ttcell.vp { box-shadow: inset 0 0 0 2px var(--vpc); }
+.ttcell.vp.set { box-shadow: inset 3px 0 0 var(--c), inset 0 0 0 2px var(--vpc); }
+.ttcell.vp-aus.set b { text-decoration: line-through; text-decoration-thickness: 2px; text-decoration-color: var(--vpc); }
+.vpbadge { max-width: 100%; padding: 2px 7px; border-radius: 999px; background: var(--vpc); color: var(--white); font-size: 11.5px; font-weight: 600; line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nowblock small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nowblock[class*="vp-"] { box-shadow: inset 0 0 0 2px var(--vpc); }
+.nowblock[class*="vp-"] small { color: var(--vpc); }
+.nowblock.vp-aus b { text-decoration: line-through; text-decoration-thickness: 2px; text-decoration-color: var(--vpc); }
+.vpbox { margin-top: 22px; }
+.vphead { display: inline-flex; align-items: center; gap: 4px; flex: none; }
+.vpsetup { background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
+.vpday { margin-top: 12px; }
+.vpdate { margin: 0 0 6px; font: 600 15px/1.3 var(--font-display); }
+.vpnotice { margin: 0 0 8px; padding: 10px 12px; border-radius: 10px; background: var(--accent-soft); font-size: 14px; white-space: pre-line; overflow-wrap: anywhere; }
+.vprow { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 12px; margin-bottom: 6px; border-radius: 12px; text-align: left; background: var(--surface); box-shadow: inset 3px 0 0 var(--vpc), inset 0 0 0 1px var(--line); }
+.vpkind { flex: none; min-width: 34px; font: 600 13px/1.2 var(--font-display); color: var(--vpc); font-variant-numeric: tabular-nums; }
+.dlg .vpkind { min-width: 92px; }
+.vptext { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.vptext b { font-size: 15px; overflow-wrap: anywhere; }
+.vptext small { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
