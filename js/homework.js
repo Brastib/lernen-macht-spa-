@@ -47,8 +47,10 @@ export async function editHomework(item, { subjects, after }) {
       h('option', { value: 'eve', text: 'Am Tag vorher um 17 Uhr' }),
       h('option', { value: 'morning', text: 'Am Abgabetag um 7 Uhr' }));
     rem.value = oldRem ? (oldRem.when || 'eve') : (isNew ? 'eve' : '');
+    const tut = h('input', { type: 'checkbox', id: 'hwTut' }); tut.checked = !!item.tut;
     body.append(h('label.fieldlabel', { for: 'hwDue', text: 'Bis wann' }), h('div.datewrap', null, date), quick,
       h('label.fieldlabel', { for: 'hwRem', text: 'Erinnern' }), rem,
+      h('label.checkrow', { for: 'hwTut' }, tut, h('span', null, h('b', { text: 'Von der Nachhilfe' }), h('small', { text: 'Wird mit „Nachhilfe“ markiert.' }))),
       h('div.dlgactions', null,
         isNew ? null : h('button.btn.danger', { text: 'Löschen', on: { click: () => close('delete') } }),
         h('button.btn', { text: 'Abbrechen', on: { click: () => close(null) } }),
@@ -56,7 +58,7 @@ export async function editHomework(item, { subjects, after }) {
           const t = text.value.trim();
           if (!t) { text.focus(); return; }
           if (!subjectId) { toast('Leg zuerst ein Fach an'); return; }
-          close({ text: t, due: date.value || '', subjectId, remWhen: rem.value });
+          close({ text: t, due: date.value || '', subjectId, tut: tut.checked, remWhen: rem.value });
         } } })));
     setTimeout(() => text.focus(), 60);
   });
@@ -91,6 +93,7 @@ export function hwList(items, { subjMap, after }) {
         h('span.hwmeta', null,
           s ? h('i.dot', { style: { '--c': s.color } }) : null,
           s ? h('span', { text: s.name }) : null,
+          it.tut ? h('em.tuttag', { text: 'Nachhilfe' }) : null,
           h('span.hwdue' + (due.cls && !it.done ? '.' + due.cls : ''), { text: due.text }))));
     list.append(row);
   }

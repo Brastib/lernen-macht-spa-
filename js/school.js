@@ -1,6 +1,7 @@
 // Schulalltag: Stundenplan, Prüfungen (mit Countdown und Lernerinnerung), Noten mit Schnitt.
 import * as db from './db.js';
 import { micButton } from './speech.js';
+import { editHomework } from './homework.js';
 import { $, h, icon, toast, plural, sheet, menu, confirmSheet } from './ui.js';
 
 const DAY = 86400000;
@@ -79,7 +80,7 @@ export async function renderTimetable(ctx) {
       { label: 'Stunde hinzufügen', icon: 'plus', onClick: async () => { const l = tt.periods[tt.periods.length - 1]; const e = mins(l.e); tt.periods.push({ s: hm(e), e: hm(e + 45) }); await saveTT(tt); again(); } },
       { label: 'Letzte Stunde entfernen', icon: 'trash', onClick: async () => { if (tt.periods.length > 1) { tt.periods.pop(); await saveTT(tt); again(); } } },
       { label: tt.days === 6 ? 'Ohne Samstag' : 'Mit Samstag', icon: 'list', onClick: async () => { tt.days = tt.days === 6 ? 5 : 6; await saveTT(tt); again(); } },
-    ])) ],
+    ])), ctx.btn('Nachhilfe', 'plus', () => editTutoring(tt, null, subjects, again)) ],
   });
   const view = $('view');
   view.textContent = '';
@@ -100,8 +101,125 @@ export async function renderTimetable(ctx) {
         s && c.room ? h('small', { text: c.room }) : null));
     }
   });
+  // Nachhilfe-Zeile unter dem Unterricht (diese Woche)
+  const tuts = tt.tutoring || [];
+  const monday = new Date(); monday.setHours(0, 0, 0, 0); monday.setDate(monday.getDate() - today);
+  grid.append(h('div.ttnum.tutnum', null, h('b', { text: 'NH' }), h('small', { text: 'Nach-\nhilfe' })));
+  for (let d = 0; d < tt.days; d++) {
+    const date = new Date(monday); date.setDate(monday.getDate() + d);
+    const list = tutoringOn(tt, date);
+    const cell = h('div.ttcell.tutcell' + (d === today ? '.ttcur' : ''));
+    for (const t of list) {
+      const s = sm.get(t.subjectId);
+      cell.append(h('button.tutchip', { style: s ? { '--c': s.color } : {}, on: { click: () => editTutoring(tt, t, subjects, again) } },
+        h('b', { text: s ? s.name : 'Nachhilfe' }), h('small', { text: `${t.s}–${t.e}` })));
+    }
+    if (!list.length) cell.append(h('button.tutadd', { 'aria-label': `Nachhilfe am ${DAYS[d]} eintragen`, on: { click: () => editTutoring(tt, { day: d }, subjects, again) } }, h('span.plus', { text: '+' })));
+    grid.append(cell);
+  }
+  const hw = (await db.listHomework()).filter((x) => x.tut && !x.done);
+  const tutBox = h('section.tutbox', null,
+    h('div.colhead', null, h('h2.section', { text: 'Nachhilfe' }), h('button.txt.strong', { text: '+ Eintragen', on: { click: () => editTutoring(tt, null, subjects, again) } })));
+  if (tuts.length) {
+    for (const t of [...tuts].sort((a, b) => (nextTutorDate(a) || '9').localeCompare(nextTutorDate(b) || '9') || a.s.localeCompare(b.s))) {
+      const s = sm.get(t.subjectId);
+      const nHw = hw.filter((x) => x.subjectId === t.subjectId).length;
+      tutBox.append(h('button.dayrow.tutrow', { style: s ? { '--c': s.color } : {}, on: { click: () => editTutoring(tt, t, subjects, again) } },
+        h('span.daytime', { text: `${t.s}\n${t.e}` }),
+        h('span', null, h('b', { text: `${s ? s.name : 'Fach gelöscht'}${nHw ? ` · ${plural(nHw, 'Hausaufgabe', 'Hausaufgaben')} offen` : ''}` }),
+          h('small', { text: [tutWhen(t), t.teacher, t.place].filter(Boolean).join(' · ') }))));
+    }
+  } else tutBox.append(h('p.calm', { text: 'Noch keine Nachhilfe eingetragen. Sie erscheint dann in der Zeile „NH“ unter deinem Unterricht.' }));
   view.append(h('div.ttwrap', null, grid),
-    h('p.calm.small', { text: 'Tipp auf ein Feld, um ein Fach und den Raum einzutragen. Auf eine Stundennummer, um die Zeiten zu ändern.' }));
+    h('p.calm.small', { text: 'Tipp auf ein Feld, um ein Fach und den Raum einzutragen. Auf eine Stundennummer, um die Zeiten zu ändern. In der Zeile „NH“ trägst du Nachhilfe ein.' }),
+    tutBox);
+}
+
+// ================= Nachhilfe =================
+// Eintrag: { id, subjectId, weekly, day (Mo = 0 … So = 6), date (bei einmalig), s, e, teacher, place }
+const DSHORT7 = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+const DAYS7 = [...DAYS, 'Sonntag'];
+export function tutoringOn(tt, date) {
+  const d = dayIdx(date), key = isoDate(date);
+  return (tt.tutoring || []).filter((t) => (t.weekly ? t.day === d : t.date === key)).sort((a, b) => a.s.localeCompare(b.s));
+}
+export function nextTutorDate(t, from = new Date()) {
+  const t0 = new Date(from); t0.setHours(0, 0, 0, 0);
+  if (!t.weekly) return t.date && parseDate(t.date) >= t0 ? t.date : null;
+  const k = (t.day - dayIdx(t0) + 7) % 7;
+  const d = new Date(t0); d.setDate(t0.getDate() + k);
+  return isoDate(d);
+}
+function tutWhen(t) {
+  if (t.weekly) return `jeden ${DAYS7[t.day]}`;
+  if (!t.date) return 'einmalig';
+  const d = parseDate(t.date);
+  return `einmalig am ${WD[d.getDay()]} ${d.getDate()}.${d.getMonth() + 1}.`;
+}
+export async function editTutoring(tt, t, subjects, after) {
+  const isNew = !t || !t.id;
+  const cur = { weekly: true, day: Math.min(dayIdx(), 4), s: '15:00', e: '16:00', ...(t || {}) };
+  if (!cur.date) cur.date = nextTutorDate({ weekly: true, day: cur.day });
+  const res = await sheet(isNew ? 'Nachhilfe eintragen' : 'Nachhilfe', (body, close) => {
+    let pick = cur.subjectId || '', weekly = cur.weekly !== false, day = cur.day;
+    const chips = h('div.chips.left.subjpick');
+    for (const s of subjects) {
+      const b = h('button.pchip' + (pick === s.id ? '.on' : ''), { style: { '--c': s.color }, on: { click: () => { pick = s.id; chips.querySelectorAll('.pchip').forEach((x) => x.classList.toggle('on', x === b)); } } }, h('i'), h('span', { text: s.name }));
+      chips.append(b);
+    }
+    const days = h('div.chips.left.tutdays');
+    DSHORT7.forEach((l, i) => {
+      const b = h('button.pchip.small' + (day === i ? '.on' : ''), { text: l, 'aria-label': DAYS7[i], on: { click: () => { day = i; days.querySelectorAll('.pchip').forEach((x) => x.classList.toggle('on', x === b)); } } });
+      days.append(b);
+    });
+    const date = h('input.field', { type: 'date', id: 'tutDate', value: cur.date || '' });
+    const dayBox = h('div', null, h('p.fieldlabel', { text: 'Tag' }), days);
+    const dateBox = h('div', null, h('label.fieldlabel', { for: 'tutDate', text: 'Datum' }), h('div.datewrap', null, date));
+    const seg = h('div.gseg.tutseg');
+    const drawSeg = () => {
+      seg.replaceChildren(
+        h('button' + (weekly ? '.on' : ''), { text: 'Jede Woche', on: { click: () => { weekly = true; drawSeg(); } } }),
+        h('button' + (!weekly ? '.on' : ''), { text: 'Einmal', on: { click: () => { weekly = false; drawSeg(); } } }));
+      dayBox.hidden = !weekly; dateBox.hidden = weekly;
+    };
+    drawSeg();
+    const from = h('input.field', { type: 'time', id: 'tutFrom', value: cur.s });
+    const to = h('input.field', { type: 'time', id: 'tutTo', value: cur.e });
+    const teacher = h('input.field', { type: 'text', id: 'tutTeacher', placeholder: 'z. B. Frau Weber', value: cur.teacher || '', autocomplete: 'off' });
+    const place = h('input.field', { type: 'text', id: 'tutPlace', placeholder: 'z. B. Lernstudio, online', value: cur.place || '', autocomplete: 'off' });
+    const read = () => {
+      if (!pick) { toast('Tipp an, für welches Fach die Nachhilfe ist.'); return null; }
+      if (!from.value || !to.value || to.value <= from.value) { toast('Die Endzeit muss nach der Startzeit liegen.'); return null; }
+      if (!weekly && !date.value) { toast('Wähl ein Datum.'); return null; }
+      return { subjectId: pick, weekly, day: weekly ? day : dayIdx(parseDate(date.value)), date: weekly ? null : date.value, s: from.value, e: to.value, teacher: teacher.value.trim(), place: place.value.trim() };
+    };
+    body.append(h('p.fieldlabel', { text: 'Fach' }), chips,
+      h('p.fieldlabel', { text: 'Wie oft' }), seg, dayBox, dateBox,
+      h('div.ttpgrid.tuttimes', null,
+        h('label', { for: 'tutFrom' }, h('span.fieldlabel', { text: 'Von' }), from),
+        h('label', { for: 'tutTo' }, h('span.fieldlabel', { text: 'Bis' }), to)),
+      h('div.ttpgrid.tuttimes', null,
+        h('label', { for: 'tutTeacher' }, h('span.fieldlabel', { text: 'Lehrer/in (optional)' }), teacher),
+        h('label', { for: 'tutPlace' }, h('span.fieldlabel', { text: 'Ort (optional)' }), place)),
+      h('button.btn.tuthw', { on: { click: () => { const v = read(); if (v) close({ ...v, hw: true }); } } }, icon('homework'), 'Hausaufgabe von der Nachhilfe eintragen'),
+      h('div.dlgactions', null,
+        isNew ? null : h('button.btn.danger', { text: 'Löschen', on: { click: () => close('delete') } }),
+        h('button.btn', { text: 'Abbrechen', on: { click: () => close(null) } }),
+        h('button.btn.primary', { text: isNew ? 'Eintragen' : 'Sichern', on: { click: () => { const v = read(); if (v) close(v); } } })));
+  });
+  if (!res) return;
+  tt.tutoring = tt.tutoring || [];
+  if (res === 'delete') {
+    tt.tutoring = tt.tutoring.filter((x) => x.id !== t.id);
+    await saveTT(tt); toast('Nachhilfe gelöscht'); after(); return;
+  }
+  const { hw, ...vals } = res;
+  const entry = { ...(t || {}), ...vals, id: (t && t.id) || 'tut' + Date.now().toString(36) };
+  tt.tutoring = [...tt.tutoring.filter((x) => x.id !== entry.id), entry];
+  await saveTT(tt);
+  if (!hw) toast(isNew ? 'Nachhilfe eingetragen' : 'Gesichert');
+  after();
+  if (hw) await editHomework({ subjectId: entry.subjectId, tut: true, due: nextTutorDate(entry, new Date(Date.now() + DAY)) || '' }, { after });
 }
 const hm = (m) => `${pad(Math.floor(m / 60) % 24)}:${pad(m % 60)}`;
 

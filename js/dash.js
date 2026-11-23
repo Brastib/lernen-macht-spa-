@@ -1,7 +1,7 @@
 // Startseite als Übersicht: Begrüßung, Wochenleiste, Tagesansicht, Fokus-Anzeige, Darstellung (hell/dunkel)
 import * as db from './db.js';
 import { h, icon, sheet, plural } from './ui.js';
-import { getTimetable } from './school.js';
+import { getTimetable, tutoringOn, editTutoring } from './school.js';
 import { editHomework } from './homework.js';
 
 const WD = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
@@ -73,6 +73,7 @@ async function weekData(subjects) {
     const lessons = td < tt.days ? tt.periods.map((per, p) => ({ per, p, cell: tt.cells[`${td}-${p}`] })).filter((x) => x.cell && sm.has(x.cell.subjectId)) : [];
     days.push({
       d, key, k, lessons,
+      tut: tutoringOn(tt, d).filter((t) => sm.has(t.subjectId)),
       hw: hw.filter((x) => !x.done && x.due === key && sm.has(x.subjectId)),
       ex: exams.filter((x) => x.date === key),
     });
@@ -87,7 +88,7 @@ export async function weekCard({ go, subjects, after }) {
   const { days, sm, tt } = await weekData(subjects);
   const row = h('div.weekrow');
   for (const day of days) {
-    const colors = [...new Set(day.lessons.map((x) => sm.get(x.cell.subjectId).color))].slice(0, 6);
+    const colors = [...new Set([...day.lessons.map((x) => sm.get(x.cell.subjectId).color), ...day.tut.map((t) => sm.get(t.subjectId).color)])].slice(0, 6);
     const nHw = day.hw.length + (day.late ? day.late.length : 0);
     row.append(h('button.wday' + (day.k === 0 ? '.wtoday' : '') + (day.ex.length ? '.wexam' : '') + ([0, 6].includes(day.d.getDay()) ? '.wweekend' : ''),
       { 'data-day': day.key, on: { click: () => daySheet(day, { sm, tt, go, subjects, after }) } },
@@ -97,7 +98,8 @@ export async function weekCard({ go, subjects, after }) {
       h('span.wtags', null,
         day.ex.length ? h('em.wtag.ex', { text: day.ex.length > 1 ? `${day.ex.length} Prüf.` : 'Prüfung' }) : null,
         nHw ? h('em.wtag.hw', { text: `${nHw} HA` }) : null,
-        !day.ex.length && !nHw ? h('em.wtag.none', { text: day.lessons.length ? plural(day.lessons.length, 'Std.', 'Std.') : 'frei' }) : null)));
+        day.tut.length && (day.ex.length + (nHw ? 1 : 0)) < 2 ? h('em.wtag.tut', { text: 'Nachhilfe' }) : null,
+        !day.ex.length && !nHw && !day.tut.length ? h('em.wtag.none', { text: day.lessons.length ? plural(day.lessons.length, 'Std.', 'Std.') : 'frei' }) : null)));
   }
   return h('section.weekcard', null, h('div.colhead', null, h('h2.section', { text: 'Deine Woche' }),
     h('small.weekhint', { text: 'Tag antippen für Details' })), row);
@@ -122,9 +124,17 @@ function daySheet(day, { sm, tt, go, subjects, after }) {
       for (const x of hw) {
         const s = sm.get(x.subjectId);
         body.append(h('button.dayrow', { style: { '--c': s.color }, on: { click: () => open(s) } },
-          icon('homework'), h('span', null, h('b', { text: x.text }), h('small', { text: s.name + (x.due < day.key ? ' · überfällig' : '') }))));
+          icon('homework'), h('span', null, h('b', { text: x.text }), h('small', { text: s.name + (x.tut ? ' · Nachhilfe' : '') + (x.due < day.key ? ' · überfällig' : '') }))));
       }
     } else body.append(h('p.calm', { text: 'Keine Hausaufgaben fällig.' }));
+    if (day.tut.length) {
+      body.append(h('p.fieldlabel', { text: 'Nachhilfe' }));
+      for (const t of day.tut) {
+        const s = sm.get(t.subjectId);
+        body.append(h('button.dayrow.lesson.tutrow', { style: { '--c': s.color }, on: { click: () => { close(true); editTutoring(tt, t, subjects, after); } } },
+          h('span.daytime', { text: `${t.s}\n${t.e}` }), h('span', null, h('b', { text: 'Nachhilfe · ' + s.name }), t.teacher || t.place ? h('small', { text: [t.teacher, t.place].filter(Boolean).join(' · ') }) : null)));
+      }
+    }
     body.append(h('p.fieldlabel', { text: 'Stunden' }));
     if (day.lessons.length) {
       for (const x of day.lessons) {
