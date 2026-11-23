@@ -127,14 +127,77 @@ export function ageText(at) {
 }
 
 // ---------- Einrichten ----------
+// Eingaben werden sofort zwischengespeichert. Wenn du zum Kopieren in eine andere App wechselst
+// und iPadOS die App dabei neu lädt, geht der Dialog beim Zurückkommen mit deinen Eingaben wieder auf.
+const DRAFT = 'vplanDraft';
+const readDraft = () => { try { const d = JSON.parse(localStorage.getItem(DRAFT) || 'null'); return d && Date.now() - d.t < 2 * 864e5 ? d : null; } catch (e) { return null; } };
+const writeDraft = (d) => { try { localStorage.setItem(DRAFT, JSON.stringify({ ...d, t: Date.now() })); } catch (e) { /* egal */ } };
+const dropDraft = () => { try { localStorage.removeItem(DRAFT); } catch (e) { /* egal */ } };
+
+// Adresse ergänzen: „vertretung.x.workers.dev“ → „https://vertretung.x.workers.dev“
+export function cleanUrl(v) {
+  let u = String(v || '').trim().replace(/[\s<>"']/g, '');
+  if (u && !/^https?:\/\//i.test(u) && /\./.test(u)) u = 'https://' + u;
+  return u.replace(/^http:\/\//i, 'https://');
+}
+// Aus einem eingefügten Text Adresse und Schlüssel herausholen
+export function splitPaste(text) {
+  const t = String(text || '');
+  const m = t.match(/(https?:\/\/)?[a-z0-9-]+(\.[a-z0-9-]+)*\.workers\.dev[^\s<>"']*/i) || t.match(/https?:\/\/[^\s<>"']+/i);
+  const url = m ? cleanUrl(m[0]) : '';
+  const rest = m ? t.replace(m[0], ' ') : t;
+  const words = rest.split(/[\s,;|]+/).map((w) => w.replace(/^[^A-Za-z0-9_-]+|[^A-Za-z0-9_-]+$/g, '')).filter(Boolean);
+  const key = words.find((w) => /^vp-/.test(w)) || words.filter((w) => w.length >= 12 && /^[A-Za-z0-9_-]+$/.test(w)).sort((a, b) => b.length - a.length)[0] || '';
+  return { url, key };
+}
+async function clip() {
+  try { if (navigator.clipboard && navigator.clipboard.readText) return await navigator.clipboard.readText(); } catch (e) { /* abgelehnt */ }
+  return null;
+}
+
+// Beim Start der App: war der Dialog offen, als die App weg war? Dann wieder öffnen.
+export function resumeVplanSetup(after) {
+  const d = readDraft();
+  if (d && d.open && !document.querySelector('.dlgscrim')) vplanSetup(after);
+}
+
 export async function vplanSetup(after) {
-  const cur = (await vplanCfg()) || { id: CFG, url: '', key: '', klasse: '' };
+  const saved = (await vplanCfg()) || { id: CFG, url: '', key: '', klasse: '' };
+  const draft = readDraft();
+  const cur = draft ? { ...saved, url: draft.url ?? saved.url, key: draft.key ?? saved.key, klasse: draft.klasse ?? saved.klasse } : saved;
+  let hideRef = null;
   const res = await sheet('Vertretungsplan verbinden', (body, close) => {
-    const url = h('input.field', { type: 'url', id: 'vpUrl', placeholder: 'https://vertretung.DEINNAME.workers.dev', value: cur.url || '', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false' });
-    const key = h('input.field', { type: 'password', id: 'vpKey', placeholder: 'dein App-Schlüssel', value: cur.key || '', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false' });
-    const kl = h('input.field', { type: 'text', id: 'vpKl', placeholder: 'z. B. 8b (optional)', value: cur.klasse || '', autocomplete: 'off', autocapitalize: 'off' });
-    const status = h('p.calm.small', { text: '' });
+    const field = (id, ph, value, type = 'text') => h('input.field', { type, id, placeholder: ph, value: value || '', autocomplete: 'off', autocapitalize: 'off', autocorrect: 'off', spellcheck: 'false' });
+    const url = field('vpUrl', 'https://vertretung.DEINNAME.workers.dev', cur.url, 'url');
+    const key = field('vpKey', 'dein App-Schlüssel', cur.key);
+    const kl = field('vpKl', 'z. B. 8b (optional)', cur.klasse);
+    const both = h('textarea.field.vpboth', { id: 'vpBoth', rows: '2', placeholder: 'Adresse und Schlüssel zusammen', autocomplete: 'off', autocapitalize: 'off', autocorrect: 'off', spellcheck: 'false' });
+    const status = h('p.calm.small', { text: draft ? 'Deine Eingaben von eben sind noch da.' : '' });
+    const save = () => writeDraft({ open: true, url: url.value, key: key.value, klasse: kl.value });
+    hideRef = () => { if (document.hidden) save(); };
+    document.addEventListener('visibilitychange', hideRef);
+    save();
+    for (const el of [url, key, kl]) el.addEventListener('input', save);
+    url.addEventListener('blur', () => { url.value = cleanUrl(url.value); save(); });
+    const fromBoth = (text) => {
+      const p = splitPaste(text);
+      if (p.url) url.value = p.url;
+      if (p.key) key.value = p.key;
+      save();
+      status.textContent = p.url && p.key ? 'Adresse und Schlüssel erkannt.' : p.url ? 'Adresse erkannt. Den Schlüssel noch einfügen.' : p.key ? 'Schlüssel erkannt. Die Adresse noch einfügen.' : 'Nichts erkannt. Die Adresse fängt mit https:// an oder endet auf .workers.dev.';
+    };
+    both.addEventListener('input', () => fromBoth(both.value));
+    const pasteBtn = (target, label) => h('button.btn.vppaste', { text: 'Einfügen', 'aria-label': label + ' einfügen', on: { click: async () => {
+      const t = await clip();
+      if (t == null) { target.focus(); status.textContent = 'Lange auf das Feld tippen und dann „Einfügen“ wählen.'; return; }
+      if (target === both) { both.value = t; fromBoth(t); return; }
+      const p = splitPaste(t);
+      target.value = target === url ? (p.url || cleanUrl(t)) : (p.key || t.trim());
+      save();
+    } } });
+    const row = (input, label) => h('div.vpfield', null, input, pasteBtn(input, label));
     const test = async () => {
+      url.value = cleanUrl(url.value); save();
       status.textContent = 'Teste Verbindung …';
       try {
         const j = await fetchWorker({ url: url.value.trim(), key: key.value.trim() }, true);
@@ -144,20 +207,25 @@ export async function vplanSetup(after) {
       } catch (e) { status.textContent = 'Fehler: ' + e.message; return null; }
     };
     body.append(
-      h('p.dlgtext', { text: 'Die App holt den Plan über deinen eigenen Cloudflare Worker. Wie du ihn einrichtest, steht in der Anleitung im Ordner „worker“ auf GitHub.' }),
-      h('label.fieldlabel', { for: 'vpUrl', text: 'Adresse des Workers' }), url,
-      h('label.fieldlabel', { for: 'vpKey', text: 'App-Schlüssel (derselbe wie APP_SCHLUESSEL im Worker)' }), key,
+      h('p.dlgtext', { text: 'Die App holt den Plan über deinen eigenen Cloudflare Worker. Du kannst ruhig zum Kopieren in eine andere App wechseln: Deine Eingaben bleiben, und dieses Fenster geht beim Zurückkommen wieder auf.' }),
+      h('label.fieldlabel', { for: 'vpBoth', text: 'Beides auf einmal (optional)' }), row(both, 'Adresse und Schlüssel'),
+      h('label.fieldlabel', { for: 'vpUrl', text: 'Adresse des Workers' }), row(url, 'Adresse'),
+      h('label.fieldlabel', { for: 'vpKey', text: 'App-Schlüssel (derselbe wie APP_SCHLUESSEL im Worker)' }), row(key, 'Schlüssel'),
       h('label.fieldlabel', { for: 'vpKl', text: 'Deine Klasse (nur nötig, falls deine Schule den ganzen Plan zeigt)' }), kl,
       status,
       h('div.dlgactions', null,
-        cur.url ? h('button.btn.danger', { text: 'Trennen', on: { click: () => close({ remove: true }) } }) : null,
+        saved.url ? h('button.btn.danger', { text: 'Trennen', on: { click: () => close({ remove: true }) } }) : null,
         h('button.btn', { text: 'Testen', on: { click: test } }),
         h('button.btn.primary', { text: 'Sichern', on: { click: async () => {
-          if (!/^https:\/\//.test(url.value.trim())) { status.textContent = 'Die Adresse muss mit https:// anfangen.'; return; }
+          url.value = cleanUrl(url.value); save();
+          if (!/^https:\/\/[^/]+\.[^/]+/.test(url.value.trim())) { status.textContent = 'Bitte die Adresse des Workers eintragen (fängt mit https:// an).'; return; }
           if (!key.value.trim()) { status.textContent = 'Bitte den App-Schlüssel eintragen.'; return; }
           close({ url: url.value.trim(), key: key.value.trim(), klasse: kl.value.trim() });
         } } })));
   });
+  // Fenster ist zu (egal wie): Zwischenspeicher weg
+  document.removeEventListener('visibilitychange', hideRef);
+  dropDraft();
   if (!res) return;
   if (res.remove) {
     if (!(await confirmSheet('Vertretungsplan trennen?', 'Adresse, Schlüssel und der gespeicherte Plan werden aus der App gelöscht. Der Worker bei Cloudflare bleibt bestehen.', 'Trennen'))) return;
