@@ -111,9 +111,25 @@ function mapTri(ctx, img, s, d) {
 const ease = (t) => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
+// Power-ups: id → Name, Symbol, Farbe, Wirkung
+export const POWERS = {
+  turbo: { name: 'Turbo', icon: 'bolt', color: '#f2a516', desc: 'Sofort viel schneller' },
+  lift: { name: 'Aufwind', icon: 'up', color: '#17a9bb', desc: 'Steigt hoch und fliegt länger' },
+  light: { name: 'Leichtpapier', icon: 'page', color: '#9b62f2', desc: '5 s fast kein Luftwiderstand' },
+  glide: { name: 'Gleitflug', icon: 'feather', color: '#25a865', desc: '4 s ohne Höhe zu verlieren' },
+  tail: { name: 'Rückenwind', icon: 'wind', color: '#3f6ff0', desc: '3 s Schub von hinten' },
+  double: { name: 'Meter ×2', icon: 'x2', color: '#f05a48', desc: '3 s zählt jeder Meter doppelt' },
+};
+export const POWER_IDS = Object.keys(POWERS);
+const POWER_KEY = 'planePower';
+
 export async function paperPlane(pageCanvas, opts = {}) {
   const duel = opts.duel || null;   // { name, note }: ein Wurf, Ergebnis wird zurückgegeben
   let result = null;
+  let powerOn = opts.power != null ? !!opts.power : (() => { try { return localStorage.getItem(POWER_KEY) !== '0'; } catch (e) { return true; } })();
+  let carry = opts.pick || null, used = false;          // mitgebrachtes Power-up (einmal einsetzbar)
+  const fxT = { light: 0, glide: 0, tail: 0, double: 0 };
+  let bubbles = [], nextBubble = 0.6, flashes = [];
   const css = getComputedStyle(document.documentElement);
   const accent = css.getPropertyValue('--accent').trim() || '#4f7cff';
   const dark = matchMedia('(prefers-color-scheme: dark)').matches && document.documentElement.dataset.theme !== 'light' || document.documentElement.dataset.theme === 'dark';
@@ -138,9 +154,22 @@ export async function paperPlane(pageCanvas, opts = {}) {
   const hint = h('p.planehint', { text: 'Das Blatt wird gefaltet …' });
   const stat = h('div.planestat', { hidden: true });
   const closeBtn = h('button.btn.round.planeclose', { 'aria-label': 'Auffalten und schließen', title: 'Auffalten' }, icon('close'));
+  const powBtn = h('button.planepow' + (powerOn ? '.on' : ''), { title: 'Power-ups in der Luft an oder aus', hidden: !!duel }, icon('bolt'), h('span', { text: 'Power-ups' }));
+  powBtn.addEventListener('click', () => { powerOn = !powerOn; powBtn.classList.toggle('on', powerOn); try { localStorage.setItem(POWER_KEY, powerOn ? '1' : '0'); } catch (e) { /* egal */ } if (!powerOn) clearBubbles(); });
+  const layer = h('div.planebub');
+  const useBtn = h('button.planeuse', { hidden: true });
+  const drawUse = () => {
+    useBtn.hidden = !carry || used || phase === 'land';
+    if (!carry) return;
+    const P = POWERS[carry];
+    useBtn.style.setProperty('--pc', P.color);
+    useBtn.replaceChildren(h('span.planeuseic', null, icon(P.icon)), h('span', null, h('b', { text: P.name }), h('small', { text: phase === 'fly' ? 'Jetzt tippen' : 'Im Flug einsetzen' })));
+    useBtn.classList.toggle('ready', phase === 'fly' && plane.z > 0);
+  };
+  useBtn.addEventListener('click', () => { if (phase !== 'fly' || used || !carry || plane.z <= 0) return; used = true; usePower(carry); drawUse(); });
   const root = h('div.planefx' + (dark ? '.dark' : ''), { role: 'dialog', 'aria-label': 'Papierflieger' },
-    cv, h('div.planetop', null, h('div.planetitle', null, h('b', { text: duel ? `${duel.name} wirft` : 'Papierflieger' }), h('small', { text: duel ? (duel.note || 'Ein Wurf, so weit wie möglich') : 'Wirf deine Notiz quer über den Bildschirm' })), closeBtn),
-    hint, stat);
+    cv, h('div.planetop', null, h('div.planetitle', null, h('b', { text: duel ? `${duel.name} wirft` : 'Papierflieger' }), h('small', { text: duel ? (duel.note || 'Ein Wurf, so weit wie möglich') : 'Wirf deine Notiz quer über den Bildschirm' })), h('div.planeacts', null, powBtn, closeBtn)),
+    layer, useBtn, hint, stat);
   document.body.append(root);
   requestAnimationFrame(() => root.classList.add('in'));
   const ctx = cv.getContext('2d');
@@ -172,6 +201,67 @@ export async function paperPlane(pageCanvas, opts = {}) {
       h('span', null, h('small', { text: 'Flugzeit' }), h('b', { text: s.toFixed(1).replace('.', ',') + ' s' })),
       h('span', null, h('small', { text: 'Rekord' }), h('b', { text: fmtM(best) })),
       rec ? h('em.planerec', { text: 'Neuer Rekord!' }) : null);
+  }
+
+  // ---------- Power-ups ----------
+  function usePower(id) {
+    const p = plane, P = POWERS[id];
+    if (id === 'turbo') { const sp = Math.hypot(p.vx, p.vy) || 1, ns = Math.min(3600, Math.max(sp * 1.7, 900)); p.vx *= ns / sp; p.vy *= ns / sp; }
+    else if (id === 'lift') p.z = Math.min(1.25, Math.max(p.z, 0.2) + 0.5);
+    else fxT[id] = { light: 5, glide: 4, tail: 3, double: 3 }[id];
+    flashes.push({ x: p.x, y: p.y, t: 0, c: P.color, name: P.name });
+    if (navigator.vibrate) try { navigator.vibrate(15); } catch (e) { /* egal */ }
+  }
+  function clearBubbles() { bubbles.forEach((b) => b.el.remove()); bubbles = []; }
+  function spawnBubble() {
+    const p = plane, sp = Math.hypot(p.vx, p.vy);
+    if (sp < 120) return;
+    const ux = p.vx / sp, uy = p.vy / sp, ahead = 230 + Math.random() * 170, side = (Math.random() < 0.5 ? -1 : 1) * (50 + Math.random() * 110);
+    const x = clamp(p.x + ux * ahead - uy * side, 50, W - 50), y = clamp(p.y + uy * ahead + ux * side, 130, H - 70);
+    const id = POWER_IDS[(Math.random() * POWER_IDS.length) | 0], P = POWERS[id];
+    const el = h('button.planebubble', { 'aria-label': P.name, style: { '--pc': P.color } }, icon(P.icon));
+    const b = { x, y, id, t: 0, el };
+    el.addEventListener('pointerdown', (e) => { e.stopPropagation(); e.preventDefault(); if (phase !== 'fly' || b.got) return; b.got = true; usePower(id); el.classList.add('got'); setTimeout(() => el.remove(), 260); bubbles = bubbles.filter((q) => q !== b); });
+    layer.append(el);
+    bubbles.push(b);
+  }
+  function stepPower(dt) {
+    for (const k in fxT) if (fxT[k] > 0) fxT[k] = Math.max(0, fxT[k] - dt);
+    if (phase === 'fly' && powerOn && plane.z > 0 && flyT > 0.35) {
+      nextBubble -= dt;
+      if (nextBubble <= 0 && bubbles.length < 2) { spawnBubble(); nextBubble = 1.1 + Math.random() * 0.9; }
+    }
+    for (const b of bubbles) {
+      b.t += dt;
+      if (b.t > 3.2 || phase !== 'fly') { b.el.classList.add('gone'); b.dead = true; setTimeout(() => b.el.remove(), 250); }
+      else b.el.style.transform = `translate(${b.x}px, ${b.y}px) scale(${Math.min(1, b.t * 5)})`;
+    }
+    bubbles = bubbles.filter((b) => !b.dead);
+  }
+  function drawFlashes(dt) {
+    if (!flashes.length) return;
+    ctx.save(); ctx.textAlign = 'center'; ctx.font = '700 16px -apple-system, system-ui, sans-serif';
+    for (const f of flashes) {
+      f.t += dt;
+      const k = f.t / 0.9;
+      ctx.globalAlpha = Math.max(0, 1 - k);
+      ctx.strokeStyle = f.c; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(plane.x, plane.y, 20 + k * 70, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = f.c; ctx.fillText(f.name + '!', plane.x, plane.y - 46 - k * 24);
+    }
+    ctx.restore();
+    flashes = flashes.filter((f) => f.t < 0.9);
+  }
+  function drawAura() {
+    const act = Object.keys(fxT).filter((k) => fxT[k] > 0);
+    if (!act.length || phase !== 'fly') return;
+    ctx.save();
+    act.forEach((k, i) => {
+      ctx.globalAlpha = 0.25 + 0.15 * Math.sin(flyT * 10 + i);
+      ctx.strokeStyle = POWERS[k].color; ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.arc(plane.x, plane.y, 40 + i * 8, 0, Math.PI * 2); ctx.stroke();
+    });
+    ctx.restore();
   }
 
   // ---------- Zeichnen ----------
@@ -251,14 +341,15 @@ export async function paperPlane(pageCanvas, opts = {}) {
       let sp = Math.hypot(p.vx, p.vy);
       // ruhiger Gleitflug: geradeaus, keine Drehung
       p.roll *= 1 - Math.min(1, dt * 5);
-      const drag = p.z > 0 ? 0.17 : 2.4;
+      const drag = p.z > 0 ? (fxT.light > 0 ? 0.05 : 0.17) : 2.4;
+      if (fxT.tail > 0 && p.z > 0 && sp > 20) { p.vx += p.vx / sp * 700 * dt; p.vy += p.vy / sp * 700 * dt; }
       p.vx *= 1 - drag * dt; p.vy *= 1 - drag * dt;
       sp = Math.hypot(p.vx, p.vy);
-      if (p.z > 0) p.z = Math.min(1.1, p.z + ((sp - 380) / 2400 - 0.05) * dt);
+      if (p.z > 0) { const dz = ((sp - 380) / 2400 - 0.05) * dt; p.z = Math.min(1.25, p.z + (fxT.glide > 0 ? Math.max(0, dz) : dz)); }
       if (p.z <= 0) { p.z = 0; p.roll *= 0.9; }
       const ox = p.x, oy = p.y;
       p.x += p.vx * dt; p.y += p.vy * dt;
-      dist += Math.hypot(p.x - ox, p.y - oy);
+      dist += Math.hypot(p.x - ox, p.y - oy) * (fxT.double > 0 ? 2 : 1);
       // 5-Meter-Marken auf dem Boden
       while (dist >= nextMark * PX_PER_M) { marks.push({ x: p.x, y: p.y, m: nextMark }); nextMark += 5; }
       follow(dt);
@@ -281,6 +372,7 @@ export async function paperPlane(pageCanvas, opts = {}) {
     p.x -= sx; p.y -= sy; ground.x += sx; ground.y += sy;
     for (const t of trail) { t[0] -= sx; t[1] -= sy; }
     for (const m of marks) { m.x -= sx; m.y -= sy; }
+    for (const b of bubbles) { b.x -= sx; b.y -= sy; }
   }
   function drawGround() {
     const sp = 34, ox = -((ground.x % sp) + sp) % sp, oy = -((ground.y % sp) + sp) % sp;
@@ -301,6 +393,7 @@ export async function paperPlane(pageCanvas, opts = {}) {
 
   function land() {
     phase = 'land';
+    clearBubbles(); drawUse();
     const m = dist / PX_PER_M;
     if (duel) {
       result = m;
@@ -361,6 +454,10 @@ export async function paperPlane(pageCanvas, opts = {}) {
     stat.hidden = true;
     setHint('');
     phase = 'fly';
+    for (const k in fxT) fxT[k] = 0;
+    clearBubbles(); nextBubble = 0.6;
+    if (!duel) used = false;
+    drawUse();
   };
   cv.addEventListener('pointerup', release);
   cv.addEventListener('pointercancel', release);
@@ -408,7 +505,7 @@ export async function paperPlane(pageCanvas, opts = {}) {
       drawSheet(1 - clamp(pt * 2.2, 0, 1), ss + (L / SH - ss) * e * 0.9);
       Object.assign(plane, { x: cx, y: cy + (planeAt.y - cy) * 0 , ang: -Math.PI / 2, span: e, z: e * 0.35 });
       drawPlane(plane.x, plane.y, plane.ang, plane.z, plane.span, 0, 1, clamp(pt * 2, 0, 1));
-      if (pt >= 1) { phase = 'ready'; setHint('Nimm den Flieger mit dem Stift oder Finger und wirf ihn mit Schwung.'); }
+      if (pt >= 1) { phase = 'ready'; drawUse(); setHint(powerOn ? 'Wirf den Flieger mit Schwung. Tipp in der Luft auf die Power-up-Kugeln.' : 'Nimm den Flieger mit dem Stift oder Finger und wirf ihn mit Schwung.'); }
     } else if (phase === 'home') {
       pt = Math.min(1, pt + dt * 1000 / (reduce ? 200 : 520));
       const e = ease(pt);
@@ -433,7 +530,11 @@ export async function paperPlane(pageCanvas, opts = {}) {
         drawTrail();
         let len = 1;
         if (plane.loop > 0) len = Math.cos((1 - plane.loop) * Math.PI * 2);
+        drawAura();
         drawPlane(plane.x, plane.y, plane.ang, plane.z, 1, plane.roll, len);
+        drawFlashes(dt);
+        stepPower(dt);
+        if (carry && !used && !!useBtn.classList.contains('ready') !== (phase === 'fly' && plane.z > 0)) drawUse();
       }
     }
     raf = requestAnimationFrame(frame);

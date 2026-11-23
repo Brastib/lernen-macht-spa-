@@ -180,7 +180,7 @@ function playerSheet(title, { withGame = false, okLabel = 'Sichern' } = {}) {
   return sheet(title, (body, close) => {
     const saved = players();
     let count = Math.max(2, Math.min(8, saved.length || 2));
-    let game = 'ttt';
+    let game = 'ttt', power = store.get('gPower', true);
     const vals = saved.map((p) => p.name);
     const list = h('div.gnames');
     const dl = h('datalist', { id: 'gnamelist' }, ...names().map((n) => h('option', { value: n })));
@@ -201,7 +201,9 @@ function playerSheet(title, { withGame = false, okLabel = 'Sichern' } = {}) {
       const opts = [['ttt', 'Tic-Tac-Toe'], ['wind', 'Windflug'], ['plane', 'Flieger'], ['mix', 'Gemischt']];
       const drawSeg = () => seg.replaceChildren(...opts.map(([k, l]) => h('button' + (k === game ? '.on' : ''), { text: l, on: { click: () => { game = k; drawSeg(); } } })));
       drawSeg();
-      body.append(h('p.glabel', { text: 'Welches Spiel?' }), seg);
+      const pw = h('label.gswitch', null, h('span', null, h('b', { text: 'Power-ups beim Papierflieger' }), h('small', { text: 'Vor jedem Wurf eins aus drei wählen, dazu Kugeln in der Luft' })),
+        h('input', { type: 'checkbox', checked: power, on: { change: (e) => { power = e.target.checked; } } }));
+      body.append(h('p.glabel', { text: 'Welches Spiel?' }), seg, pw);
     }
     body.append(h('div.dlgactions', null,
       h('button.btn', { text: 'Abbrechen', on: { click: () => close(null) } }),
@@ -210,7 +212,8 @@ function playerSheet(title, { withGame = false, okLabel = 'Sichern' } = {}) {
         const dup = list2.find((p, i) => list2.findIndex((q) => q.name.toLowerCase() === p.name.toLowerCase()) !== i);
         if (dup) { toast(`„${dup.name}“ kommt doppelt vor.`); return; }
         savePlayers(list2);
-        close({ players: list2, game });
+        if (withGame) store.set('gPower', power);
+        close({ players: list2, game, power });
       } } })));
     draw();
   });
@@ -223,7 +226,7 @@ async function newTournament() {
   const n = r.players.length;
   const pairs = roundRobin(n);
   store.set('gTour', {
-    game: r.game, players: r.players, done: false, started: Date.now(),
+    game: r.game, power: r.power !== false, players: r.players, done: false, started: Date.now(),
     matches: pairs.map(([a, b], i) => ({ a, b, game: r.game === 'mix' ? MIX[i % 3] : r.game, res: null })),
   });
   return true;
@@ -265,7 +268,7 @@ function tourPanel(t, again) {
       h('div.gnexthead', null, h('small', { text: `Duell ${played + 1} von ${t.matches.length}` }), h('span.gtag', null, icon(g.icon), g.name)),
       h('div.gnextvs', null, h('span.gpl', null, dot(A), h('b', { text: A.name })), h('span.gvs', { text: 'gegen' }), h('span.gpl', null, dot(B), h('b', { text: B.name }))),
       h('button.btn.primary.gstart', { on: { click: async () => {
-        const res = await runDuel(next.game, A, B, { tour: true });
+        const res = await runDuel(next.game, A, B, { tour: true, power: t.power !== false });
         if (!res) return;
         const t2 = store.get('gTour', null);
         if (!t2) return;
@@ -347,14 +350,14 @@ function openFx(title, sub) {
 }
 
 // Spielt ein Duell. Ergebnis {w: 0|1|null, detail} oder null, wenn abgebrochen.
-async function runDuel(key, A, B, { tour }) {
+async function runDuel(key, A, B, { tour, power }) {
   const g = GAMES[key];
   const fx = openFx(g.name, `${A.name} gegen ${B.name}`);
   let round = 0, last = null;
   const aborted = new Promise((r) => { fx.onClose = () => r(null); });
   for (;;) {
     fx.stage.replaceChildren();
-    const res = await Promise.race([g.run(fx, round % 2 ? B : A, round % 2 ? A : B), aborted]);
+    const res = await Promise.race([g.run(fx, round % 2 ? B : A, round % 2 ? A : B, { power: tour ? power : null }), aborted]);
     if (!res || fx.signal.aborted) return last;
     // Ergebnis auf A/B zurückrechnen, falls getauscht wurde
     const r = round % 2 && res.w != null ? { ...res, w: 1 - res.w } : res;
@@ -656,21 +659,32 @@ function noteCanvas(p, i) {
   x.fillStyle = '#6e6e76'; x.font = '400 40px -apple-system, "Segoe UI", Roboto, sans-serif'; x.fillText(i ? 'wirft als Zweites' : 'wirft als Erstes', 150, 488);
   return c;
 }
-async function planeDuel(fx, A, B) {
-  const { paperPlane } = await import('./plane.js');
+async function planeDuel(fx, A, B, o = {}) {
+  const { paperPlane, POWERS, POWER_IDS } = await import('./plane.js');
   const fmt = (m) => m.toFixed(1).replace('.', ',') + ' m';
   const dist = [];
+  let power = o.power != null ? o.power : store.get('gPower', true);
+  const free = o.power == null;
   for (const [i, p] of [A, B].entries()) {
-    const ok = await new Promise((r) => {
-      fx.stage.replaceChildren(h('div.gres', null, h('div.grescard', null,
+    const offer = [...POWER_IDS].sort(() => Math.random() - 0.5).slice(0, 3);
+    let pick = offer[0];
+    const r0 = await new Promise((r) => {
+      const card = h('div.grescard.pdcard');
+      const draw = () => card.replaceChildren(
         h('span.gresic', { style: { color: p.color } }, icon('plane')),
         h('b', { text: `${p.name} wirft` }),
-        h('small', { text: i ? `Zu schlagen: ${fmt(dist[0])}` : 'Jeder hat einen Wurf. Der Flieger mit der größten Weite gewinnt.' }),
-        h('div.gresbtns', null, h('button.btn.primary', { text: 'Falten und werfen', on: { click: () => r(true) } })))));
+        h('small', { text: i ? `Zu schlagen: ${fmt(dist[0])}` : 'Jeder hat einen Wurf. Der weiteste Flieger gewinnt.' }),
+        free ? h('label.gswitch.small', null, h('span', null, h('b', { text: 'Power-ups' })), h('input', { type: 'checkbox', checked: power, on: { change: (e) => { power = e.target.checked; store.set('gPower', power); draw(); } } })) : null,
+        power ? h('p.glabel', { text: 'Such dir ein Power-up aus' }) : null,
+        power ? h('div.pdpicks', null, ...offer.map((id) => h('button.pdpick' + (id === pick ? '.on' : ''), { style: { '--pc': POWERS[id].color }, on: { click: () => { pick = id; draw(); } } },
+          h('span.pdpickic', null, icon(POWERS[id].icon)), h('b', { text: POWERS[id].name }), h('small', { text: POWERS[id].desc })))) : null,
+        h('div.gresbtns', null, h('button.btn.primary', { text: 'Falten und werfen', on: { click: () => r(true) } })));
+      draw();
+      fx.stage.replaceChildren(h('div.gres', null, card));
       fx.signal.addEventListener('abort', () => r(false));
     });
-    if (!ok) return null;
-    const m = await paperPlane(noteCanvas(p, i), { duel: { name: p.name, note: i ? `Zu schlagen: ${fmt(dist[0])}` : 'Ein Wurf, so weit wie möglich' } });
+    if (!r0) return null;
+    const m = await paperPlane(noteCanvas(p, i), { power, pick: power ? pick : null, duel: { name: p.name, note: i ? `Zu schlagen: ${fmt(dist[0])}` : 'Ein Wurf, so weit wie möglich' } });
     if (m == null || fx.signal.aborted) return null;
     dist.push(Math.round(m * 10) / 10);
   }
