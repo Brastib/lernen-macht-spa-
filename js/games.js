@@ -160,6 +160,15 @@ export async function renderGames(ctx) {
     ...Object.entries(GAMES).map(([k, g]) => h('button.ptile', { on: { click: () => freeDuel(k, again) } },
       h('span.ptileic', null, icon(g.icon)), kbdLock(g.kbd), h('b', { text: g.name }), h('small', { text: g.sub })))));
 
+  // Skin-Hub: pro Spieler Skins und eigene Karten
+  {
+    const hp = players();
+    view.append(h('div.gsechead', null, h('h2.section', { text: 'Skin-Hub' }), h('button.btn.gedit', { text: 'Spieler hinzufügen', on: { click: async () => { if (await editPlayers()) again(); } } })));
+    if (!hp.length) view.append(h('p.calm', { text: 'Trag erst Spieler ein. Dann bekommt jeder hier eigene Skins, Strecken und Bahnen.' }));
+    else view.append(h('div.ptiles.gtiles.hubtiles', null, ...hp.map((p) => h('button.ptile.hubtile', { style: { '--pc': p.color }, on: { click: () => { const fx = openFx(`Skin-Hub: ${p.name}`, 'Skins und eigene Karten'); import('./hub.js').then((m) => m.openHub(fx, p, { skinEditor, windSkin: skinOf })); } } },
+      h('span.ptileic.hubav', { style: { background: p.color } }, h('b', { text: p.name.slice(0, 1).toUpperCase() })), h('b', { text: p.name }), h('small', { text: 'Skins, Strecken, Bahnen' })))));
+  }
+
   // Spieler und Bestenliste
   const ps = players();
   const st = store.get('gStats', {});
