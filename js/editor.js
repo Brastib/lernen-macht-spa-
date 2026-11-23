@@ -127,8 +127,17 @@ $('edShare').addEventListener('click', (e) => {
     { label: 'Als PDF teilen', icon: 'share', onClick: sharePagePdf },
     { label: 'Name und Datum einsetzen', icon: 'text', onClick: stampName },
     { label: 'Namen ändern', icon: 'edit', onClick: () => { try { localStorage.removeItem('myName'); } catch (err) { /* egal */ } stampName(); } },
+    'sep',
+    { label: 'Als Papierflieger falten', icon: 'plane', onClick: planeFlow },
   ]);
 });
+async function planeFlow() {
+  finishStroke(); commitText();
+  await flushSave();
+  const c = renderPage(page, bg, strokes, 720);
+  const m = await import('./plane.js');
+  await m.paperPlane(c);
+}
 async function sharePagePdf() {
   finishStroke(); commitText();
   await flushSave();
