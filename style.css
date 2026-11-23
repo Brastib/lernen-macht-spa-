@@ -2327,3 +2327,19 @@ html.fxopen, html.fxopen body, html:has(> body > .gamefx), html:has(> body > .ga
 .sgwrap.tall .sppad { flex-direction: row; flex-wrap: wrap; align-items: center; }
 .sgwrap.tall .sppad .spbtns { grid-template-columns: repeat(4, minmax(0, 1fr)); flex: 1 1 100%; }
 .sgwrap.tall .sppad .spbtn { min-height: 56px; }
+
+/* ---------- Paket 6 (Teil 2): Burgwache, Dame, Mühle, Flipper ---------- */
+.tdbar { display: flex; align-items: stretch; gap: 8px; flex-wrap: wrap; min-width: 0; padding: 8px; border-radius: 18px; background: var(--surface); box-shadow: 0 0 0 1px var(--line); }
+.tdgroup { display: flex; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.tdbtn { display: flex; align-items: center; gap: 8px; min-width: 0; max-width: 100%; min-height: 48px; padding: 6px 12px 6px 8px; border-radius: 14px; background: var(--plot-grid2); color: inherit; text-align: left; box-shadow: inset 0 0 0 2px transparent; }
+.tdbtn > svg { flex: none; width: 26px; height: 26px; padding: 4px; border-radius: 9px; background: var(--tc, var(--surface)); color: #fff; }
+.tdbtn:not([style]) > svg { color: inherit; background: var(--surface); }
+.tdbtn span { display: flex; flex-direction: column; min-width: 0; }
+.tdbtn b { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tdbtn small { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tdbtn.on, .tdbtn.sel { box-shadow: inset 0 0 0 2px var(--tc, var(--accent, #4f7cff)); }
+.tdbtn.go { background: var(--accent, #4f7cff); color: #fff; }
+.tdbtn.go small { color: rgba(255,255,255,.8); }
+.tdbtn.go > svg { background: rgba(255,255,255,.2); color: #fff; }
+.tdbtn:disabled { opacity: .5; }
+.bdhint { min-height: 1.4em; }

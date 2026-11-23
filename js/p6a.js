@@ -4,7 +4,7 @@
 import { h, icon } from './ui.js';
 import { FONT, UIFONT, isDark, inkOf, paper, pline, prect, pcirc, hatch, shade, canvasBox, chip, store, rng, turnCard } from './sketch.js';
 
-function banner(x, cw, ch, dark, txt, y = null) {
+export function banner(x, cw, ch, dark, txt, y = null) {
   const ink = inkOf(dark);
   x.save(); const fs = Math.round(Math.max(20, Math.min(36, cw / 16)));
   x.font = `800 ${fs}px ${FONT}`; x.textAlign = 'center'; x.textBaseline = 'middle';
@@ -13,8 +13,8 @@ function banner(x, cw, ch, dark, txt, y = null) {
   prect(x, cw / 2 - w / 2, yy, w, hh, 31, 1.1); x.fill(); x.stroke();
   x.fillStyle = ink; x.fillText(txt, cw / 2, yy + hh / 2 + 1, w - 20); x.restore();
 }
-const fit = (C, W, H, m = 10) => { const U = Math.min((C.cw - 2 * m) / W, (C.ch - 2 * m) / H); return { U, ox: (C.cw - W * U) / 2, oy: (C.ch - H * U) / 2 }; };
-const toWorld = (C, g, e) => { const r = C.cv.getBoundingClientRect(); return [(e.clientX - r.left - g.ox) / g.U, (e.clientY - r.top - g.oy) / g.U]; };
+export const fit = (C, W, H, m = 10) => { const U = Math.min((C.cw - 2 * m) / W, (C.ch - 2 * m) / H); return { U, ox: (C.cw - W * U) / 2, oy: (C.ch - H * U) / 2 }; };
+export const toWorld = (C, g, e) => { const r = C.cv.getBoundingClientRect(); return [(e.clientX - r.left - g.ox) / g.U, (e.clientY - r.top - g.oy) / g.U]; };
 const wrapA = (a) => { while (a > Math.PI) a -= Math.PI * 2; while (a < -Math.PI) a += Math.PI * 2; return a; };
 
 // ---------- Tastatur-Schloss ----------
@@ -45,7 +45,7 @@ function keySet() {
 // Papierrennen
 // ======================================================================
 const RW = 1000, RH = 640, ROAD = 92, LAPS = 3;
-function resample(pts, step) {
+export function resample(pts, step) {
   const out = [pts[0]]; let acc = 0;
   for (let i = 1; i < pts.length; i++) {
     let [ax, ay] = pts[i - 1]; const [bx, by] = pts[i]; let d = Math.hypot(bx - ax, by - ay);
@@ -54,7 +54,7 @@ function resample(pts, step) {
   }
   return out;
 }
-function smooth(pts, n = 3) { let p = pts; for (let k = 0; k < n; k++) p = p.map((q, i) => { const a = p[(i - 1 + p.length) % p.length], c = p[(i + 1) % p.length]; return [(a[0] + q[0] * 2 + c[0]) / 4, (a[1] + q[1] * 2 + c[1]) / 4]; }); return p; }
+export function smooth(pts, n = 3) { let p = pts; for (let k = 0; k < n; k++) p = p.map((q, i) => { const a = p[(i - 1 + p.length) % p.length], c = p[(i + 1) % p.length]; return [(a[0] + q[0] * 2 + c[0]) / 4, (a[1] + q[1] * 2 + c[1]) / 4]; }); return p; }
 function randomTrack(R) {
   const pts = [], n = 9;
   for (let i = 0; i < n; i++) { const a = i / n * Math.PI * 2, r = 0.62 + R() * 0.35; pts.push([RW / 2 + Math.cos(a) * (RW / 2 - 110) * r, RH / 2 + Math.sin(a) * (RH / 2 - 90) * r]); }
@@ -208,7 +208,7 @@ function raceRun(fx, A, B, track, R) {
 // ======================================================================
 const SR = 260, SPR = 34, FS = 1.35;
 // Weicher Bleistift-Kreis (viele Punkte, sanftes Wackeln) für große Kreise
-function softCircle(x, r, seed, amp = 0.012, overlap = 0) {
+export function softCircle(x, r, seed, amp = 0.012, overlap = 0) {
   x.beginPath();
   for (let k = 0; k <= 120 + overlap; k++) { const t = k / 120 * Math.PI * 2, rr = r * (1 + amp * Math.sin(3 * t + seed) + amp * 0.6 * Math.sin(7 * t + seed * 2.3)); k ? x.lineTo(Math.cos(t) * rr, Math.sin(t) * rr) : x.moveTo(Math.cos(t) * rr, Math.sin(t) * rr); }
 }
