@@ -3,7 +3,7 @@ import { $, h, icon, toast, sheet } from './ui.js';
 import { compile, expoInput, supify } from './mathfn.js';
 export { de };
 
-export const TABS = [['calc', 'Rechner', 'calc', 'Wissenschaftlich, Grad und Bogenmaß'], ['plot', 'Funktionen', 'graph', 'Graphen live zeichnen, Nullstellen, Schnittpunkte'], ['focus', 'Fokus-Timer', 'clock', 'Konzentriert lernen mit Pausen'], ['units', 'Einheiten', 'ruler2', 'Länge, Masse, Zeit, Temperatur …'], ['chem', 'Chemie', 'atom', 'Periodensystem, Atommodelle, Labor'], ['formulas', 'Formeln', 'sigma', 'Mathe, Physik, Chemie']];
+export const TABS = [['calc', 'Rechner', 'calc', 'Wissenschaftlich, Grad und Bogenmaß'], ['plot', 'Funktionen', 'graph', 'Graphen live zeichnen, Nullstellen, Schnittpunkte'], ['focus', 'Fokus-Timer', 'clock', 'Konzentriert lernen mit Pausen'], ['phys', 'Physik', 'phys', 'Formeln umstellen, Einheiten wie N in kg·m/s²'], ['units', 'Einheiten', 'ruler2', 'Länge, Masse, Zeit, Temperatur …'], ['chem', 'Chemie', 'atom', 'Periodensystem, Atommodelle, Labor'], ['formulas', 'Formeln', 'sigma', 'Mathe, Physik, Chemie']];
 const store = { get: (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } }, set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* egal */ } } };
 const de = (n, digits = 10) => {
   if (!isFinite(n)) return n > 0 ? '∞' : n < 0 ? '−∞' : 'Fehler';
@@ -28,8 +28,9 @@ export async function renderKit(ctx, tab = 'calc') {
   else if (tab === 'plot') import('./plotter.js').then((m) => m.plotWidget(body));
   else if (tab === 'focus') focusWidget(body);
   else if (tab === 'units') unitsWidget(body);
+  else if (tab === 'phys') import('./physik.js').then((m) => m.physWidget(body));
   else if (tab === 'pse' || tab === 'chem') import('./chem.js').then((m) => m.chemWidget(body));
-  else formulasWidget(body);
+  else formulasWidget(body, ctx);
 }
 
 // ================= Taschenrechner =================
@@ -445,7 +446,7 @@ function figEl(name) {
   if (!FIG[name]) return null;
   const d = h('div.ffig'); d.innerHTML = `<svg viewBox="0 0 96 72" aria-hidden="true">${FIG[name]}</svg>`; return d;
 }
-function formulasWidget(root) {
+function formulasWidget(root, ctx) {
   const q = h('input.field', { type: 'search', placeholder: 'Suchen, z. B. Kreis, Dichte, Stoffmenge', autocomplete: 'off' });
   let cat = store.get('fCat', 'Mathe');
   const cats = h('div.chips.left');
@@ -457,6 +458,7 @@ function formulasWidget(root) {
     list.textContent = '';
     const items = FORMULAS.filter(([c, n, f, note]) => (v ? (n + ' ' + f + ' ' + note + ' ' + c).toLowerCase().includes(v) : c === cat));
     if (!items.length) list.append(h('p.calm', { text: 'Nichts gefunden.' }));
+    if (cat === 'Physik' && !v && ctx) list.append(h('button.fcard.physlink', { on: { click: () => ctx.go({ view: 'kit', tab: 'phys' }) } }, h('div.ftext', null, h('b', { text: 'Mit Physik-Formeln rechnen' }), h('span', { text: 'Nach jeder Größe umstellen, Werte mit Einheiten einsetzen, Rechenweg sehen' }))));
     for (const [c, n, f, note] of items) { const fig = figEl(n); list.append(h('div.fcard' + (fig ? '.hasfig' : '') + '.cat-' + c.toLowerCase(), null, h('div.ftext', null, h('small', { text: v ? c : '' }), h('b', { text: n }), h('pre.fmath', { text: fig ? f.replace(/ {3,}/g, '\n') : f }), note ? h('span', { text: note }) : null), fig)); }
   };
   q.addEventListener('input', draw);
