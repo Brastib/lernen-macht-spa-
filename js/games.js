@@ -24,7 +24,7 @@ export const GAMES = {
   blocks: { name: 'Klötzchenregen', icon: 'blocks', sub: 'Fallende Klötzchen zu vollen Reihen stapeln', run: (...a) => import('./hsgames.js').then((m) => m.blocksGame(...a)) },
   brick: { name: 'Blockknacker', icon: 'brick', sub: 'Mit dem Ball alle Kästchen wegknacken', run: (...a) => import('./hsgames.js').then((m) => m.breakerGame(...a)) },
   golf: { name: 'Kritzelgolf', icon: 'golfflag', sub: 'Bahn selbst malen, dann einlochen', run: (...a) => import('./p4b.js').then((m) => m.golf(...a)) },
-  tanks: { name: 'Papierpanzer', icon: 'tank', sub: 'Winkel und Kraft, das Gelände geht kaputt', run: (...a) => import('./p4a.js').then((m) => m.tanks(...a)) },
+  tanks: { name: 'Papierpanzer', icon: 'tank', sub: 'Fahren, zielen, Kisten sammeln, Gelände geht kaputt', run: (...a) => import('./tanks.js').then((m) => m.tanks(...a)) },
   paint: { name: 'Malraten', icon: 'pen', sub: 'Einer malt, der andere rät', run: (...a) => import('./p4b.js').then((m) => m.paintGuess(...a)) },
   ships: { name: 'Schiffe versenken', icon: 'ship', sub: 'Flotte verstecken, Treffer landen', run: (...a) => import('./p4a.js').then((m) => m.ships(...a)) },
   pool: { name: 'Karo-Billard', icon: 'pool', sub: 'Kugeln einlochen, wer holt mehr Punkte?', run: (...a) => import('./p5.js').then((m) => m.pool(...a)) },
