@@ -3061,14 +3061,13 @@ div.acopt { cursor: default; }
 .mhcell.bad { border-color: rgba(192,57,43,.7); }
 
 /* ---------- Big Boy (bigboy.js) ---------- */
-.bbfab { position: fixed; right: calc(18px + env(safe-area-inset-right, 0px)); bottom: calc(18px + env(safe-area-inset-bottom, 0px)); z-index: 44;
-  display: inline-flex; align-items: center; gap: 8px; height: 52px; padding: 0 18px 0 14px; border-radius: 999px; border: 0;
-  background: var(--accent); color: var(--on-accent, #fff); font: 600 15px var(--font); box-shadow: 0 8px 24px rgba(30,50,120,.28), 0 0 0 1px rgba(255,255,255,.12) inset; cursor: pointer; transition: transform .15s ease, opacity .2s; }
-.bbfab:active { transform: scale(.96); }
-.bbfab .ic { width: 24px; height: 24px; stroke: currentColor; }
+.bbfab { position: fixed; right: calc(6px + env(safe-area-inset-right, 0px)); bottom: calc(6px + env(safe-area-inset-bottom, 0px)); z-index: 44;
+  width: 36px; height: 36px; padding: 0; border: 0; border-radius: 50%; background: transparent; cursor: pointer; display: grid; place-items: center; transition: transform .15s ease, opacity .2s; }
+.bbfab::before { content: ''; width: 16px; height: 16px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent), 0 3px 10px rgba(30,50,120,.3); }
+.bbfab:hover::before, .bbfab:focus-visible::before { transform: scale(1.15); }
+.bbfab:active { transform: scale(.9); }
 body.bbopen .bbfab { opacity: 0; pointer-events: none; }
 body:has(.gamefx) .bbfab, body:has(.planefx) .bbfab, body:has(.study:not([hidden])) .bbfab { display: none; }
-@media (max-width: 560px) { .bbfab span { display: none; } .bbfab { width: 52px; padding: 0; justify-content: center; } }
 .bbpanel { position: fixed; z-index: 45; right: calc(12px + env(safe-area-inset-right, 0px)); bottom: calc(12px + env(safe-area-inset-bottom, 0px)); top: calc(12px + env(safe-area-inset-top, 0px));
   width: min(400px, calc(100vw - 24px)); display: flex; flex-direction: column; border-radius: 22px; background: var(--surface);
   box-shadow: 0 0 0 1px var(--line), 0 24px 60px rgba(15,20,35,.28); overflow: hidden; animation: popin .16s ease; }
@@ -3118,3 +3117,7 @@ body:has(.gamefx) .bbfab, body:has(.planefx) .bbfab, body:has(.study:not([hidden
 .inkfill { display: block; height: 100%; width: 100%; border-radius: 6px; transition: width .15s; }
 .hsstat.pklegend b { display: flex; gap: 4px; align-items: center; }
 .pkdot { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; font: 800 11px/1 system-ui, sans-serif; color: #fff; text-shadow: 0 0 2px rgba(0,0,0,.5); }
+.bbread { display: block; margin-top: 4px; font-size: 11px; opacity: .8; }
+.bbfrac { display: inline-flex; flex-direction: column; align-items: center; vertical-align: middle; font-size: .82em; line-height: 1.1; margin: 0 2px; }
+.bbfrac > span:first-child { border-bottom: 1.5px solid currentColor; padding: 0 2px; }
+.bbfrac > span:last-child { padding: 0 2px; }

@@ -54,6 +54,7 @@ export async function openReader(list, start, opts = {}) {
 
 export function closeReader() { $('viewer').hidden = true; }
 export const readerOpen = () => !$('viewer').hidden;
+export const readerState = () => (readerOpen() ? { pages, current: pages[selected] || null, title } : null);
 export function readerPages(list) { pages = list; buildSpreads(); si = Math.min(si, spreads.length - 1); show(0); }
 
 async function show(dir) {

@@ -48,8 +48,13 @@ export async function storageInfo() {
 }
 
 let engine = null, engineId = '';
-export async function getEngine(onProgress = () => {}) {
-  const id = await modelId();
+// Die beste schon heruntergeladene Stufe (sonst die gewählte)
+export async function bestDownloaded() {
+  for (const k of ['beste', 'gross', 'klein']) if (await isDownloaded(k)) return k;
+  return null;
+}
+export async function getEngine(onProgress = () => {}, key = aiChoice()) {
+  const id = await modelId(key);
   if (engine && engineId === id) return engine;
   await unloadAi();
   const { CreateMLCEngine } = await loadLib();
@@ -140,8 +145,8 @@ export async function aiCards(text, onProgress = () => {}, shouldStop = () => fa
 }
 
 // Freier Chat mit der Text-KI (für Big Boy). messages: [{role, content}]
-export async function chat(messages, { maxTokens = 600, temperature = 0.4, onProgress = () => {} } = {}) {
-  const eng = await getEngine(onProgress);
+export async function chat(messages, { maxTokens = 600, temperature = 0.4, onProgress = () => {}, model } = {}) {
+  const eng = await getEngine(onProgress, model || aiChoice());
   onProgress('Big Boy denkt nach …');
   const r = await eng.chat.completions.create({ messages, temperature, max_tokens: maxTokens });
   return String(r.choices[0].message.content || '').replace(/<think>[\s\S]*?<\/think>/g, '').trim();

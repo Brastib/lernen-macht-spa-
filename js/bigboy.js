@@ -14,7 +14,7 @@ const has = (t, re) => re.test(norm(t));
 
 export function initBigBoy(api) {
   app = api;
-  const fab = h('button.bbfab', { 'aria-label': 'Big Boy fragen', title: 'Big Boy fragen', on: { click: toggle } }, icon('bot'), h('span', { text: 'Big Boy' }));
+  const fab = h('button.bbfab', { 'aria-label': 'Big Boy fragen', title: 'Big Boy fragen', on: { click: toggle } });
   document.body.append(fab);
 }
 
@@ -64,10 +64,22 @@ function restoreChat() {
 }
 function bubble(who, text, extra = [], keep = true) {
   if (keep && text && (who === 'me' || who === 'bot')) saveChat(who, text);
-  const b = h('div.bbmsg.' + who, null, ...(text ? String(text).split('\n').map((l) => h('p', { text: l })) : []), ...extra);
+  const lines = text ? String(text).split('\n') : [];
+  const b = h('div.bbmsg.' + who, null, ...lines.map((l) => (who.startsWith('bot') ? h('p', null, ...mathNodes(l)) : h('p', { text: l }))), ...extra);
   list.append(b);
   list.scrollTop = list.scrollHeight;
   return b;
+}
+// **fett** und Brüche wie 3/4 als echte Brüche anzeigen
+function mathNodes(line) {
+  const out = [];
+  for (const part of String(line).split(/(\*\*[^*]+\*\*|(?<![\d/.,])\d{1,4}\/\d{1,4}(?![\d/]))/)) {
+    if (!part) continue;
+    if (part.startsWith('**')) out.push(h('b', { text: part.slice(2, -2) }));
+    else if (/^\d+\/\d+$/.test(part)) { const [a, c] = part.split('/'); out.push(h('span.bbfrac', { 'aria-label': `${a} durch ${c}` }, h('span', { text: a }), h('span', { text: c }))); }
+    else out.push(document.createTextNode(part));
+  }
+  return out;
 }
 const say = (text, extra) => bubble('bot', text, extra);
 function thinking(text = 'Big Boy denkt nach …') { const b = bubble('bot.wait', text); return { set: (t) => { b.firstChild && (b.firstChild.textContent = t); }, done: () => b.remove() }; }
@@ -90,15 +102,47 @@ async function editor() { return import('./editor.js'); }
 async function currentPage() { if (!editorOpen()) return null; const E = await editor(); const s = E.edState(); return s.open ? E.edFlush() : null; }
 
 // ---------- Befehle ----------
-async function handle(text) {
-  const n = norm(text);
+let vocabAt = 0;
+async function nlu() {
+  const NL = await import('./bbnlu.js');
+  if (Date.now() - vocabAt > 60000) {
+    vocabAt = Date.now();
+    try {
+      const [subjects, books, feats] = await Promise.all([db.listSubjects(), db.listAllBooks(), app.features()]);
+      NL.setExtraWords([...subjects.map((x) => x.name), ...feats.filter((f) => !f.game).map((f) => f.name)]);
+      void books;
+    } catch (e) { /* egal */ }
+  }
+  return NL;
+}
+const TASK_RE = /\b(?:aufgabe|aufg|nr|nummer)\.?\s*([a-z]?\s?\d{1,2}\s?[a-z]?)\b|\b([a-h]\s?\d{1,2})\b/;
+function isTaskHelp(n) {
+  if (!TASK_RE.test(n) || /hausaufgabe/.test(n)) return false;
+  return /(hilf|hilfe|erklar|erklaer|wie (geht|mache|mach|lose|loese|rechne)|losung|loesung|versteh|kapier|bei (der )?aufgabe|mach (mit mir|mal)|zeig|was (muss|soll) ich)/.test(n) || /^(aufgabe|aufg|nr)\.?\s*[a-z]?\s?\d/.test(n);
+}
+
+async function handle(raw, { routed = false } = {}) {
+  const NL = await nlu();
+  const fx = NL.fixText(raw);
+  const text = fx.text, n = fx.n;
+  if (fx.fixes.length && !routed) { const me = [...list.querySelectorAll('.bbmsg.me')].pop(); if (me) me.append(h('small.bbread', { text: 'verstanden: ' + fx.fixes.map(([, b]) => b).join(', ') })); }
+  const st = NL.smalltalk(n); if (st) return say(st);
   if (/^(hilfe|was kannst du|befehle|wer bist du)/.test(n) || /was kannst du/.test(n)) return help();
+  if (isTaskHelp(n)) return helpTask(raw, n);
+  // Reine Rechnung („wie viel ist 3/4 + 1/6“, „löse 3x + 5 = 20“): sicher rechnen
+  const expr = (raw.match(/[\dx(][\dx\s+\-*/:·^().,=²³]*$/i) || [''])[0].trim();
+  if (expr && /\d/.test(expr) && /[+\-*/:·^=²³]/.test(expr)) {
+    const M = await import('./mathgen.js');
+    const r = M.exactSolutions(expr.replace(/²/g, '^2').replace(/³/g, '^3').replace(/=\s*$/, ''));
+    if (r.length) { say('Gerechnet, das stimmt sicher:\n' + r.join('\n'), [row(btn('Erklär mir den Rechenweg', () => explain('Erkläre Schritt für Schritt, wie man ' + expr + ' rechnet.')))]); return; }
+  }
   if (!/^(bitte\s+)?(offne|oeffne|starte?|spiel(e)?)\s/.test(n)) {
     const D = await import('./bbdata.js');
-    if (await D.handleData(text, { say, btn, row, app, thinking, close })) return;
+    // „Merk dir …“: den Inhalt genau so speichern, wie er geschrieben wurde
+    if (await D.handleData(/^(bitte\s+)?(merk|notier)/.test(n) ? raw : text, { say, btn, row, app, thinking, close })) return;
   }
   if (/(lernkarte|karteikarte)/.test(n)) return cards();
-  if (/(wie (dieses|das) blatt|mehr aufgaben|aehnliche aufgaben|neue aufgaben)/.test(n)) return moreTasks();
+  if (/(wie (dieses|das) blatt|mehr aufgaben|aehnliche aufgaben|ahnliche aufgaben|neue aufgaben)/.test(n)) return moreTasks();
   if (/(abschreib|handschrift|lies (mein|das|die))/.test(n)) return transcribe();
   if (/beispiel/.test(n) && /(blatt|hinschreib|schreib|drauf)/.test(n)) return example(text);
   if (/(erstell|mach|gib|generier|bau).*(was|aufgabe|ubung|uebung|blatt|test|training)|(ubungsblatt|uebungsblatt)/.test(n) || (/(erstell|mach mir)/.test(n))) return makeSheet(text);
@@ -106,8 +150,50 @@ async function handle(text) {
   if (mo) return openThing(mo[1]);
   const ms = n.match(/^(?:such(?:e)?|finde?)\s+(?:nach\s+)?(.+)$/);
   if (ms) return search(ms[1]);
-  if (/(erklar|erklaer|was (ist|sind|heisst|bedeutet)|wie (geht|rechne|funktioniert)|warum|versteh|hilf)/.test(n)) return explain(text);
-  return freeChat(text);
+  if (/(erklar|erklaer|was (ist|sind|heisst|bedeutet)|wie (geht|rechne|funktioniert|berechne|lose|loese)|warum|versteh|hilf|formel|rechne|berechne|beweis)/.test(n)) return explain(raw);
+  if (routed) return freeChat(raw);
+  // Nichts Festes erkannt: die KI übersetzt den Satz in einen Befehl, sonst „Meintest du …?“
+  const A = await import('./localai.js');
+  const sup = await A.aiSupport();
+  const model = sup.ok ? await A.bestDownloaded() : null;
+  if (model) {
+    const cmd = await routeWithAi(raw, model);
+    if (cmd && cmd !== 'CHAT') { say('Ich mache: „' + cmd + '“'); return handle(cmd, { routed: true }); }
+    return freeChat(raw);
+  }
+  const sug = NL.suggest(n, 3);
+  say(sug.length ? 'Meintest du das?' : 'Das hab ich nicht verstanden. Probier eins davon oder schreib „Was kannst du?“.', [row(...(sug.length ? sug : ['Was steht an?', 'Was hab ich auf?', 'Was kannst du?']).map((x) => btn(x, () => { input.value = x.replace(/ …$/, ' '); if (!/…$/.test(x)) submit(); else input.focus(); })))]);
+  if (sup.ok) say('Mit der Text-KI verstehe ich auch freie Sätze und erkläre ausführlich.', [row(aiLoadBtn())]);
+}
+
+// KI: freien Satz in einen festen Befehl übersetzen
+async function routeWithAi(raw, model) {
+  const A = await import('./localai.js');
+  const { EXAMPLES } = await import('./bbnlu.js');
+  const w = thinking('Ich überlege, was du meinst …');
+  try {
+    const out = await A.chat([
+      { role: 'system', content: 'Du übersetzt Nachrichten eines Schülers (oft mit Rechtschreibfehlern) in Befehle für eine Lern-App. Erlaubte Befehle (Werte wie Fach, Datum, Text, Uhrzeit ersetzt du durch die aus der Nachricht):\n' + EXAMPLES.map((e) => '- ' + e).join('\n') + '\nAntworte NUR mit genau einem Befehl in dieser Form, auf Deutsch, ohne Erklärung. Wenn die Nachricht eine Wissensfrage, eine Bitte um Erklärung oder einfach Unterhaltung ist, antworte nur mit CHAT.' },
+      { role: 'user', content: raw }], { maxTokens: 60, temperature: 0, model, onProgress: w.set });
+    const c = out.split('\n')[0].replace(/^[-•„"'\s]+|[“"'\s]+$/g, '').trim();
+    return c && c.length < 140 ? (/^chat\b/i.test(c) ? 'CHAT' : c) : 'CHAT';
+  } catch (e) { return 'CHAT'; } finally { w.done(); }
+}
+
+// Knopf: Text-KI laden (empfiehlt „Beste“ auf starken iPads)
+function aiLoadBtn() {
+  return btn('Text-KI laden', async (e) => {
+    e.currentTarget.disabled = true;
+    const A = await import('./localai.js');
+    say('Welche Stufe? „Beste“ ist am klügsten (ca. 5 GB, für dein iPad Pro gut). Am besten im WLAN, danach offline.', [row(
+      ...Object.entries(A.MODELS).reverse().map(([k, m]) => btn(`${m.label} (${m.size})`, async (ev) => {
+        ev.currentTarget.parentElement.querySelectorAll('button').forEach((x) => { x.disabled = true; });
+        A.setAiChoice(k);
+        const w = thinking('KI wird heruntergeladen …');
+        try { await A.getEngine(w.set, k); w.done(); say('Fertig, die KI ist bereit. Frag mich einfach.'); }
+        catch (er) { w.done(); say('Laden ging nicht: ' + (er && er.message || er)); }
+      }, k === 'beste')))]);
+  }, true);
 }
 
 function help() {
@@ -225,6 +311,10 @@ async function openThing(q) {
   if (s && (!b || norm(s.name) === q)) { app.go({ view: 'subject', subject: s }); say(`„${s.name}“ ist offen.`); return done(); }
   if (b) { const subj = subjects.find((x) => x.id === b.subjectId); app.go({ view: 'book', book: b, subject: subj }); say(`„${b.title}“ ist offen.`); return done(); }
   if (f) { f.run(); say(`„${f.name}“ ist offen.`); return done(); }
+  const NL = await import('./bbnlu.js');
+  const cand = [...subjects.map((x) => ({ name: x.name, run: () => app.go({ view: 'subject', subject: x }) })), ...feats.map((x) => ({ name: x.name, run: x.run }))]
+    .map((c) => ({ c, s: Math.max(NL.similarity(q, c.name), ...q.split(/\s+/).map((w) => NL.similarity(w, c.name))) })).filter((x) => x.s >= 0.55).sort((a, b) => b.s - a.s).slice(0, 3);
+  if (cand.length) return say(`„${q}“ kenne ich nicht. Meintest du:`, [row(...cand.map(({ c }) => btn(c.name, () => { c.run(); say(`„${c.name}“ ist offen.`); done(); })), btn(`Such „${q}“`, () => search(q)))]);
   say(`„${q}“ habe ich nicht gefunden. Probier „Such ${q}“, dann suche ich auf allen Seiten.`);
 }
 
@@ -243,44 +333,149 @@ async function search(q) {
   }))]);
 }
 
-// Erklären: mit offenem Blatt die Bild-KI, sonst die Text-KI
-async function explain(text) {
-  const p = await currentPage();
-  const T = await import('./topics.js');
-  const topic = T.findTopic(text);
-  if (p) {
-    const V = await import('./visionai.js');
-    if (await V.visionDownloaded()) {
-      const w = thinking('Ich schaue mir das Blatt an …');
-      let ans = '';
-      try { ans = await V.ask(await V.pageImage(p), `Du bist Big Boy, ein freundlicher Nachhilfe-Lehrer für einen Schüler. Schau dir dieses Arbeitsblatt genau an. Frage des Schülers: „${text}“. Erkläre kurz, einfach und Schritt für Schritt auf Deutsch, so wie es auf dem Blatt gemacht wird, mit einem kleinen Beispiel. Höchstens 10 Zeilen.`, { maxTokens: 500, temperature: 0.3, onProgress: w.set }); }
-      finally { w.done(); await V.unloadVision(); }
-      say(ans || 'Dazu ist mir leider nichts eingefallen.', ans ? [h('small.bbnote', { text: 'Von der KI erklärt. Kann Fehler haben.' }), row(btn('Beispiel aufs Blatt', () => example(text)))] : []);
-      return;
-    }
-  }
-  if (topic && !p) {
-    const ex = T.exampleFor(topic);
-    if (ex) say(`Zu ${topic.title} ein gerechnetes ${ex}`);
-  }
-  return freeChat(text, !!p);
+// ---------- Blätter lesen ----------
+// Welche Seite ist gemeint? Offenes Blatt, offener Leser, offenes Buch, sonst die zuletzt bearbeitete Seite. „Blatt 2“/„Seite 2“ = 2. Seite davon.
+async function resolvePage(n) {
+  const num = +((n.match(/\b(?:blatt|seite|s\.)\s*(\d{1,3})\b/) || [])[1] || 0);
+  const pick = async (bookId, cur) => {
+    const pages = await db.listPages(bookId);
+    const p = num && pages[num - 1] ? pages[num - 1] : (cur || pages[0]);
+    const book = await db.getBook(bookId).catch(() => null);
+    return p ? { page: p, label: `${book ? book.title : 'Eingang'}, Seite ${pages.findIndex((x) => x.id === p.id) + 1}` } : null;
+  };
+  const cur = await currentPage();
+  if (cur) return num ? pick(cur.bookId, cur) : pick(cur.bookId, cur);
+  const R = await import('./reader.js');
+  const rs = R.readerState && R.readerState();
+  if (rs && rs.current) { const p = num && rs.pages[num - 1] ? rs.pages[num - 1] : rs.current; return { page: p, label: `${rs.title || 'Leser'}, Seite ${rs.pages.indexOf(p) + 1}` }; }
+  const nav = app.nav();
+  if (nav.view === 'book' && nav.book) return pick(nav.book.id, null);
+  const all = (await db.listAllPages()).sort((a, b) => (b.edited || b.created || 0) - (a.edited || a.created || 0));
+  return all[0] ? pick(all[0].bookId, num ? null : all[0]) : null;
 }
-
-async function freeChat(text, wantedVision = false) {
+// Text einer Seite: schon gelesener Text, sonst die Bild-KI (liest auch Handschrift), sonst Texterkennung
+async function pageText(p, w) {
+  if (p.aiText) return { text: p.aiText, how: 'dem schon gelesenen Text' };
+  const V = await import('./visionai.js');
+  if (await V.visionDownloaded()) {
+    w.set('Ich lese das Blatt (Bild-KI) …');
+    try {
+      const t = await V.readPage(await V.pageImage(p), w.set);
+      if (t) { await db.updatePage(p.id, { aiText: t, aiAt: Date.now() }); p.aiText = t; return { text: t, how: 'der Bild-KI' }; }
+    } finally { await V.unloadVision(); }
+  }
+  let t = [p.ocr, p.textBoxes, p.ink].filter(Boolean).join('\n').trim();
+  if (!t && p.kind !== 'blank') {
+    w.set('Ich lese den Text auf dem Blatt …');
+    try { const O = await import('./ocr.js'); await O.ocrWords(p, p.width || 1000, w.set); t = [p.ocr, p.textBoxes, p.ink].filter(Boolean).join('\n').trim(); } catch (e) { /* offline oder kein Bild */ }
+  }
+  return { text: t, how: 'der Texterkennung (nur Gedrucktes)' };
+}
+// Eine Aufgabe (A1, Aufgabe 3, 2b …) im Text finden
+function findTask(text, label) {
+  const lines = String(text).split('\n');
+  const L = label.replace(/\s+/g, '').toLowerCase();
+  const m = L.match(/^([a-h])?(\d{1,2})([a-h])?$/);
+  if (!m) return '';
+  const [, pre, num, post] = m;
+  const esc = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const start = new RegExp(`^\\s*(?:[*#]+\\s*)?(?:(?:aufgabe|aufg\\.?|nr\\.?|nummer)\\s*)?${pre ? esc(pre) + '\\s?' : '(?:[a-h]\\s?)?'}${num}\\s*${post ? esc(post) : ''}(?![\\d])\\s*[.):\\-]?`, 'i');
+  const anyTask = /^\s*(?:[*#]+\s*)?(?:(?:aufgabe|aufg\.?|nr\.?)\s*[a-h]?\s?\d{1,2}|[a-h]\s?\d{1,2}\b|\d{1,2}\s*[.)])/i;
+  const i = lines.findIndex((l) => start.test(l));
+  if (i < 0) return '';
+  let j = i + 1;
+  while (j < lines.length && j - i < 40 && !anyTask.test(lines[j])) j++;
+  return lines.slice(i, j).join('\n').trim();
+}
+// Text-KI (beste geladene) oder null
+async function textModel() {
   const A = await import('./localai.js');
   const sup = await A.aiSupport();
-  if (!sup.ok) return say('Freie Fragen kann ich hier nicht beantworten: ' + sup.why + ' Befehle wie „Öffne Mathe“ gehen trotzdem. Schreib „Was kannst du?“.');
-  if (!(await A.isDownloaded())) {
-    return say((wantedVision ? 'Um das Blatt anzusehen, brauche ich die Bild-KI. ' : '') + 'Für freie Fragen brauche ich die Text-KI (ca. 1 GB, einmalig, dann offline). Lade sie in den KI-Einstellungen.', [row(btn('KI-Einstellungen', async () => (await import('./autocards.js')).aiSettingsSheet()))]);
+  return sup.ok ? A.bestDownloaded() : null;
+}
+const TEACH = 'Du bist Big Boy, ein geduldiger, freundlicher Nachhilfe-Lehrer für einen Schüler (Klasse 7 bis 10). Erkläre AUSFÜHRLICH und Schritt für Schritt auf Deutsch, in einfachen Sätzen:\n1. Worum geht es? (in eigenen Worten)\n2. Was muss man wissen? (Regel oder Formel)\n3. Lösungsweg: jeder Schritt in einer eigenen Zeile, mit allen Zwischenschritten und kurzer Begründung.\n4. Ergebnis\n5. Merksatz (ein Satz)\nSchreibe Formeln mit ², ³, √, · und Brüche als a/b. Kein LaTeX. Wenn der Text vom Blatt unklar ist (Texterkennung kann Fehler haben) oder etwas fehlt, sag das ehrlich. Korrigiere keine Rechtschreibung.';
+
+async function answerWithPage({ question, task, label, page, pageTxt }) {
+  const NL = await import('./bbnlu.js');
+  const M = await import('./mathgen.js');
+  const sure = M.exactSolutions(task || pageTxt).slice(0, 8);
+  const model = await textModel();
+  const V = await import('./visionai.js');
+  let ans = '';
+  if (model) {
+    const A = await import('./localai.js');
+    const w = thinking('Big Boy denkt nach …');
+    const ctx = (task ? `Aufgabe ${label} vom Blatt:\n${task}\n\n` : '') + `Text vom ganzen Blatt (zur Info):\n${pageTxt.slice(0, task ? 1800 : 3200)}` + (sure.length ? `\n\nSicher gerechnete Ergebnisse (stimmen garantiert, nutze sie):\n${sure.join('\n')}` : '');
+    try { ans = await A.chat([{ role: 'system', content: TEACH }, { role: 'user', content: `${ctx}\n\nFrage des Schülers: ${question}` }], { maxTokens: 1400, temperature: 0.3, model, onProgress: w.set }); }
+    finally { w.done(); }
+    history.push({ role: 'user', content: (task ? `Aufgabe ${label}: ${task}\n` : '') + question }, { role: 'assistant', content: ans });
+    while (history.length > 8) history.shift();
+  } else if (await V.visionDownloaded()) {
+    const w = thinking('Ich schaue mir das Blatt an …');
+    try { ans = await V.ask(await V.pageImage(page), `${TEACH}\n\nSchau dir dieses Arbeitsblatt genau an.${task ? ` Es geht um Aufgabe ${label}: ${task}` : ''}\nFrage des Schülers: „${question}“`, { maxTokens: 1000, temperature: 0.3, onProgress: w.set }); }
+    finally { w.done(); await V.unloadVision(); }
   }
+  if (!ans) {
+    say((sure.length ? 'Sicher gerechnet:\n' + sure.join('\n') + '\n' : '') + 'Für eine ausführliche Erklärung brauche ich die Text-KI.', [row(aiLoadBtn())]);
+    return;
+  }
+  const pretty = NL.prettyMath(ans);
+  const acts = [btn('Einfacher erklären', () => freeChat('Erkläre das noch einfacher, mit einem Alltagsbeispiel.')), btn('Nächster Schritt allein?', () => freeChat('Gib mir nur einen Tipp für den ersten Schritt, nicht die Lösung, damit ich es selbst versuche.'))];
+  if (editorOpen()) acts.unshift(btn('Lösung aufs Blatt', async (e) => { const el = e.currentTarget; const E = await editor(); if (E.edInsertText(pretty.replace(/\*\*/g, ''))) { el.disabled = true; say('Steht auf dem Blatt. Rückgängig geht mit dem Pfeil oben.'); } }, true));
+  say(pretty, [...(sure.length ? [h('small.bbnote', { text: 'Sicher gerechnet: ' + sure.join(' · ') })] : []), h('small.bbnote', { text: 'Von der KI erklärt. Kann Fehler haben.' }), row(...acts)]);
+}
+
+// „Hilf mir bei Aufgabe A1 auf Blatt 1“
+async function helpTask(raw, n) {
+  const m = n.match(TASK_RE);
+  const label = (m[1] || m[2] || '').replace(/\s+/g, '').toUpperCase();
+  const where = await resolvePage(n);
+  if (!where) return say('Ich finde kein Blatt. Scanne oder öffne zuerst das Arbeitsblatt.');
+  const w = thinking(`Ich schaue auf ${where.label} …`);
+  let got;
+  try { got = await pageText(where.page, w); } finally { w.done(); }
+  if (!got.text) return say(`Auf ${where.label} kann ich keinen Text lesen. Lade die Bild-KI, dann lese ich auch Handschrift und Bilder.`, [row(btn('KI-Einstellungen', async () => (await import('./autocards.js')).aiSettingsSheet()))]);
+  const task = findTask(got.text, label);
+  const NL = await import('./bbnlu.js');
+  say(task ? `${where.label}, Aufgabe ${label}:\n${NL.prettyMath(task)}` : `Auf ${where.label} finde ich „${label}“ nicht genau. Ich nehme das ganze Blatt.`, [h('small.bbnote', { text: `Gelesen mit ${got.how}. Stimmt die Aufgabe nicht, sag mir die Seite, z. B. „Aufgabe ${label} auf Blatt 2“.` })]);
+  return answerWithPage({ question: raw, task, label, page: where.page, pageTxt: got.text });
+}
+
+// Erklären: mit Blatt (offen oder zuletzt) liest Big Boy das Blatt, sonst Text-KI
+async function explain(text) {
+  const n = norm(text);
+  const T = await import('./topics.js');
+  const topic = T.findTopic(text);
+  const aboutSheet = editorOpen() || (await import('./reader.js')).readerOpen() || /\b(blatt|seite|arbeitsblatt|hier|das da|diese)\b/.test(n);
+  if (aboutSheet) {
+    const where = await resolvePage(n);
+    if (where) {
+      const w = thinking(`Ich schaue auf ${where.label} …`);
+      let got; try { got = await pageText(where.page, w); } finally { w.done(); }
+      if (got.text) return answerWithPage({ question: text, task: '', label: '', page: where.page, pageTxt: got.text });
+    }
+  }
+  if (topic) { const ex = T.exampleFor(topic); if (ex) say(`Zu ${topic.title} ein gerechnetes ${ex}`); }
+  return freeChat(text);
+}
+
+async function freeChat(text) {
+  const A = await import('./localai.js');
+  const sup = await A.aiSupport();
+  if (!sup.ok) return say('Freie Fragen kann ich hier nicht beantworten: ' + sup.why + ' Befehle wie „Was hab ich auf?“ gehen trotzdem. Schreib „Was kannst du?“.');
+  const model = await A.bestDownloaded();
+  if (!model) return say('Für freie Fragen und ausführliche Erklärungen brauche ich die Text-KI (einmal laden, dann offline).', [row(aiLoadBtn())]);
   history.push({ role: 'user', content: text });
   while (history.length > 8) history.shift();
   const ctx = await (await import('./bbdata.js')).contextSummary();
   const w = thinking();
   let ans = '';
   try {
-    ans = await A.chat([{ role: 'system', content: 'Du bist Big Boy, ein freundlicher, geduldiger Nachhilfe-Lehrer in einer Lern-App für einen Schüler. Antworte kurz, einfach und auf Deutsch. Erkläre Schritt für Schritt mit einem kleinen Beispiel. Wenn du dir nicht sicher bist, sag das ehrlich. Korrigiere keine Rechtschreibung. Erfinde keine Termine oder Aufgaben: Nutze nur die Infos unten.\n\n' + ctx }, ...history], { maxTokens: 500, onProgress: w.set });
+    ans = await A.chat([{ role: 'system', content: TEACH + '\nBei Fragen zu Terminen und Aufgaben nutze nur diese Infos, erfinde nichts:\n' + ctx }, ...history], { maxTokens: 1200, temperature: 0.4, model, onProgress: w.set });
   } finally { w.done(); }
   history.push({ role: 'assistant', content: ans });
-  say(ans || 'Dazu fällt mir gerade nichts ein.', [h('small.bbnote', { text: 'Von der KI. Kann Fehler haben.' })]);
+  const NL = await import('./bbnlu.js');
+  const pretty = NL.prettyMath(ans);
+  const acts = editorOpen() ? [row(btn('Aufs Blatt schreiben', async (e) => { const el = e.currentTarget; const E = await editor(); if (E.edInsertText(pretty.replace(/\*\*/g, ''))) { el.disabled = true; say('Steht auf dem Blatt.'); } }))] : [];
+  say(pretty || 'Dazu fällt mir gerade nichts ein.', [h('small.bbnote', { text: 'Von der KI. Kann Fehler haben.' }), ...acts]);
 }
