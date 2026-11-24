@@ -2,7 +2,7 @@
 // Alles läuft lokal im Browser, ohne Internet und ohne Zusatz-Bibliotheken.
 
 export const MAX_BYTES = 420 * 1024;   // Ziel: unter 420 KB pro Seite (scharf genug zum Heranzoomen)
-const WORK_MAX = 2800;                 // Arbeitsgröße des Fotos (längste Seite)
+const WORK_MAX = 3200;                 // Arbeitsgröße des Fotos (längste Seite)
 const OUT_MAX = 2200;                  // Größe der fertigen Seite (längste Seite)
 const DETECT_MAX = 360;                // kleine Kopie nur für die Seiten-Erkennung
 
@@ -115,7 +115,83 @@ export function detectPage(canvas) {
   // Ein echtes Blatt füllt sein Viereck fast ganz aus (Rauschen/Muster nicht).
   const fill = best / (area * s * s);
   if (area < 0.12 * W * H || fill < 0.8 || touchesAll > 0.6 * 2 * (w + h)) return { corners: fallback, found: false };
-  return { corners, found: true };
+  return { corners: refineCorners(canvas, corners), found: true };
+}
+
+// Ecken genauer machen: entlang jeder Kante die Papier-Grenze im größeren Bild suchen,
+// eine Gerade hindurchlegen und die Geraden schneiden. Wichtig für das richtige Seitenverhältnis.
+export function refineCorners(canvas, corners) {
+  try {
+    const W = canvas.width, H = canvas.height;
+    const s = Math.min(1, 1100 / Math.max(W, H));
+    const w = Math.round(W * s), h = Math.round(H * s);
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(canvas, 0, 0, w, h);
+    const d = ctx.getImageData(0, 0, w, h).data;
+    let g = new Float32Array(w * h);
+    for (let i = 0, j = 0; i < g.length; i++, j += 4) g[i] = 0.299 * d[j] + 0.587 * d[j + 1] + 0.114 * d[j + 2];
+    g = boxBlur(g, w, h, 1);
+    const at = (x, y) => { x = Math.max(0, Math.min(w - 1, x | 0)); y = Math.max(0, Math.min(h - 1, y | 0)); return g[y * w + x]; };
+    const P = corners.map(([x, y]) => [x * s, y * s]);
+    const cx = (P[0][0] + P[1][0] + P[2][0] + P[3][0]) / 4, cy = (P[0][1] + P[1][1] + P[2][1] + P[3][1]) / 4;
+    const lines = [];
+    const reach = Math.max(8, Math.round(Math.max(w, h) * 0.03));
+    for (let e = 0; e < 4; e++) {
+      const a = P[e], b = P[(e + 1) % 4];
+      const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      let nx = -(b[1] - a[1]) / len, ny = (b[0] - a[0]) / len;
+      const mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2;
+      if (nx * (cx - mx) + ny * (cy - my) < 0) { nx = -nx; ny = -ny; }   // n zeigt ins Blatt
+      const pts = [];
+      for (let t = 0.12; t <= 0.881; t += 0.02) {
+        const px = a[0] + (b[0] - a[0]) * t, py = a[1] + (b[1] - a[1]) * t;
+        let best = 0, bk = null;
+        for (let k = -reach; k <= reach; k++) {
+          // innen hell, außen dunkler: Sprung von außen nach innen
+          const inn = at(px + nx * (k + 2), py + ny * (k + 2)), out = at(px + nx * (k - 2), py + ny * (k - 2));
+          const step = inn - out;
+          if (step > best) { best = step; bk = k; }
+        }
+        if (bk !== null && best > 12) pts.push([px + nx * bk, py + ny * bk]);
+      }
+      if (pts.length < 8) return corners;
+      lines.push(fitLine(pts));
+    }
+    const out = [];
+    for (let i = 0; i < 4; i++) {
+      const p = intersect(lines[(i + 3) % 4], lines[i]);
+      if (!p) return corners;
+      out.push([p[0] / s, p[1] / s]);
+    }
+    // nur übernehmen, wenn die Ecken in der Nähe bleiben
+    const maxMove = Math.max(W, H) * 0.06;
+    for (let i = 0; i < 4; i++) if (Math.hypot(out[i][0] - corners[i][0], out[i][1] - corners[i][1]) > maxMove) return corners;
+    return out.map(([x, y]) => [Math.max(0, Math.min(W, x)), Math.max(0, Math.min(H, y))]);
+  } catch (e) { return corners; }
+}
+// Gerade durch Punkte (Hauptachse), Ausreißer zweimal entfernen. Ergebnis: Punkt + Richtung.
+function fitLine(pts) {
+  let use = pts;
+  let L = null;
+  for (let it = 0; it < 3; it++) {
+    let mx = 0, my = 0; for (const [x, y] of use) { mx += x; my += y; } mx /= use.length; my /= use.length;
+    let sxx = 0, syy = 0, sxy = 0; for (const [x, y] of use) { sxx += (x - mx) ** 2; syy += (y - my) ** 2; sxy += (x - mx) * (y - my); }
+    const ang = 0.5 * Math.atan2(2 * sxy, sxx - syy);
+    L = { x: mx, y: my, dx: Math.cos(ang), dy: Math.sin(ang) };
+    const res = use.map(([x, y]) => Math.abs((x - L.x) * L.dy - (y - L.y) * L.dx));
+    const lim = Math.max(1.2, res.slice().sort((a, b) => a - b)[Math.floor(res.length * 0.7)] * 1.5);
+    const next = use.filter((p, i) => res[i] <= lim);
+    if (next.length < 6 || next.length === use.length) break;
+    use = next;
+  }
+  return L;
+}
+function intersect(A, B) {
+  const den = A.dx * B.dy - A.dy * B.dx;
+  if (Math.abs(den) < 1e-6) return null;
+  const t = ((B.x - A.x) * B.dy - (B.y - A.y) * B.dx) / den;
+  return [A.x + A.dx * t, A.y + A.dy * t];
 }
 
 export function defaultCorners(W, H) {
@@ -205,14 +281,49 @@ function solve(A, b) {
   return M.map(r => r[n]);
 }
 
-export function warp(srcCanvas, corners) {
+// Echtes Seitenverhältnis des Blatts aus der Perspektive schätzen (Zhang & He, „Whiteboard scanning“).
+// Ohne das wird ein schräg fotografiertes Blatt gestaucht oder in die Breite gezogen.
+export function pageAspect(corners, W, H) {
   const [tl, tr, br, bl] = corners;
-  let ow = Math.max(dist(tl, tr), dist(bl, br));
-  let oh = Math.max(dist(tl, bl), dist(tr, br));
-  const s = Math.min(1, OUT_MAX / Math.max(ow, oh));
+  const u0 = W / 2, v0 = H / 2;
+  const P = ([x, y]) => [x - u0, y - v0, 1];
+  const m1 = P(tl), m2 = P(tr), m3 = P(bl), m4 = P(br);
+  const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const c14 = cross(m1, m4);
+  const k2 = dot(c14, m3) / dot(cross(m2, m4), m3);
+  const k3 = dot(c14, m2) / dot(cross(m3, m4), m2);
+  const n2 = m2.map((v, i) => k2 * v - m1[i]);
+  const n3 = m3.map((v, i) => k3 * v - m1[i]);
+  const simple = Math.max(dist(tl, tr), dist(bl, br)) / Math.max(dist(tl, bl), dist(tr, br));
+  if (!isFinite(k2) || !isFinite(k3)) return simple;
+  let r;
+  const f2 = -(n2[0] * n3[0] + n2[1] * n3[1]) / (n2[2] * n3[2]);
+  if (Math.abs(n2[2]) > 1e-6 && Math.abs(n3[2]) > 1e-6 && f2 > 0 && isFinite(f2)) {
+    r = Math.sqrt((n2[0] ** 2 + n2[1] ** 2 + f2 * n2[2] ** 2) / (n3[0] ** 2 + n3[1] ** 2 + f2 * n3[2] ** 2));
+  } else {
+    r = Math.sqrt((n2[0] ** 2 + n2[1] ** 2) / (n3[0] ** 2 + n3[1] ** 2));
+  }
+  if (!isFinite(r) || r <= 0 || r / simple > 1.6 || simple / r > 1.6) return simple;
+  // Nahe an DIN A (1 : 1,414)? Dann genau einrasten.
+  for (const din of [1 / Math.SQRT2, Math.SQRT2]) if (Math.abs(r / din - 1) < 0.035) return din;
+  return r;
+}
+
+export function warp(srcCanvas, corners, outMax = OUT_MAX) {
+  const [tl, tr, br, bl] = corners;
+  const ratio = pageAspect(corners, srcCanvas.width, srcCanvas.height);   // Breite / Höhe
+  const area = polyArea(corners);
+  let ow = Math.sqrt(area * ratio), oh = ow / ratio;
+  // Auflösung des Fotos nutzen (eher etwas mehr als die gemessene Fläche, nie weniger)
+  const grow = Math.max(1, Math.max(dist(tl, tr), dist(bl, br)) / ow, Math.max(dist(tl, bl), dist(tr, br)) / oh);
+  ow *= grow; oh *= grow;
+  const s = Math.min(1, outMax / Math.max(ow, oh));
   ow = Math.max(8, Math.round(ow * s)); oh = Math.max(8, Math.round(oh * s));
 
-  const H = homography([[0, 0], [ow - 1, 0], [ow - 1, oh - 1], [0, oh - 1]], [tl, tr, br, bl]);
+  // ein paar Pixel nach innen, damit kein dunkler Tisch-Rand mitkommt
+  const mx = ow * 0.005, my = oh * 0.005;
+  const H = homography([[-mx, -my], [ow - 1 + mx, -my], [ow - 1 + mx, oh - 1 + my], [-mx, oh - 1 + my]], [tl, tr, br, bl]);
   const sw = srcCanvas.width, sh = srcCanvas.height;
   const src = srcCanvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, sw, sh).data;
 
@@ -404,7 +515,139 @@ export function looksScanned(canvas) {
 }
 // Komplett säubern: gerade drehen (optional), Schatten weg, Kontrast, schärfen
 export function cleanCanvas(canvas, { straighten = true } = {}) {
-  return sharpen(sharpen(enhance(flatten(straighten ? deskew(canvas) : canvas), 'color'), 0.45, 2), 0.55, 1);
+  return processScan(canvas, 'color', { straighten });
+}
+
+// ---------- Neue Scan-Verbesserung (v75) ----------
+// 1. Licht ausgleichen: Papierfarbe großflächig schätzen. Bilder und farbige Kästen werden dabei
+//    NICHT als Papier gezählt (sonst entstehen Flecken), die Lücken werden aus der Umgebung gefüllt.
+// 2. Je Modus eine Tonkurve: Papier wird reinweiß, Schrift satt dunkel, Farben bleiben kräftig.
+// 3. Leicht schärfen.
+// mode: 'color' = Dokument in Farbe, 'gray' = Text (Graustufen, am klarsten), 'photo' = Original (nur gerade + leicht heller)
+export function processScan(canvas, mode = 'color', { straighten = true } = {}) {
+  let c = straighten ? deskew(canvas) : canvas;
+  if (mode === 'photo') return sharpen(enhance(c, 'color'), 0.35, 1);
+  const w = c.width, h = c.height;
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+  const img = ctx.getImageData(0, 0, w, h), d = img.data;
+  const bg = paperField(d, w, h);
+  normalizeTone(d, w, h, bg, mode);
+  ctx.putImageData(img, 0, 0);
+  return sharpen(c, mode === 'gray' ? 0.7 : 0.5, 1);
+}
+
+function paperField(d, w, h) {
+  const S = Math.max(8, Math.round(Math.max(w, h) / 110));
+  const gw = Math.ceil(w / S), gh = Math.ceil(h / S), n = gw * gh;
+  const R = new Float32Array(n), G = new Float32Array(n), B = new Float32Array(n), Lb = new Float32Array(n), spread = new Float32Array(n);
+  const st = Math.max(1, Math.round(S / 9));
+  const lum = [], idx = [];
+  for (let by = 0; by < gh; by++) for (let bx = 0; bx < gw; bx++) {
+    lum.length = 0; idx.length = 0;
+    for (let y = by * S; y < Math.min(h, by * S + S); y += st) for (let x = bx * S; x < Math.min(w, bx * S + S); x += st) {
+      const i = (y * w + x) * 4; lum.push(0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]); idx.push(i);
+    }
+    const sorted = lum.slice().sort((a, b) => a - b);
+    const p90 = sorted[Math.floor(sorted.length * 0.9)], p40 = sorted[Math.floor(sorted.length * 0.4)];
+    let r = 0, g = 0, b = 0, k = 0;
+    for (let j = 0; j < lum.length; j++) if (lum[j] >= p90 - 4) { const i = idx[j]; r += d[i]; g += d[i + 1]; b += d[i + 2]; k++; }
+    const q = by * gw + bx;
+    R[q] = r / k; G[q] = g / k; B[q] = b / k; Lb[q] = 0.299 * R[q] + 0.587 * G[q] + 0.114 * B[q];
+    spread[q] = p90 - p40;
+  }
+  // Papierton des ganzen Blatts: Farbe der hellsten Blöcke
+  const order = Array.from(Lb.keys()).sort((a, b) => Lb[b] - Lb[a]).slice(0, Math.max(4, Math.round(n * 0.25)));
+  let tr = 0, tg = 0, tb = 0;
+  for (const q of order) { const l = Lb[q] || 1; tr += R[q] / l; tg += G[q] / l; tb += B[q] / l; }
+  tr /= order.length; tg /= order.length; tb /= order.length;
+  // Grobe Hülle (hellste Umgebung) – Papier liegt nahe daran, Bilder/dunkle Flächen deutlich darunter
+  const env = boxBlurF(maxFilter(Lb, gw, gh, Math.max(3, Math.round(Math.max(gw, gh) / 10))), gw, gh, 3);
+  const valid = new Float32Array(n);
+  for (let q = 0; q < n; q++) {
+    const l = Lb[q] || 1;
+    const chroma = Math.max(Math.abs(R[q] / l - tr), Math.abs(G[q] / l - tg), Math.abs(B[q] / l - tb));
+    valid[q] = (Lb[q] > env[q] * 0.7 && chroma < 0.13 && Lb[q] > 40) ? 1 : 0;
+  }
+  // Lücken füllen (normierte Faltung, wachsender Radius)
+  const fill = (V) => {
+    const out = new Float32Array(n), done = new Uint8Array(n);
+    for (let q = 0; q < n; q++) if (valid[q]) { out[q] = V[q]; done[q] = 1; }
+    let left = n - valid.reduce((a, v) => a + v, 0);
+    if (left === n) { out.set(V); return out; }   // nichts gefunden: so lassen
+    const VM = new Float32Array(n); for (let q = 0; q < n; q++) VM[q] = V[q] * valid[q];
+    for (let r = 1; left > 0 && r < Math.max(gw, gh); r = Math.ceil(r * 1.6)) {
+      const a = boxBlurF(VM, gw, gh, r), m = boxBlurF(valid, gw, gh, r);
+      for (let q = 0; q < n; q++) if (!done[q] && m[q] > 0.02) { out[q] = a[q] / m[q]; done[q] = 1; left--; }
+    }
+    for (let q = 0; q < n; q++) if (!done[q]) out[q] = V[q];
+    return boxBlurF(boxBlurF(out, gw, gh, 2), gw, gh, 2);
+  };
+  return { S, gw, gh, R: fill(R), G: fill(G), B: fill(B) };
+}
+
+function maxFilter(src, w, h, r) {
+  const tmp = new Float32Array(w * h), out = new Float32Array(w * h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { let m = 0; for (let k = Math.max(0, x - r); k <= Math.min(w - 1, x + r); k++) m = Math.max(m, src[y * w + k]); tmp[y * w + x] = m; }
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { let m = 0; for (let k = Math.max(0, y - r); k <= Math.min(h - 1, y + r); k++) m = Math.max(m, tmp[k * w + x]); out[y * w + x] = m; }
+  return out;
+}
+const boxBlurF = (a, w, h, r) => boxBlur(a, w, h, Math.max(1, Math.min(r, Math.max(w, h))));
+
+function normalizeTone(d, w, h, bg, mode) {
+  const { S, gw, R, G, B } = bg, gh = bg.gh;
+  // 1. durch die Papierfarbe teilen -> Papier = 1, Licht/Schatten/Farbstich weg
+  const N = new Float32Array(w * h * 3);
+  const hist = new Uint32Array(256);
+  for (let y = 0; y < h; y++) {
+    const fy = Math.min(gh - 1.001, Math.max(0, y / S - 0.5)), y0 = fy | 0, ty = fy - y0;
+    for (let x = 0; x < w; x++) {
+      const fx = Math.min(gw - 1.001, Math.max(0, x / S - 0.5)), x0 = fx | 0, tx = fx - x0;
+      const i0 = y0 * gw + x0, i1 = Math.min(i0 + 1, gw * gh - 1), i2 = Math.min(i0 + gw, gw * gh - 1), i3 = Math.min(i2 + 1, gw * gh - 1);
+      const w0 = (1 - tx) * (1 - ty), w1 = tx * (1 - ty), w2 = (1 - tx) * ty, w3 = tx * ty;
+      const r = R[i0] * w0 + R[i1] * w1 + R[i2] * w2 + R[i3] * w3;
+      const g = G[i0] * w0 + G[i1] * w1 + G[i2] * w2 + G[i3] * w3;
+      const b = B[i0] * w0 + B[i1] * w1 + B[i2] * w2 + B[i3] * w3;
+      const i = (y * w + x) * 4, k = (y * w + x) * 3;
+      const nr = d[i] / Math.max(8, r), ng = d[i + 1] / Math.max(8, g), nb = d[i + 2] / Math.max(8, b);
+      N[k] = nr; N[k + 1] = ng; N[k + 2] = nb;
+      hist[Math.min(255, (0.299 * nr + 0.587 * ng + 0.114 * nb) * 200 | 0)]++;
+    }
+  }
+  // 2. Schwarzpunkt = dunkelste Schrift (0,3 %), Weißpunkt knapp unter Papier
+  const total = w * h; let acc = 0, black = 0;
+  for (let v = 0; v < 256; v++) { acc += hist[v]; if (acc >= total * 0.003) { black = v / 200; break; } }
+  black = Math.min(0.45, black * 0.9);
+  const white = mode === 'gray' ? 0.84 : 0.87;
+  const gam = mode === 'gray' ? 1.5 : 1.3;
+  // zwei Kurven: kräftig für Schrift (grau), sanft für farbige Flächen (sonst werden sie zu dunkel)
+  const lut = new Uint8ClampedArray(1024), lutC = new Uint8ClampedArray(1024);   // Eingang 0..1,28 in 1/800-Schritten
+  for (let j = 0; j < 1024; j++) {
+    const t = Math.min(1, Math.max(0, (j / 800 - black) / (white - black)));
+    lut[j] = 255 * Math.pow(t, gam);
+    lutC[j] = 255 * Math.min(1, Math.max(0, (j / 800 - black * 0.5) / (white + 0.04 - black * 0.5)));
+  }
+  const L = (v) => lut[Math.min(1023, Math.max(0, v * 800 | 0))];
+  const LC = (v) => lutC[Math.min(1023, Math.max(0, v * 800 | 0))];
+  for (let p = 0, i = 0, k = 0; p < total; p++, i += 4, k += 3) {
+    const nr = N[k], ng = N[k + 1], nb = N[k + 2];
+    if (mode === 'gray') {
+      const v = L(0.299 * nr + 0.587 * ng + 0.114 * nb);
+      d[i] = d[i + 1] = d[i + 2] = v;
+    } else {
+      // Farbe: Helligkeit über die Kurve, Farbton behalten und etwas kräftiger
+      const l = 0.299 * nr + 0.587 * ng + 0.114 * nb;
+      const li = Math.max(1e-3, l);
+      const chroma = (Math.max(nr, ng, nb) - Math.min(nr, ng, nb)) / Math.max(0.05, Math.max(nr, ng, nb));
+      const m = Math.min(1, Math.max(0, (chroma - 0.12) / 0.2));   // 0 = grau/Schrift, 1 = deutlich farbig
+      const lo = L(l) * (1 - m) + LC(l) * m;
+      const sat = 1.1;
+      for (let ch = 0; ch < 3; ch++) {
+        const v = N[k + ch];
+        const rel = 1 + (v / li - 1) * sat;        // Farbanteil relativ zur Helligkeit
+        d[i + ch] = Math.max(0, Math.min(255, lo * rel));
+      }
+    }
+  }
 }
 
 // ---------- Verkleinern ----------
@@ -426,7 +669,7 @@ function scaled(canvas, f) {
 export async function compress(canvas, maxBytes = MAX_BYTES) {
   let c = canvas;
   for (let round = 0; round < 6; round++) {
-    for (const q of [0.78, 0.68, 0.58, 0.5]) {
+    for (const q of [0.86, 0.8, 0.72, 0.64, 0.56]) {
       const blob = await toBlob(c, 'image/jpeg', q);
       if (blob && blob.size <= maxBytes) return { blob, width: c.width, height: c.height, quality: q };
     }

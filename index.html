@@ -169,11 +169,13 @@
   <div class="bar">
     <button id="cropCancel" class="txt">Abbrechen</button>
     <span id="cropHint" class="hint">Ecken mit Pencil oder Finger anpassen</span>
+    <button id="cropPreview" class="icbtn" aria-label="Vorschau" title="Vorschau: so wird die Seite gespeichert"><svg class="ic"><use href="#i-eye"/></svg></button>
     <button id="cropRotate" class="icbtn" aria-label="Drehen" title="Drehen"><svg class="ic"><use href="#i-rotate"/></svg></button>
   </div>
   <div id="stage" class="stage">
     <canvas id="photo"></canvas>
     <svg id="overlay"></svg>
+    <canvas id="scanPreview" hidden></canvas>
   </div>
   <div class="bar bottom">
     <div class="seg">
@@ -183,6 +185,7 @@
     <div class="seg" role="group" aria-label="Modus">
       <button id="modeColor" class="on">Farbe</button>
       <button id="modeGray">Text</button>
+      <button id="modePhoto">Original</button>
     </div>
     <span class="spacer"></span>
     <button id="cropSaveNext" class="btn ghost">Speichern &amp; weiter</button>
@@ -233,7 +236,11 @@
         <button aria-label="Kräftig" title="Kräftig"><i style="--d:11px"></i></button>
       </div>
     </div>
-    <button id="edMath" class="chip mathbtn" title="Mathe-Werkzeuge"><svg class="ic"><use href="#i-tool-triangle"/></svg><span>Werkzeuge</span></button>
+    <div class="quicktools" role="group" aria-label="Lineal und Geodreieck">
+      <button id="edQRuler" class="qt" aria-label="Lineal ein/aus" title="Lineal: antippen zeigt es, nochmal antippen blendet es aus"><svg class="ic"><use href="#i-tool-ruler"/></svg></button>
+      <button id="edQTri" class="qt" aria-label="Geodreieck ein/aus" title="Geodreieck: antippen zeigt es, nochmal antippen blendet es aus"><svg class="ic"><use href="#i-tool-triangle"/></svg></button>
+      <button id="edMath" class="qt mathbtn" aria-label="Mehr Mathe-Werkzeuge" title="Mehr Mathe-Werkzeuge"><svg class="ic"><use href="#i-more"/></svg></button>
+    </div>
     <div class="edright">
       <button id="edSpeak" class="icbtn" aria-label="Vorlesen und Diktieren" title="Vorlesen und Diktieren"><svg class="ic"><use href="#i-speak"/></svg></button>
       <button id="edShare" class="icbtn" aria-label="Arbeitsblatt teilen" title="Als PDF teilen, Name und Datum"><svg class="ic"><use href="#i-share"/></svg></button>

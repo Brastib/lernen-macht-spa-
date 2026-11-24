@@ -1,7 +1,7 @@
 // Scannen: Foto holen, Ecken anpassen, gerade ziehen, verkleinern, speichern.
 import * as db from './db.js';
 import { $, busy, toast, kb } from './ui.js';
-import { loadPhoto, rotateCanvas, detectPage, warp, enhance, compress, makeThumb, flatten, deskew, sharpen } from './scanner.js';
+import { loadPhoto, rotateCanvas, detectPage, warp, compress, makeThumb, processScan } from './scanner.js';
 
 const SVGNS = 'http://www.w3.org/2000/svg';
 
@@ -36,10 +36,44 @@ function setMode(m) {
   try { localStorage.setItem('scanMode', m); } catch (e) { /* egal */ }
   $('modeColor').classList.toggle('on', m === 'color');
   $('modeGray').classList.toggle('on', m === 'gray');
+  $('modePhoto').classList.toggle('on', m === 'photo');
+  if (previewOn) renderPreview();
 }
+let previewOn = false, previewTimer = 0;
 setMode(mode);
 $('modeColor').addEventListener('click', () => setMode('color'));
 $('modeGray').addEventListener('click', () => setMode('gray'));
+$('modePhoto').addEventListener('click', () => setMode('photo'));
+
+// Vorschau: zeigt das fertige Ergebnis (kleiner gerechnet, damit es schnell geht). Nochmal tippen = zurück zu den Ecken.
+function setPreview(on) {
+  previewOn = on;
+  $('cropPreview').classList.toggle('on', on);
+  $('scanPreview').hidden = !on;
+  $('photo').style.visibility = on ? 'hidden' : '';
+  $('overlay').style.visibility = on ? 'hidden' : '';
+  $('cropAuto').disabled = on; $('cropFull').disabled = on; $('cropRotate').disabled = on;
+  if (on) renderPreview();
+}
+function renderPreview() {
+  clearTimeout(previewTimer);
+  $('cropHint').textContent = 'Vorschau wird berechnet …';
+  previewTimer = setTimeout(() => {
+    if (!work || !previewOn) return;
+    const out = processScan(warp(work, corners, 1300), mode);
+    const stage = $('stage'), W = stage.clientWidth, H = stage.clientHeight, pad = 28;
+    const s = Math.min((W - 2 * pad) / out.width, (H - 2 * pad) / out.height);
+    const dw = Math.round(out.width * s), dh = Math.round(out.height * s), dpr = window.devicePixelRatio || 1;
+    const c = $('scanPreview');
+    c.width = Math.round(dw * dpr); c.height = Math.round(dh * dpr);
+    c.style.width = dw + 'px'; c.style.height = dh + 'px';
+    c.style.left = Math.round((W - dw) / 2) + 'px'; c.style.top = Math.round((H - dh) / 2) + 'px';
+    const ctx = c.getContext('2d'); ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(out, 0, 0, c.width, c.height);
+    $('cropHint').textContent = 'Vorschau · Modus wählen, Auge = zurück zu den Ecken';
+  }, 30);
+}
+$('cropPreview').addEventListener('click', () => setPreview(!previewOn));
 
 async function startCrop(file) {
   busy(true, 'Foto wird geladen …');
@@ -47,8 +81,9 @@ async function startCrop(file) {
     work = await loadPhoto(file);
     const r = detectPage(work);
     corners = r.corners;
-    $('cropHint').textContent = r.found ? 'Seite erkannt · Ecken bei Bedarf anpassen' : 'Keine Seite erkannt · Ecken bitte selbst setzen';
+    $('cropHint').textContent = r.found ? 'Seite erkannt · Auge oben zeigt das Ergebnis' : 'Keine Seite erkannt · Ecken bitte selbst setzen';
     $('crop').hidden = false;
+    setPreview(false);
     $('cropSaveNext').textContent = queue.length ? `Speichern & weiter (${queue.length})` : 'Speichern & weiter';
     layout();
   } catch (err) {
@@ -79,7 +114,7 @@ function layout() {
   svg.style.left = '0px'; svg.style.top = '0px';
   drawOverlay();
 }
-window.addEventListener('resize', layout);
+window.addEventListener('resize', () => { layout(); if (previewOn) renderPreview(); });
 
 const toScreen = ([x, y]) => [view.ox + x * view.s, view.oy + y * view.s];
 const toImage = ([x, y]) => [
@@ -154,7 +189,7 @@ $('cropCancel').addEventListener('click', () => {
   if (queue.length) startCrop(queue.shift());
 });
 
-function closeCrop() { $('crop').hidden = true; work = null; corners = null; }
+function closeCrop() { setPreview(false); $('crop').hidden = true; work = null; corners = null; }
 
 // Verarbeitung läuft der Reihe nach, damit „Speichern + nächste“ sofort die Kamera öffnen kann.
 let chain = Promise.resolve();
@@ -163,7 +198,7 @@ function processAndSave(canvas, cs, m) {
   chain = chain.then(async () => {
     try {
       const t0 = performance.now();
-      const flat = sharpen(enhance(flatten(deskew(warp(canvas, cs))), m), m === 'gray' ? 0.8 : 0.6);
+      const flat = processScan(warp(canvas, cs), m);
       const { blob, width, height } = await compress(flat);
       const thumb = await makeThumb(flat);
       await db.addPage({ bookId: target, image: blob, thumb, width, height });
