@@ -178,6 +178,16 @@ function solveText(task, kind) {
   return div(b, a);
 }
 const SUPD = '⁰¹²³⁴⁵⁶⁷⁸⁹';
+// Alle Rechnungen/Gleichungen in einem Text exakt lösen (zum Gegenprüfen der KI): ['3x + 5 = 20 → x = 5', …]
+export function exactSolutions(text) {
+  const out = [];
+  for (const raw of String(text || '').split('\n')) for (const part of splitLine(raw.trim())) {
+    const d = detect(part); if (!d) continue;
+    try { const v = solveText(d.task, d.kind); out.push(d.kind === 'eq' ? `${pretty(d.task)} → x = ${fmt(v, usesFrac(d.task))}` : `${pretty(d.task)} = ${fmt(v, usesFrac(d.task))}`); } catch (e) { /* keine Lösung */ }
+    if (out.length >= 12) return out;
+  }
+  return out;
+}
 const pretty = (t) => t.replace(/\*/g, '·').replace(/(\d)\.(\d)/g, '$1,$2').replace(/\s*\^\s*(\d+)/g, (m, d) => [...d].map((c) => SUPD[+c]).join(''));
 
 // Eine neue Aufgabe wie das Vorbild
