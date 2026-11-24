@@ -2,7 +2,7 @@
 import { resumeVplanSetup, vplanCfg } from './vplan.js';
 import { renderMessages, unreadCount } from './messages.js';
 import * as db from './db.js';
-const APP_VERSION = '74';   // gleich wie VERSION in sw.js
+const APP_VERSION = '75';   // gleich wie VERSION in sw.js
 import { openEditor } from './editor.js';
 import { renderPage, PAPERS } from './paper.js';
 import { detectPage, defaultCorners } from './scanner.js';
