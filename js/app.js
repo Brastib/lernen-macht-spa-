@@ -2,7 +2,9 @@
 import { resumeVplanSetup, vplanCfg } from './vplan.js';
 import { renderMessages, unreadCount } from './messages.js';
 import * as db from './db.js';
-const APP_VERSION = '92';   // gleich wie VERSION in sw.js
+const APP_VERSION = '93';   // gleich wie VERSION in sw.js
+// Anzeige: bis 99 wie bisher, ab 100 als 1.0 … 1.99, dann 2.0 … (interne Nummer zählt weiter)
+const SHOW_VERSION = +APP_VERSION >= 100 ? Math.floor(+APP_VERSION / 100) + '.' + (+APP_VERSION % 100) : APP_VERSION;
 import { openEditor } from './editor.js';
 import { renderPage, PAPERS } from './paper.js';
 import { detectPage, defaultCorners } from './scanner.js';
@@ -231,7 +233,7 @@ async function renderLibrary() {
     view.append(...gameHome(go));
   }
 
-  view.append(h('p.appversion', { text: 'Version ' + APP_VERSION }));
+  view.append(h('p.appversion', { text: 'Version ' + SHOW_VERSION }));
   if (cameBack && homeSpot.tab === tab) {
     const y = homeSpot.scroll[tab] || 0;
     requestAnimationFrame(() => window.scrollTo(0, y));

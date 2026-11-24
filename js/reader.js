@@ -3,7 +3,7 @@
 // Hoch: eine Seite.
 import * as db from './db.js';
 import { renderPage, blobToImage } from './paper.js';
-import { $, h, icon, sheet, promptSheet, toast, menu, busy } from './ui.js';
+import { $, h, icon, sheet, promptSheet, toast, menu, busy, zoomBar } from './ui.js';
 
 let pages = [], spreads = [], si = 0, selected = 0, title = '', onEdit = null, onMarks = null;
 const urls = new Map();       // Seiten-ID -> Bild-URL (fertig zusammengesetzt)
@@ -200,8 +200,21 @@ const pts = new Map();
 let pinch = null, pan = null, sw = null, lastTap = null, hiTimer = 0;
 const curEl = () => $('spread').lastElementChild;
 const box = () => { const r = $('spread').getBoundingClientRect(); return { l: r.left, t: r.top, w: r.width, h: r.height - 26 }; };
-const zoomPill = h('button.zoompill', { hidden: true, 'aria-label': 'Zoom zurücksetzen', on: { click: (e) => { e.stopPropagation(); resetZoom(true); } } }, icon('zoom-out'), h('span'));
-stage.append(zoomPill);
+// Zoom-Leiste unten rechts: −, Prozent (Feinregler), +, ganze Seite
+const centerZoom = (s, anim = true) => {
+  const b = box();
+  s = Math.max(1, Math.min(MAXZ, s));
+  if (s < 1.02) resetZoom(anim); else zoomAt(b.l + b.w / 2, b.t + b.h / 2, s, anim);
+};
+const zbar = zoomBar({
+  min: 1, max: MAXZ,
+  get: () => z.s,
+  set: (s, live) => centerZoom(s, !live),
+  presets: [[1, 'Ganze Seite'], [1.5, '150 %'], [2, '200 %'], [3, '300 %'], [4, '400 %']],
+  extras: [{ key: 'page', icon: 'fitpage', label: 'Ganze Seite', title: 'Ganze Seite zeigen', act: () => resetZoom(true) }],
+});
+zbar.el.classList.add('rdzbar');
+stage.append(zbar.el);
 
 function clampZ() {
   const b = box();
@@ -216,8 +229,7 @@ function applyZ(anim) {
   el.style.transition = anim ? 'transform .28s cubic-bezier(.2,.8,.2,1)' : 'none';
   el.style.transform = on ? `translate3d(${z.x}px, ${z.y}px, 0) scale(${z.s})` : '';
   stage.classList.toggle('zoomed', on);
-  zoomPill.hidden = !on;
-  zoomPill.lastChild.textContent = `${Math.round(z.s * 100)} %`;
+  zbar.update(z.s);
 }
 function resetZoom(anim) { z = { s: 1, x: 0, y: 0 }; pinch = null; pan = null; applyZ(anim); }
 // Punkt (Bildschirm) bleibt beim Zoomen an seiner Stelle
@@ -256,7 +268,7 @@ function sharpenSoon() {
 }
 
 stage.addEventListener('pointerdown', (e) => {
-  if (e.target.closest('.nav, .zoompill')) return;
+  if (e.target.closest('.nav, .zbar')) return;
   pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
   if (pts.size === 2) {
     const [a, b] = [...pts.values()];

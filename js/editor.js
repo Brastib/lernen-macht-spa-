@@ -3,7 +3,7 @@ import * as db from './db.js';
 import { fillHit } from './paper.js';
 import { PAGE_W, A4_H, drawPaper, drawStroke, renderPage, pageHeight, blobToImage, paperLines, fitText, lhOf, lineHeight, textWidthMax, FONT } from './paper.js';
 import { makeTool, drawTool, hitTool, findEdge, snapPoint, niceAngle, niceRadius, magnetTool, TOOL_NAMES, KNOB_OFF, MM } from './tools.js';
-import { menu, sheet, h as el, toast, busy, promptSheet, shareReady } from './ui.js';
+import { menu, sheet, h as el, toast, busy, promptSheet, shareReady, zoomBar } from './ui.js';
 import { compile, mathify, expoInput, supify } from './mathfn.js';
 import { axesBox, axesFrame } from './paper.js';
 import { detectGaps, textForGap, baselineShift, gapAt } from './gaps.js';
@@ -51,17 +51,20 @@ export async function openEditor(p, { onClose } = {}) {
   $('editor').hidden = false;
   buildPalette();
   layout(true);
+  restoreView();
   updatePaneHeads();
 }
 
 // Lädt ein Blatt in den aktiven Bereich
 async function loadInto(p) {
+  if (page) rememberView();
   const [ink, blob] = await Promise.all([db.getInk(p.id), p.kind !== 'blank' ? db.getImage(p.id) : null]);
   const img = blob ? await blobToImage(blob) : null;
   page = p; strokes = ink; bg = img;
   undo = []; redo = []; dirty = false; zoom = 1;
+  $('edPage').style.transform = ''; zAnim = false;
   cur = null; touches.clear(); pinch = null; tpl = null; tplDrag = null; sel = null; textEd = null;
-  band = { y0: 0, y1: 0 };
+  band = { x0: 0, x1: 0, y0: 0, y1: 0, s: 0 };
   exitGapMode();
 }
 
@@ -71,7 +74,8 @@ async function close() {
   exitGapMode();
   commitText();
   const saves = [flushSave()];
-  if (split) withPane(1 - pane, () => saves.push(flushSave()));
+  rememberView();
+  if (split) withPane(1 - pane, () => { saves.push(flushSave()); rememberView(); });
   await Promise.all(saves);
   const closed = usedSplit ? null : page;   // null: Bibliothek erneuert alle Vorschaubilder
   if (split) endSplit(false);
@@ -102,7 +106,7 @@ function activate(i) {
   finishStroke(); commitText(); exitGapMode();
   if (sel) { sel = null; drawSel(); }
   flushSave();
-  touches.clear(); pinch = null; tplDrag = null; cur = null;
+  touches.clear(); if (pinch) endPinch(); tplDrag = null; cur = null;
   stash[pane] = grab();
   pane = i;
   put(stash[i]); stash[i] = null;
@@ -124,6 +128,7 @@ async function startSplit() {
   await loadInto(p2);
   layout(true);
   $('edScroll').scrollTop = 0;
+  restoreView();
   withPane(0, () => layout(true));
   updateToolbar(); updatePaneHeads();
 }
@@ -166,6 +171,7 @@ async function showInPane(i, p) {
   await loadInto(p);
   layout(true);
   $('edScroll').scrollTop = 0;
+  restoreView();
   updateToolbar(); updatePaneHeads();
 }
 
@@ -176,6 +182,7 @@ async function bookTitle(id) {
   return bookCache.get(id);
 }
 async function updatePaneHeads() {
+  updateZbar();
   for (const i of [0, 1]) paneEl(i).classList.toggle('active', split && i === pane);
   if (!split) return;
   for (const i of [0, 1]) {
@@ -448,8 +455,6 @@ async function dictateText() {
   strokes.push(st); undo.push({ type: 'add', stroke: st }); redo = []; changed(); redrawInk(); updateToolbar();
   toast('Text eingefügt. Mit dem Lasso kannst du ihn verschieben.', 3000);
 }
-$('edZoomIn').addEventListener('click', () => setZoom(zoom * 1.25));
-$('edZoomOut').addEventListener('click', () => setZoom(zoom / 1.25));
 $('edFinger').addEventListener('click', () => {
   fingerDraws = !fingerDraws;
   try { localStorage.setItem('fingerDraws', fingerDraws ? '1' : '0'); } catch (e) { /* egal */ }
@@ -461,11 +466,12 @@ function fitWidth() {
   const sc = $('edScroll');
   // Heftseiten: Breite wie bei einem A4-Blatt, auch wenn die Seite nach unten länger wird
   const h = page.kind === 'blank' ? A4_H : pageHeight(page);
-  return Math.min(sc.clientWidth - 48, (sc.clientHeight - 48) * PAGE_W / h) || 600;
+  // unten bleibt Platz für die Zoom-Leiste
+  return Math.min(sc.clientWidth - 48, (sc.clientHeight - 24 - 96) * PAGE_W / h) || 600;
 }
 
 function setZoom(z, rerender = true) {
-  zoom = Math.max(0.5, Math.min(4, z));
+  zoom = Math.max(ZMIN, Math.min(ZMAX, z));
   layout(rerender);
 }
 
@@ -487,34 +493,41 @@ function layout(rerender) {
 
 // Lange Seiten: Die Zeichenflächen decken nur den sichtbaren Bereich (plus Rand) ab, nicht die ganze Seite.
 // Sonst würde eine endlose Heftseite den Speicher des iPads sprengen. band = { y0, y1 } in Seiten-Einheiten.
-let band = { y0: 0, y1: 0 };
+let band = { x0: 0, x1: 0, y0: 0, y1: 0, s: 0 };
 const MAX_PX = 9e6;   // höchstens so viele Pixel pro Zeichenfläche
+// Auch beim starken Heranzoomen scharf: Die Flächen haben immer die volle Bildschirm-Auflösung,
+// decken dann aber nur den sichtbaren Ausschnitt ab (auch waagerecht).
 function renderBand(force) {
   if (!page) return;
+  if (!force && zAnim) return;
   const h = pageHeight(page), wrap = $('edPage'), sc = $('edScroll');
-  const cssW = wrap.clientWidth || parseFloat(wrap.style.width) || 1;
-  const dpr = window.devicePixelRatio || 1;
-  const pxW = Math.min(2600, Math.round(cssW * dpr));
+  const cssW = parseFloat(wrap.style.width) || wrap.clientWidth || 1;
+  const dpr = Math.min(3, window.devicePixelRatio || 1);
+  const s = Math.min(16000, cssW * dpr) / PAGE_W;   // Geräte-Pixel pro Seiten-Einheit
   const k = cssW / PAGE_W;                 // CSS-Pixel pro Seiten-Einheit
-  let y0 = 0, y1 = h;
-  if (pxW * pxW * h / PAGE_W > MAX_PX) {
+  let x0 = 0, x1 = PAGE_W, y0 = 0, y1 = h;
+  if (PAGE_W * h * s * s > MAX_PX) {
     const pr = wrap.getBoundingClientRect(), sr = sc.getBoundingClientRect();
-    const vTop = (sr.top - pr.top) / k, vH = sr.height / k;
-    const want = Math.max(vH * 2.2, Math.min(h, MAX_PX * PAGE_W / (pxW * pxW)));
-    const need0 = Math.max(0, vTop - vH * 0.1), need1 = Math.min(h, vTop + vH * 1.1);
-    if (!force && band.y0 <= need0 && band.y1 >= need1 && band.y1 - band.y0 > 0) return;
-    y0 = Math.max(0, vTop + vH / 2 - want / 2); y1 = Math.min(h, y0 + want); y0 = Math.max(0, y1 - want);
-  } else if (!force && band.y0 === 0 && band.y1 === h) return;
-  band = { y0, y1 };
-  const pxH = Math.max(1, Math.round(pxW * (y1 - y0) / PAGE_W));
-  const s = pxW / PAGE_W;
+    const vL = (sr.left - pr.left) / k, vW = sr.width / k, vT = (sr.top - pr.top) / k, vH = sr.height / k;
+    let bw = PAGE_W;
+    if (PAGE_W * vH * 2.2 * s * s > MAX_PX) bw = Math.min(PAGE_W, vW * 1.6);
+    const bh = Math.min(h, Math.max(vH * 1.25, MAX_PX / (bw * s * s)));
+    const nx0 = Math.max(0, vL - vW * 0.1), nx1 = Math.min(PAGE_W, vL + vW * 1.1);
+    const ny0 = Math.max(0, vT - vH * 0.1), ny1 = Math.min(h, vT + vH * 1.1);
+    if (!force && band.s === s && band.x0 <= nx0 && band.x1 >= nx1 && band.y0 <= ny0 && band.y1 >= ny1 && band.y1 > band.y0) return;
+    x0 = Math.max(0, vL + vW / 2 - bw / 2); x1 = Math.min(PAGE_W, x0 + bw); x0 = Math.max(0, x1 - bw);
+    y0 = Math.max(0, vT + vH / 2 - bh / 2); y1 = Math.min(h, y0 + bh); y0 = Math.max(0, y1 - bh);
+  } else if (!force && band.s === s && band.x0 === 0 && band.x1 === PAGE_W && band.y0 === 0 && band.y1 === h) return;
+  band = { x0, x1, y0, y1, s };
+  const pxW = Math.max(1, Math.round((x1 - x0) * s)), pxH = Math.max(1, Math.round((y1 - y0) * s));
   for (const id of ['edBg', 'edInk', 'edLive']) {
     const c = $(id); c.width = pxW; c.height = pxH;
+    c.style.left = (x0 * k) + 'px'; c.style.width = ((x1 - x0) * k) + 'px'; c.style.right = 'auto';
     c.style.top = (y0 * k) + 'px'; c.style.height = ((y1 - y0) * k) + 'px'; c.style.bottom = 'auto';
-    c.getContext('2d').setTransform(1, 0, 0, 1, 0, -y0 * s);
+    c.getContext('2d').setTransform(1, 0, 0, 1, -x0 * s, -y0 * s);
   }
   const bctx = $('edBg').getContext('2d');
-  if (bg) { bctx.fillStyle = '#fff'; bctx.fillRect(0, y0 * s, pxW, pxH); bctx.drawImage(bg, 0, 0, pxW, h * s); }
+  if (bg) { bctx.fillStyle = '#fff'; bctx.fillRect(x0 * s, y0 * s, pxW, pxH); bctx.drawImage(bg, 0, 0, PAGE_W * s, h * s); }
   else drawPaper(bctx, page.paper || 'blank', PAGE_W, h, s);
   redrawInk();
 }
@@ -551,7 +564,7 @@ function growPage() {
 }
 window.addEventListener('resize', () => { if (!page) return; layout(true); if (split) withPane(1 - pane, () => layout(true)); });
 
-const scale = () => $('edInk').width / PAGE_W;
+const scale = () => band.s || $('edInk').width / PAGE_W;
 
 function redrawInk() {
   const c = $('edInk'), ctx = c.getContext('2d');
@@ -559,12 +572,14 @@ function redrawInk() {
   const s = scale(), y0 = band.y0, y1 = band.y1;
   for (const st of strokes) {
     if (textEd && st === textEd.st) continue;
-    if (y0 > 0 || y1 < pageHeight(page)) {
+    if (y0 > 0 || y1 < pageHeight(page) || band.x0 > 0 || band.x1 < PAGE_W) {
       // nur Striche im Ausschnitt zeichnen (schneller bei langen Seiten)
       const p = st.pts || []; let lo = Infinity, hi = -Infinity;
-      for (let i = 1; i < p.length; i += 3) { if (p[i] < lo) lo = p[i]; if (p[i] > hi) hi = p[i]; }
+      let lx = Infinity, hx = -Infinity;
+      for (let i = 1; i < p.length; i += 3) { if (p[i] < lo) lo = p[i]; if (p[i] > hi) hi = p[i]; if (p[i - 1] < lx) lx = p[i - 1]; if (p[i - 1] > hx) hx = p[i - 1]; }
       const pad = st.tool === 'text' ? 400 : (st.size || 10) * 4 + 20;
       if (st.tool !== 'fill' && (hi < y0 - pad || lo > y1 + pad)) continue;
+      if (st.tool !== 'fill' && st.tool !== 'text' && (hx < band.x0 - pad || lx > band.x1 + pad)) continue;
     }
     drawStroke(ctx, st, s);
   }
@@ -681,6 +696,9 @@ area.addEventListener('pointerdown', (e) => {
     return;
   }
   if (e.pointerType === 'touch' && !fingerDraws) {
+    // Handballen beim Schreiben mit dem Pencil: weder schieben noch zoomen
+    if ((cur && cur.type === 'pen') || performance.now() - penUpAt < 350) { e.preventDefault(); return; }
+    ftap = touches.size === 0 ? { id: e.pointerId, cx: e.clientX, cy: e.clientY, t: performance.now() } : null;
     touchTap = (gapMode || tool === 'fill') && onPage && touches.size === 0 ? { id: e.pointerId, at: [x, y], cx: e.clientX, cy: e.clientY, t: performance.now() } : null;
     touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (touches.size === 2) startPinch();
@@ -974,10 +992,11 @@ function endPointer(e) {
       return;
     }
     touchTap = null;
-    if (pinch && touches.size < 2) { pinch = null; layout(true); }
+    if (pinch && touches.size < 2) { endPinch(); return; }
+    fingerTapUp(e);
     return;
   }
-  if (cur && e.pointerId === cur.id) finishStroke();
+  if (cur && e.pointerId === cur.id) { if (cur.type === 'pen') penUpAt = performance.now(); finishStroke(); }
 }
 area.addEventListener('pointerup', endPointer);
 area.addEventListener('pointercancel', endPointer);
@@ -985,7 +1004,7 @@ area.addEventListener('lostpointercapture', endPointer);
 // Sicherheitsnetz: Ende auch dann erkennen, wenn es außerhalb passiert
 window.addEventListener('pointerup', endPointer);
 window.addEventListener('pointercancel', endPointer);
-window.addEventListener('blur', () => { finishStroke(); touches.clear(); pinch = null; tplDrag = null; });
+window.addEventListener('blur', () => { finishStroke(); touches.clear(); if (pinch) endPinch(); tplDrag = null; });
 
 // ---------- Mathe-Werkzeuge ----------
 // Mitte des sichtbaren Bereichs in Seiten-Einheiten
@@ -1470,22 +1489,233 @@ function doRedo() {
 }
 
 // ---------- Finger: schieben und mit zwei Fingern zoomen ----------
+// Beim Zoomen mit zwei Fingern wird das Blatt nur verschoben/skaliert angezeigt (ruckelfrei).
+// Erst beim Loslassen wird scharf neu gezeichnet. Der Punkt zwischen den Fingern bleibt unter den Fingern.
+const ZMIN = 0.5, ZMAX = 5;
+let zAnim = false, zLocked = false, penUpAt = 0, ftap = null, lastFtap = null;
+try { zLocked = localStorage.getItem('zoomLock') === '1'; } catch (e) { /* egal */ }
+
 function moveTouch(e) {
   const t = touches.get(e.pointerId);
   const dx = e.clientX - t.x, dy = e.clientY - t.y;
   t.x = e.clientX; t.y = e.clientY;
+  if (ftap && ftap.id === e.pointerId && Math.hypot(e.clientX - ftap.cx, e.clientY - ftap.cy) > 10) ftap = null;
   if (pinch) {
     const [a, b] = [...touches.values()];
-    const d = Math.hypot(a.x - b.x, a.y - b.y);
-    setZoom(pinch.zoom * d / pinch.d, false);
+    const d = Math.hypot(a.x - b.x, a.y - b.y) || 1, mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+    let r = zLocked ? 1 : d / pinch.d;
+    r = Math.max(ZMIN / pinch.zoom, Math.min(ZMAX / pinch.zoom, r));
+    // leicht einrasten bei "ganze Seite" und "Breite einpassen"
+    for (const snap of [1, fitWidthZoom()]) if (Math.abs(pinch.zoom * r / snap - 1) < 0.04) r = snap / pinch.zoom;
+    pinch.r = r;
+    pinch.tx = mx - pinch.left - (pinch.mx - pinch.left) * r;
+    pinch.ty = my - pinch.top - (pinch.my - pinch.top) * r;
+    const w = $('edPage');
+    w.style.transformOrigin = '0 0';
+    w.style.transition = 'none';
+    w.style.transform = `translate3d(${pinch.tx}px, ${pinch.ty}px, 0) scale(${r})`;
+    updateZbar(pinch.zoom * r);
     return;
   }
   $('edScroll').scrollLeft -= dx; $('edScroll').scrollTop -= dy;
 }
 function startPinch() {
   const [a, b] = [...touches.values()];
-  pinch = { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, zoom };
+  const r = $('edPage').getBoundingClientRect();
+  ftap = null; lastFtap = null;
+  zAnim = true;
+  pinch = { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, zoom, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2, left: r.left, top: r.top, r: 1, tx: 0, ty: 0 };
 }
+function endPinch() {
+  const p = pinch; pinch = null;
+  if (!p) return;
+  const w = $('edPage');
+  const target = { left: p.left + p.tx, top: p.top + p.ty, width: w.getBoundingClientRect().width };
+  w.style.transform = ''; w.style.transition = '';
+  zAnim = false;
+  commitZoom(p.zoom * p.r, target);
+}
+
+// Zoom übernehmen: Blatt so legen, dass seine linke obere Ecke bei target liegt (Bildschirm-Punkte),
+// soweit das Scrollen das zulässt. Danach weich vom alten Bild ins neue gleiten (FLIP).
+function commitZoom(z, target, anim = true) {
+  const sc = $('edScroll'), w = $('edPage');
+  const before = target || w.getBoundingClientRect();
+  setZoom(z, false);
+  const r1 = w.getBoundingClientRect();
+  sc.scrollLeft += r1.left - before.left;
+  sc.scrollTop += r1.top - before.top;
+  layout(true);
+  updateZbar();
+  if (!anim) return;
+  const r2 = w.getBoundingClientRect(), k = before.width / r2.width;
+  if (Math.abs(k - 1) < 0.002 && Math.abs(r2.left - before.left) < 1 && Math.abs(r2.top - before.top) < 1) return;
+  zAnim = true;
+  w.style.transformOrigin = '0 0';
+  w.style.transition = 'none';
+  w.style.transform = `translate3d(${before.left - r2.left}px, ${before.top - r2.top}px, 0) scale(${k})`;
+  void w.offsetWidth;
+  w.style.transition = 'transform .24s cubic-bezier(.2,.8,.2,1)';
+  w.style.transform = '';
+  const done = () => { w.removeEventListener('transitionend', done); clearTimeout(tm); if (!w.style.transform) w.style.transition = ''; zAnim = false; renderBand(false); };
+  const tm = setTimeout(done, 320);
+  w.addEventListener('transitionend', done);
+}
+// Zoomen, wobei der Bildschirmpunkt (cx, cy) fest bleibt (ohne Punkt: Mitte des Bereichs)
+function zoomAround(z, cx, cy, anim = true) {
+  if (!page) return;
+  z = Math.max(ZMIN, Math.min(ZMAX, z));
+  const sc = $('edScroll').getBoundingClientRect(), r0 = $('edPage').getBoundingClientRect();
+  if (cx == null) { cx = sc.left + sc.width / 2; cy = sc.top + sc.height / 2; }
+  const k = z / zoom;
+  commitZoom(z, { left: cx - (cx - r0.left) * k, top: cy - (cy - r0.top) * k, width: r0.width * k }, anim);
+}
+// Zoomstufe, bei der das Blatt genau die Breite des Bereichs füllt
+function fitWidthZoom() {
+  const sc = $('edScroll');
+  return Math.max(ZMIN, Math.min(ZMAX, (sc.clientWidth - 48) / fitWidth()));
+}
+function fitPage() {
+  if (!page) return;
+  setZoom(1, false);
+  const sc = $('edScroll'), w = $('edPage');
+  const before = w.getBoundingClientRect();
+  sc.scrollLeft = 0; sc.scrollTop = Math.max(0, w.offsetTop - 24 + 0 * before.top);
+  commitZoom(1, null);
+}
+function fitPageWidth() {
+  if (!page) return;
+  const sc = $('edScroll'), sr = sc.getBoundingClientRect(), r0 = $('edPage').getBoundingClientRect();
+  const z = fitWidthZoom(), k = z / zoom;
+  // obere Kante des sichtbaren Teils bleibt, Blatt links bündig
+  const cy = sr.top + 24;
+  commitZoom(z, { left: sr.left + 24, top: cy - (cy - r0.top) * k, width: r0.width * k });
+}
+
+// Zoom-Leiste unten rechts in jedem Blatt-Bereich
+const zbars = [0, 1].map((i) => {
+  const run = (fn) => () => { if (split && i !== pane) activate(i); fn(); };
+  let liveZ = null;
+  const zb = zoomBar({
+    min: ZMIN, max: ZMAX,
+    get: () => (i === pane ? zoom : (stash[i] ? stash[i].zoom : zoom)),
+    set: (z, live) => {
+      if (split && i !== pane) activate(i);
+      if (live) {
+        // Regler wird gezogen: nur anzeigen, beim Loslassen scharf zeichnen
+        const w = $('edPage'), sr = $('edScroll').getBoundingClientRect(), r0 = w.getBoundingClientRect();
+        if (liveZ == null) { liveZ = { zoom, left: r0.left, top: r0.top, cx: sr.left + sr.width / 2, cy: sr.top + sr.height / 2 }; zAnim = true; }
+        const r = Math.max(ZMIN, Math.min(ZMAX, z)) / liveZ.zoom;
+        w.style.transformOrigin = '0 0'; w.style.transition = 'none';
+        w.style.transform = `translate3d(${(liveZ.cx - liveZ.left) * (1 - r)}px, ${(liveZ.cy - liveZ.top) * (1 - r)}px, 0) scale(${r})`;
+        updateZbar(liveZ.zoom * r);
+        return;
+      }
+      if (liveZ) {
+        const L = liveZ; liveZ = null;
+        const w = $('edPage'); w.style.transform = ''; w.style.transition = ''; zAnim = false;
+        const k = Math.max(ZMIN, Math.min(ZMAX, z)) / L.zoom;
+        commitZoom(z, { left: L.cx - (L.cx - L.left) * k, top: L.cy - (L.cy - L.top) * k, width: $('edPage').getBoundingClientRect().width * k }, false);
+        return;
+      }
+      zoomAround(z);
+    },
+    presets: [[0.75, '75 %'], [1, '100 %'], [1.5, '150 %'], [2, '200 %'], [3, '300 %'], [4, '400 %']],
+    extras: [
+      { key: 'page', icon: 'fitpage', label: 'Ganze Seite', title: 'Ganze Seite zeigen', act: run(fitPage) },
+      { key: 'width', icon: 'fitwidth', label: 'Breite einpassen', title: 'Blatt so breit wie der Bildschirm', act: run(fitPageWidth) },
+      { key: 'lock', icon: 'lock', label: 'Zoom sperren', title: 'Zoom sperren: zwei Finger schieben dann nur', act: () => {
+        zLocked = !zLocked;
+        try { localStorage.setItem('zoomLock', zLocked ? '1' : '0'); } catch (e) { /* egal */ }
+        updateZbar(); toast(zLocked ? 'Zoom gesperrt. Zwei Finger schieben nur noch das Blatt.' : 'Zoom wieder frei.', 2600);
+      } },
+    ],
+  });
+  document.querySelector(`#edPanes .edpane[data-pane="${i}"]`).append(zb.el);
+  return zb;
+});
+function updateZbar(live) {
+  zbars.forEach((zb, i) => {
+    const z = i === pane ? (live != null ? live : zoom) : (stash[i] ? stash[i].zoom : 1);
+    zb.update(z);
+    zb.extra.lock.classList.toggle('on', zLocked);
+    zb.extra.lock.setAttribute('aria-pressed', zLocked ? 'true' : 'false');
+  });
+}
+
+// Doppeltipp mit dem Finger: heranzoomen (200 %) bzw. zurück zur ganzen Seite
+function fingerTapUp(e) {
+  if (!ftap || ftap.id !== e.pointerId) return false;
+  const t = ftap; ftap = null;
+  if (e.type !== 'pointerup' || Math.hypot(e.clientX - t.cx, e.clientY - t.cy) > 10 || performance.now() - t.t > 300) { lastFtap = null; return false; }
+  const now = performance.now();
+  if (lastFtap && now - lastFtap.t < 380 && Math.hypot(e.clientX - lastFtap.cx, e.clientY - lastFtap.cy) < 50) {
+    lastFtap = null;
+    if (zoom > 1.05) fitPage(); else zoomAround(2, e.clientX, e.clientY);
+    return true;
+  }
+  lastFtap = { t: now, cx: e.clientX, cy: e.clientY };
+  return false;
+}
+
+// Trackpad / Mausrad am Computer: Strg + Rad (oder Zwei-Finger-Pinch am Trackpad) zoomt am Mauszeiger
+let wheelZ = null;
+for (const [i, a] of areas.entries()) {
+  a.addEventListener('wheel', (e) => {
+    if (!(e.ctrlKey || e.metaKey) || !page) return;
+    e.preventDefault();
+    if (split && i !== pane) activate(i);
+    if (zLocked) return;
+    const w = $('edPage');
+    if (!wheelZ) { const r = w.getBoundingClientRect(); wheelZ = { zoom, left: r.left, top: r.top, r: 1, cx: e.clientX, cy: e.clientY }; zAnim = true; }
+    wheelZ.r = Math.max(ZMIN / wheelZ.zoom, Math.min(ZMAX / wheelZ.zoom, wheelZ.r * Math.exp(-e.deltaY * 0.01)));
+    const r = wheelZ.r;
+    w.style.transformOrigin = '0 0'; w.style.transition = 'none';
+    w.style.transform = `translate3d(${(wheelZ.cx - wheelZ.left) * (1 - r)}px, ${(wheelZ.cy - wheelZ.top) * (1 - r)}px, 0) scale(${r})`;
+    updateZbar(wheelZ.zoom * r);
+    clearTimeout(wheelZ.tm);
+    wheelZ.tm = setTimeout(() => {
+      const W = wheelZ; wheelZ = null;
+      const target = { left: W.left + (W.cx - W.left) * (1 - W.r), top: W.top + (W.cy - W.top) * (1 - W.r), width: w.getBoundingClientRect().width };
+      w.style.transform = ''; w.style.transition = ''; zAnim = false;
+      commitZoom(W.zoom * W.r, target, false);
+    }, 160);
+  }, { passive: false });
+  // Safari: eigene Seiten-Zoom-Geste abfangen
+  for (const ev of ['gesturestart', 'gesturechange', 'gestureend']) a.addEventListener(ev, (e) => e.preventDefault());
+}
+
+// Zoom und Stelle pro Blatt merken (nur auf diesem Gerät)
+const VIEW_KEY = 'edViews';
+function readViews() { try { return JSON.parse(localStorage.getItem(VIEW_KEY) || '{}') || {}; } catch (e) { return {}; } }
+function rememberView() {
+  if (!page || !page.id) return;
+  const sc = $('edScroll'), w = $('edPage');
+  const cssW = parseFloat(w.style.width) || w.clientWidth; if (!cssW) return;
+  const k = cssW / PAGE_W;
+  const sr = sc.getBoundingClientRect(), pr = w.getBoundingClientRect();
+  const v = readViews();
+  if (Math.abs(zoom - 1) < 0.01 && sc.scrollTop < 30) delete v[page.id];
+  else v[page.id] = [Math.round(zoom * 1000) / 1000, Math.round((sr.left - pr.left) / k), Math.round((sr.top - pr.top) / k), Date.now()];
+  const ids = Object.keys(v);
+  if (ids.length > 300) ids.sort((x, y) => v[x][3] - v[y][3]).slice(0, ids.length - 300).forEach((id) => delete v[id]);
+  try { localStorage.setItem(VIEW_KEY, JSON.stringify(v)); } catch (e) { /* egal */ }
+}
+function restoreView() {
+  if (!page) return;
+  const v = readViews()[page.id];
+  if (v) {
+    const [z, vx, vy] = v;
+    setZoom(z, false);
+    const sc = $('edScroll'), w = $('edPage'), k = (parseFloat(w.style.width) || w.clientWidth) / PAGE_W;
+    const sr = sc.getBoundingClientRect(), pr = w.getBoundingClientRect();
+    sc.scrollLeft += (pr.left + vx * k) - sr.left;
+    sc.scrollTop += (pr.top + vy * k) - sr.top;
+  }
+  layout(true);
+  updateZbar();
+}
+document.addEventListener('visibilitychange', () => { if (document.hidden && page) { rememberView(); if (split) withPane(1 - pane, rememberView); } });
 
 // ---------- Speichern ----------
 function changed() {

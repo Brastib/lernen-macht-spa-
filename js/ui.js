@@ -197,3 +197,47 @@ export function shareReady(title, name, blob, { type = 'application/pdf', hint =
   };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
 })();
+
+// ---------- Zoom-Leiste (Editor und Leser) ----------
+// Große, gut lesbare Knöpfe: −, Prozent (öffnet Feinregler), +, dazu optionale Extra-Knöpfe.
+// opts: { min, max, get(), set(z, live) – live=true während der Regler gezogen wird,
+//         presets: [[z, 'Text'], …], extras: [{ icon, label, title, act() }] }
+export function zoomBar(opts) {
+  const pct = h('button.zpct', { type: 'button', title: 'Zoom genau einstellen', 'aria-label': 'Zoomstufe' });
+  const btn = (ic, label, fn, title) => h('button.zbtn', { type: 'button', 'aria-label': label, title: title || label, on: { click: (e) => { e.stopPropagation(); fn(); } } }, icon(ic));
+  const bar = h('div.zbar', { on: { pointerdown: (e) => e.stopPropagation() } },
+    btn('zoom-out', 'Verkleinern', () => opts.set(opts.get() / 1.25)),
+    pct,
+    btn('zoom-in', 'Vergrößern', () => opts.set(opts.get() * 1.25)),
+  );
+  const extra = {};
+  if (opts.extras && opts.extras.length) {
+    bar.append(h('span.zsep'));
+    for (const x of opts.extras) { extra[x.key] = btn(x.icon, x.label, x.act, x.title); bar.append(extra[x.key]); }
+  }
+  let pop = null;
+  const closePop = () => { if (pop) { pop.remove(); pop = null; document.removeEventListener('pointerdown', outside, true); } };
+  const outside = (e) => { if (pop && !pop.contains(e.target) && e.target !== pct && !pct.contains(e.target)) closePop(); };
+  pct.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (pop) { closePop(); return; }
+    const lg = (z) => Math.log(z), un = (v) => Math.exp(v);
+    const range = h('input.zrange', { type: 'range', min: String(lg(opts.min)), max: String(lg(opts.max)), step: '0.001', value: String(lg(opts.get())), 'aria-label': 'Zoomstufe' });
+    const out = h('b.zval');
+    const show = () => { out.textContent = Math.round(un(+range.value) * 100) + ' %'; };
+    show();
+    range.addEventListener('input', () => { show(); opts.set(un(+range.value), true); });
+    range.addEventListener('change', () => { opts.set(un(+range.value), false); });
+    const chips = h('div.zchips', null, (opts.presets || []).map(([z, t]) => h('button.zchip', { type: 'button', on: { click: () => { opts.set(z); range.value = String(lg(opts.get())); show(); } } }, t)));
+    pop = h('div.zpop', { on: { pointerdown: (ev) => ev.stopPropagation() } },
+      h('div.zpophead', null, h('span', { text: 'Zoom' }), out),
+      h('div.zslide', null, h('small', { text: Math.round(opts.min * 100) + ' %' }), range, h('small', { text: Math.round(opts.max * 100) + ' %' })),
+      chips);
+    bar.append(pop);
+    setTimeout(() => document.addEventListener('pointerdown', outside, true), 0);
+  });
+  return {
+    el: bar, extra, closePop,
+    update(z) { pct.textContent = Math.round(z * 100) + ' %'; },
+  };
+}
