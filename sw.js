@@ -1,7 +1,8 @@
 // Offline-Speicher für die App selbst (nicht für deine Scans, die liegen in IndexedDB).
 // Bei jeder neuen Version VERSION erhöhen.
-const VERSION = 'v86';
+const VERSION = 'v87';
 const CACHE = 'lernapp-' + VERSION;
+const CDN_KEEP = ['/npm/@huggingface/transformers@4.3.2/', '/npm/onnxruntime-web@'];
 const FILES = [
   './',
   './index.html',
@@ -35,7 +36,7 @@ const FILES = [
   './js/plotter.js',
   './js/backup.js',
   './js/chem.js',
-  './js/lab.js', './js/plan.js', './js/speech.js', './js/calc2.js', './js/markcards.js', './js/organize.js', './js/plane.js', './js/planeworld.js', './js/games.js', './js/gpaint.js', './js/arena.js', './js/weapons.js', './js/quiz.js', './js/stack.js', './js/chess.js', './js/wall.js', './js/runner.js', './js/pgames.js', './js/sketch.js', './js/rtgames.js', './js/hsgames.js', './js/p4a.js', './js/tanks.js', './js/p4b.js', './js/p5.js', './js/p6a.js', './js/p6b.js', './js/p6c.js', './js/hub.js', './js/shipart.js', './js/p7a.js', './js/p7b.js', './js/p7c.js', './js/p7d.js', './js/p8.js', './js/gaps.js', './js/autocards.js', './js/localai.js',
+  './js/lab.js', './js/plan.js', './js/speech.js', './js/calc2.js', './js/markcards.js', './js/organize.js', './js/plane.js', './js/planeworld.js', './js/games.js', './js/gpaint.js', './js/arena.js', './js/weapons.js', './js/quiz.js', './js/stack.js', './js/chess.js', './js/wall.js', './js/runner.js', './js/pgames.js', './js/sketch.js', './js/rtgames.js', './js/hsgames.js', './js/p4a.js', './js/tanks.js', './js/p4b.js', './js/p5.js', './js/p6a.js', './js/p6b.js', './js/p6c.js', './js/hub.js', './js/shipart.js', './js/p7a.js', './js/p7b.js', './js/p7c.js', './js/p7d.js', './js/p8.js', './js/gaps.js', './js/autocards.js', './js/localai.js', './js/visionai.js', './js/mathgen.js', './js/morework.js',
   './js/kit.js', './js/physik.js', './js/nav.js',
   './vendor/fengari-web.js',
   './vendor/pdf.min.js',
@@ -52,7 +53,7 @@ self.addEventListener('install', (e) => {
 self.addEventListener('activate', (e) => {
   e.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => k.startsWith('lernapp-') && k !== CACHE).map((k) => caches.delete(k))))
+      .then((keys) => Promise.all(keys.filter((k) => k.startsWith('lernapp-') && k !== CACHE && k !== 'lernapp-cdn').map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
@@ -61,6 +62,17 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   const req = e.request;
   const url = new URL(req.url);
+  // Bild-KI-Bibliothek (feste Versionen vom CDN) einmal speichern, danach offline
+  if (req.method === 'GET' && url.hostname === 'cdn.jsdelivr.net' && CDN_KEEP.some((p) => url.pathname.startsWith(p))) {
+    e.respondWith(caches.open('lernapp-cdn').then(async (c) => {
+      const hit = await c.match(req);
+      if (hit) return hit;
+      const res = await fetch(req);
+      if (res && res.ok) c.put(req, res.clone());
+      return res;
+    }));
+    return;
+  }
   if (req.method !== 'GET' || url.origin !== location.origin) return;
   // Erinnerung für den iPad-Kalender: die App legt die .ics-Datei in die Adresse, wir liefern sie als echte Kalenderdatei aus
   if (url.pathname.includes('/kalender/') && url.searchParams.get('d')) {

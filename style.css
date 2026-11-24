@@ -3029,3 +3029,10 @@ div.acopt { cursor: default; }
 .tkshield svg { width: 16px; height: 16px; }
 .tkctrl2 .tkweap button { display: inline-flex; align-items: center; gap: 6px; }
 .tkctrl2 .tkweap svg { width: 16px; height: 16px; flex: 0 0 auto; }
+
+/* Neue Aufgaben wie dieses Blatt (morework.js) */
+.mckind.sure { color: #2f8f5b; background: rgba(47,143,91,.13); }
+.mwsol { display: flex; align-items: center; gap: 10px; margin-top: 12px; font-size: 15px; }
+.mwtext { width: 100%; min-height: 260px; font-size: 16px; line-height: 1.5; resize: vertical; margin-top: 10px; }
+.dlgbody .seg + .fieldlabel, .dlgbody .seg { margin-bottom: 6px; }
+.mwsol .hwcheck[aria-pressed="true"] .ic { background: var(--accent); box-shadow: none; stroke: var(--on-accent); }
