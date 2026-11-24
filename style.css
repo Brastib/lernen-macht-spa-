@@ -2983,3 +2983,29 @@ div.acopt { cursor: default; }
 .qgrid { grid-template-columns: repeat(var(--n, 6), minmax(0, 1fr)); }
 .qgrid > .calm { grid-column: 1 / -1; }
 @media (max-width: 640px) { .qgrid { grid-template-columns: repeat(4, minmax(0, 1fr)); } .qtile { min-height: 84px; padding: 10px 4px; } .qname { font-size: 12.5px; } .qic { width: 38px; height: 38px; } }
+
+/* ---------- Spiele: zuletzt gespielt rot, Kompakt-Ansicht (v83) ---------- */
+.ptile { position: relative; }
+.ptile.glast { box-shadow: 0 0 0 2px #e5484d, 0 6px 18px rgba(229, 72, 77, .18); background: color-mix(in srgb, #e5484d 7%, var(--surface)); }
+.ptile.glast .ptileic { background: #e5484d; color: #fff; }
+.ptile.glast::after { content: 'Zuletzt'; position: absolute; top: 10px; right: 10px; padding: 2px 8px; border-radius: 999px; background: #e5484d; color: #fff; font: 700 11px/16px var(--font); letter-spacing: .02em; }
+.gfilter { position: sticky; top: 0; z-index: 30; margin: 0 -4px; padding: calc(env(safe-area-inset-top, 0px) + 8px) 4px 8px; background: linear-gradient(var(--bg) 85%, color-mix(in srgb, var(--bg) 0%, transparent)); }
+.gfindrow { display: flex; gap: 10px; align-items: center; }
+.gfindrow .gfind { flex: 1; min-width: 0; max-width: none; }
+.gsize { flex: none; white-space: nowrap; }
+.gcompact .gamesec .ptiles.gtiles { grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 8px; }
+.gcompact .gamesec .ptiles.gtiles > .ptile { flex-direction: row; align-items: center; gap: 10px; min-height: 58px; padding: 9px 12px; border-radius: 14px; }
+.gcompact .gamesec .ptiles.gtiles > .ptile .ptileic { width: 34px; height: 34px; margin: 0; flex: none; border-radius: 10px; }
+.gcompact .gamesec .ptiles.gtiles > .ptile .ptileic .ic { width: 19px; height: 19px; }
+.gcompact .gamesec .ptiles.gtiles > .ptile b { min-width: 0; font-size: 14.5px; line-height: 1.2; overflow-wrap: anywhere; }
+.gcompact .gamesec .ptiles.gtiles > .ptile small { display: none; }
+.gcompact .gamesec .ptile.glast::after { top: -7px; right: 8px; font-size: 10px; line-height: 14px; padding: 1px 6px; }
+@media (max-width: 560px) { .gsize span { display: none; } .gcompact .gamesec .ptiles.gtiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@keyframes cameback { 0% { box-shadow: 0 0 0 3px var(--accent); } 100% { box-shadow: 0 0 0 1px var(--line); } }
+.cameback { animation: cameback 1.6s ease-out both; }
+.gcompact .gamesec .kbbadge { position: static; order: 3; margin-left: auto; flex: none; width: 24px; height: 24px; }
+.ptile.glast .kbbadge { top: 34px; }
+.gcompact .gamesec .ptile.glast .kbbadge { top: auto; }
+.gcompact .gamesec .ptiles.gtiles { grid-template-columns: repeat(auto-fill, minmax(182px, 1fr)); }
+.gcompact .gamesec .ptiles.gtiles > .ptile b { overflow-wrap: normal; word-break: normal; -webkit-hyphens: auto; hyphens: auto; }
+@media (max-width: 560px) { .gcompact .gamesec .ptiles.gtiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
