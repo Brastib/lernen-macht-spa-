@@ -28,6 +28,10 @@ export const GAMES = {
   paint: { name: 'Malraten', icon: 'pen', sub: 'Einer malt, der andere rät', run: (...a) => import('./p4b.js').then((m) => m.paintGuess(...a)) },
   ships: { name: 'Schiffe versenken', icon: 'ship', sub: 'Flotte verstecken, Treffer landen', run: (...a) => import('./p4a.js').then((m) => m.ships(...a)) },
   pool: { name: 'Karo-Billard', icon: 'pool', sub: 'Kugeln einlochen, wer holt mehr Punkte?', run: (...a) => import('./p5.js').then((m) => m.pool(...a)) },
+  inkpath: { name: 'Tintenbahn', icon: 'inkpath', sub: 'Linien malen, Kugel in den Becher', run: (...a) => import('./p9.js').then((m) => m.inkpath(...a)) },
+  memo: { name: 'Pärchenjagd', icon: 'memo', sub: 'Karten aufdecken, Paare finden', run: (...a) => import('./p9.js').then((m) => m.pairs(...a)) },
+  bin: { name: 'Korbwurf', icon: 'bin', sub: 'Papierkugel in den Papierkorb werfen', run: (...a) => import('./p9.js').then((m) => m.binToss(...a)) },
+  pick: { name: 'Stiftezupfen', icon: 'pick', sub: 'Nur Stifte nehmen, auf denen keiner liegt', run: (...a) => import('./p9.js').then((m) => m.pickup(...a)) },
   kick: { name: 'Kritzelkick', icon: 'ball', sub: 'Fußball mit zwei Strichfiguren', run: (...a) => import('./p5.js').then((m) => m.kick(...a)) },
   race: { name: 'Papierrennen', icon: 'car', sub: 'Strecke malen, 3 Runden, Tastatur', kbd: true, run: (...a) => import('./p6a.js').then((m) => m.race(...a)) },
   sumo: { name: 'Kissenschlacht', icon: 'pillow', sub: 'Den anderen aus dem Ring hauen, Tastatur', kbd: true, run: (...a) => import('./p6a.js').then((m) => m.sumo(...a)) },
@@ -47,7 +51,7 @@ export const GAMES = {
   kart: { name: 'Kritzel-Kart', icon: 'golfcart', sub: 'Golfwagen-Rennen, Hindernisse malen', run: (...a) => import('./p7d.js').then((m) => m.kart(...a)) },
   quiz: { name: 'Quiz', icon: 'cards', sub: 'Wer kann den Stoff? Fragen aus euren Lernkarten', run: (...a) => import('./quiz.js').then((m) => m.quizDuel(...a)) },
 };
-const MIX = ['ttt', 'wind', 'stack', 'four', 'pong', 'run', 'react', 'snake', 'plane', 'boxes', 'hockey', 'wall', 'trail', 'double', 'blocks', 'brick', 'golf', 'tanks', 'paint', 'ships', 'pool', 'kick', 'bombs', 'race', 'sumo', 'archery', 'space', 'tower', 'dame', 'muehle', 'flipper', 'hang', 'parkour', 'erasers', 'kart', 'arena'];
+const MIX = ['ttt', 'wind', 'stack', 'four', 'pong', 'run', 'react', 'snake', 'plane', 'boxes', 'hockey', 'wall', 'trail', 'double', 'blocks', 'brick', 'golf', 'tanks', 'paint', 'ships', 'pool', 'kick', 'bombs', 'race', 'sumo', 'archery', 'space', 'tower', 'dame', 'muehle', 'flipper', 'hang', 'parkour', 'erasers', 'kart', 'inkpath', 'memo', 'bin', 'pick', 'arena'];
 
 const players = () => store.get('gPlayers', []);
 const names = () => store.get('gNames', []);
@@ -162,7 +166,13 @@ export async function renderGames(ctx) {
     soloTile('gallows', 'Galgenmännchen', best('gHangBest') ? `Dein Rekord: ${best('gHangBest')} Wörter am Stück` : 'Wörter raten, auch eigene Vokabeln', () => soloScore('hang')),
     soloTile('parkour', 'Kritzel-Parkour', best('gParkBest') ? `Dein Rekord: ${String(best('gParkBest')).replace('.', ',')} s` : 'Hindernis-Kurs so schnell wie möglich', () => soloScore('parkour')),
     soloTile('eraser', 'Radierer-Rabatz', 'Dein Team gegen den Computer', () => vsCpu('erasers')),
-    soloTile('golfcart', 'Kritzel-Kart', 'Golfwagen-Rennen gegen den Computer', () => vsCpu('kart'))));
+    soloTile('golfcart', 'Kritzel-Kart', 'Golfwagen-Rennen gegen den Computer', () => vsCpu('kart')),
+    soloTile('inkpath', 'Tintenbahn', best('gInkBest') ? `Dein Rekord: ${best('gInkBest')} Punkte` : '6 Bahnen, so wenig Tinte wie möglich', () => soloScore('inkpath')),
+    soloTile('memo', 'Pärchenjagd', best('gPairBest') ? `Dein Rekord: ${best('gPairBest')} Züge` : 'Alle Paare mit wenig Zügen', () => soloScore('memo')),
+    soloTile('memo', 'Pärchenjagd', 'Gegen den Computer', () => vsCpu('memo')),
+    soloTile('bin', 'Korbwurf', best('gBinBest') ? `Dein Rekord: ${best('gBinBest')} Punkte` : '10 Würfe, so viele Punkte wie möglich', () => soloScore('bin')),
+    soloTile('pick', 'Stiftezupfen', best('gPickBest') ? `Dein Rekord: ${best('gPickBest')} Punkte` : 'Stifte sammeln, 3 Wackler erlaubt', () => soloScore('pick')),
+    soloTile('pick', 'Stiftezupfen', 'Gegen den Computer', () => vsCpu('pick'))));
 
   // Partyspiele reihum
   view.append(h('h2.section', { text: 'Partyspiele (reihum, 2 bis 8)' }), h('div.ptiles.gtiles', null,
@@ -225,7 +235,7 @@ function playerSheet(title, { withGame = false, okLabel = 'Sichern' } = {}) {
       list, dl);
     if (withGame) {
       const seg = h('div.gseg.gseg6');
-      const opts = [['ttt', 'Tic-Tac-Toe'], ['wind', 'Windflug'], ['plane', 'Flieger'], ['arena', 'Strichkampf'], ['stack', 'Hochstapler'], ['run', 'Kritzelsprint'], ['react', 'Reaktion'], ['four', 'Vier in Reihe'], ['boxes', 'Kästchen'], ['pong', 'Tischtennis'], ['hockey', 'Lufthockey'], ['snake', 'Schlangen'], ['trail', 'Leuchtspur'], ['double', 'Verdoppler'], ['blocks', 'Klötzchen'], ['brick', 'Blockknacker'], ['golf', 'Kritzelgolf'], ['tanks', 'Panzer'], ['paint', 'Malraten'], ['ships', 'Schiffe'], ['pool', 'Billard'], ['kick', 'Kritzelkick'], ['bombs', 'Bomben'], ['race', 'Rennen'], ['sumo', 'Kissenschlacht'], ['archery', 'Windbogen'], ['space', 'Sternenduell'], ['tower', 'Burgwache'], ['dame', 'Dame'], ['muehle', 'Mühle'], ['flipper', 'Flipper'], ['hang', 'Galgenmännchen'], ['parkour', 'Parkour'], ['erasers', 'Radierer'], ['kart', 'Kritzel-Kart'], ['chess', 'Schach'], ['wall', 'Mauerlauf'], ['quiz', 'Quiz'], ['mix', 'Gemischt']];
+      const opts = [['ttt', 'Tic-Tac-Toe'], ['wind', 'Windflug'], ['plane', 'Flieger'], ['arena', 'Strichkampf'], ['stack', 'Hochstapler'], ['run', 'Kritzelsprint'], ['react', 'Reaktion'], ['four', 'Vier in Reihe'], ['boxes', 'Kästchen'], ['pong', 'Tischtennis'], ['hockey', 'Lufthockey'], ['snake', 'Schlangen'], ['trail', 'Leuchtspur'], ['double', 'Verdoppler'], ['blocks', 'Klötzchen'], ['brick', 'Blockknacker'], ['golf', 'Kritzelgolf'], ['tanks', 'Panzer'], ['paint', 'Malraten'], ['ships', 'Schiffe'], ['pool', 'Billard'], ['kick', 'Kritzelkick'], ['bombs', 'Bomben'], ['race', 'Rennen'], ['sumo', 'Kissenschlacht'], ['archery', 'Windbogen'], ['space', 'Sternenduell'], ['tower', 'Burgwache'], ['dame', 'Dame'], ['muehle', 'Mühle'], ['flipper', 'Flipper'], ['hang', 'Galgenmännchen'], ['parkour', 'Parkour'], ['erasers', 'Radierer'], ['kart', 'Kritzel-Kart'], ['inkpath', 'Tintenbahn'], ['memo', 'Pärchenjagd'], ['bin', 'Korbwurf'], ['pick', 'Stiftezupfen'], ['chess', 'Schach'], ['wall', 'Mauerlauf'], ['quiz', 'Quiz'], ['mix', 'Gemischt']];
       const drawSeg = () => seg.replaceChildren(...opts.map(([k, l]) => h('button' + (k === game ? '.on' : ''), { text: l, on: { click: () => { game = k; drawSeg(); } } })));
       drawSeg();
       const pw = h('label.gswitch', null, h('span', null, h('b', { text: 'Power-ups beim Papierflieger' }), h('small', { text: 'Vor jedem Wurf eins aus drei wählen, dazu Kugeln in der Luft' })),
@@ -386,6 +396,10 @@ const SOLO = {
   flipper: { title: 'Kritzelflipper', key: 'gFlipBest', run: (fx, p) => import('./p6c.js').then((m) => m.flipper(fx, p, null)), fmt: (x) => `${x} ${x === 1 ? 'Punkt' : 'Punkte'}` },
   hang: { title: 'Galgenmännchen', key: 'gHangBest', run: (fx, p) => import('./p7a.js').then((m) => m.hangman(fx, p, null)), fmt: (x) => `${x} ${x === 1 ? 'Wort' : 'Wörter'}` },
   parkour: { title: 'Kritzel-Parkour', key: 'gParkBest', low: true, run: (fx, p) => import('./p7b.js').then((m) => m.parkour(fx, p, null)), fmt: (x) => `${String(x).replace('.', ',')} s` },
+  inkpath: { title: 'Tintenbahn', key: 'gInkBest', run: (fx, p) => import('./p9.js').then((m) => m.inkpath(fx, p, null)), fmt: (x) => `${x} ${x === 1 ? 'Punkt' : 'Punkte'}` },
+  memo: { title: 'Pärchenjagd', key: 'gPairBest', low: true, run: (fx, p) => import('./p9.js').then((m) => m.pairs(fx, p, null)), fmt: (x) => `${x} ${x === 1 ? 'Zug' : 'Züge'}` },
+  bin: { title: 'Korbwurf', key: 'gBinBest', run: (fx, p) => import('./p9.js').then((m) => m.binToss(fx, p, null)), fmt: (x) => `${x} ${x === 1 ? 'Punkt' : 'Punkte'}` },
+  pick: { title: 'Stiftezupfen', key: 'gPickBest', run: (fx, p) => import('./p9.js').then((m) => m.pickup(fx, p, null)), fmt: (x) => `${x} ${x === 1 ? 'Punkt' : 'Punkte'}` },
   plane: { title: 'Papierflieger', get key() { const w = store.get('gPlaneWorld', 'desk'); return w === 'free' ? 'gPlaneBest' : 'gPlaneBest_' + w; }, run: (fx, p) => planeDuel(fx, p, null), fmt: (x) => x.toFixed(1).replace('.', ',') + ' m' },
 };
 async function soloScore(k) {

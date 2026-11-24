@@ -121,7 +121,7 @@ export const CATS = [
   ['malen', 'Malen & Raten', 'pen', 'Malraten und Partyspiele'],
 ];
 const GAME_CAT = {
-  'Windflug': 'tempo', 'Papierflieger': 'tempo', 'Kritzelsprint': 'tempo', 'Papierrennen': 'tempo', 'Kritzel-Parkour': 'tempo', 'Kritzel-Kart': 'tempo', 'Schlangenduell': 'tempo', 'Leuchtspur': 'tempo',
+  'Windflug': 'tempo', 'Papierflieger': 'tempo', 'Kritzelsprint': 'tempo', 'Papierrennen': 'tempo', 'Kritzel-Parkour': 'tempo', 'Kritzel-Kart': 'tempo', 'Schlangenduell': 'tempo', 'Leuchtspur': 'tempo', 'Korbwurf': 'geschick', 'Stiftezupfen': 'geschick', 'Tintenbahn': 'denken', 'Pärchenjagd': 'denken',
   'Tic-Tac-Toe': 'denken', 'Schach': 'denken', 'Mauerlauf': 'denken', 'Vier in einer Reihe': 'denken', 'Kästchen erobern': 'denken', 'Dame': 'denken', 'Mühle': 'denken', 'Schiffe versenken': 'denken', 'Galgenmännchen': 'denken', 'Verdoppler': 'denken',
   'Hochstapler': 'geschick', 'Reaktionstest': 'geschick', 'Klötzchenregen': 'geschick', 'Blockknacker': 'geschick', 'Kritzelflipper': 'geschick', 'Karo-Billard': 'geschick', 'Kritzelgolf': 'geschick', 'Windbogen': 'geschick',
   'Strichkampf': 'kampf', 'Tischtennis': 'kampf', 'Lufthockey': 'kampf', 'Papierpanzer': 'kampf', 'Kritzelkick': 'kampf', 'Bombenlabyrinth': 'kampf', 'Kissenschlacht': 'kampf', 'Sternenduell': 'kampf', 'Burgwache': 'kampf', 'Radierer-Rabatz': 'kampf',
