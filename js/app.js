@@ -2,7 +2,7 @@
 import { resumeVplanSetup, vplanCfg } from './vplan.js';
 import { renderMessages, unreadCount } from './messages.js';
 import * as db from './db.js';
-const APP_VERSION = '81';   // gleich wie VERSION in sw.js
+const APP_VERSION = '82';   // gleich wie VERSION in sw.js
 import { openEditor } from './editor.js';
 import { renderPage, PAPERS } from './paper.js';
 import { detectPage, defaultCorners } from './scanner.js';
@@ -23,6 +23,7 @@ import { importPdf, exportPdf } from './pdfio.js';
 import { ocrPages, needsOcr, snippet, needsInk, hasInk, readInk, fuzzyFind } from './ocr.js';
 import { renderCodeList } from './code.js';
 import { renderReminders, dueBanner, startReminderWatch, editReminder } from './reminders.js';
+import { areaBar, homeTab, features, matchFeatures, quickRow, gameHome } from './nav.js';
 
 // ---------- Vorlagen ----------
 const PALETTE = ['#3b6fd8', '#d0493f', '#2f9e8f', '#6c5bd4', '#3f9b4f', '#c0752a', '#2f8fb3', '#b0577a', '#8a6d3b', '#5f6673'];
@@ -89,7 +90,7 @@ async function render() {
   if (nav.view === 'subject') return renderSubject();
   if (nav.view === 'code') return renderCodeList({ setHeader, btn, go });
   if (nav.view === 'reminders') return renderReminders({ setHeader, btn, go, saveFile });
-  if (nav.view === 'games') return import('./games.js').then((m) => m.renderGames({ setHeader, btn, iconBtn, go }));
+  if (nav.view === 'games') { const launch = nav.launch; delete nav.launch; return import('./games.js').then((m) => m.renderGames({ setHeader, btn, iconBtn, go, launch })); }
   if (nav.view === 'kit') return renderKit({ setHeader, btn, iconBtn, go }, nav.tab);
   if (nav.view === 'timetable') return renderTimetable({ setHeader, btn, iconBtn, go });
   if (nav.view === 'messages') return renderMessages({ setHeader, btn, iconBtn, go });
@@ -134,84 +135,121 @@ async function renderLibrary() {
 
   const view = $('view');
   view.textContent = '';
-  view.classList.toggle('enter', lastView !== 'library');
-  lastView = 'library';
-  const banner = await dueBanner({ go });
-  if (banner) view.append(banner);
-  const bk = await backupBanner({ saveFile, after: render });
-  if (bk) view.append(bk);
-  const fp = focusPill(go);
-  if (fp) view.append(fp);
-  if (subjects.length) view.append(h('section.dashrow', null, await nowCard({ go, subjects }), await examCard({ go, subjects })));
-  if (subjects.length) view.append(await weekCard({ go, subjects, after: render }));
-  if (subjects.length) await todaySection(view, subjects);
-  if (!subjects.length) {
-    view.append(h('section.empty', null,
-      h('div.emptyart', { 'aria-hidden': 'true' }, h('span'), h('span'), h('span')),
-      h('h2', { text: 'Leg dein erstes Fach an' }),
-      h('p', { text: 'In jedes Fach kommen deine Bücher, Hefte und Mappen. Tipp ein Fach an, um es anzulegen.' }),
-      presetChips([], () => render())));
-  } else {
-    const grid = h('div.subjects');
-    const [hwAll, exAll] = await Promise.all([db.listHomework(), db.listExams()]);
-    const todayIso = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
-    for (const s of subjects) {
-      const sb = books.filter((b) => b.subjectId === s.id);
-      const n = all.filter((p) => sb.some((b) => b.id === p.bookId)).length;
-      const nHw = hwAll.filter((x) => x.subjectId === s.id && !x.done).length;
-      const nEx = exAll.filter((x) => x.subjectId === s.id && x.date >= todayIso).length;
-      grid.append(h('button.subject', { style: { '--c': s.color }, on: { click: () => go({ view: 'subject', subject: s }) } },
-        (nHw || nEx) ? h('span.sbadges', null, nEx ? h('em.sbadge.ex', { text: nEx > 1 ? `${nEx} Arbeiten` : 'Arbeit' }) : null, nHw ? h('em.sbadge', { text: `${nHw} HA` }) : null) : null,
-        h('span.mono', { text: s.name.slice(0, 2) }),
-        h('span.sname', { text: s.name }),
-        h('span.smeta', { text: `${plural(sb.length, 'Buch', 'Bücher')} · ${plural(n, 'Seite', 'Seiten')}` })));
-    }
-    grid.append(h('button.subject.add', { on: { click: () => addSubjectFlow() } }, icon('plus'), h('span.sname', { text: 'Fach hinzufügen' })));
-    view.append(h('h2.section', { text: 'Fächer' }), grid);
-  }
-
-  // Planer
-  const [rems, exams, grades] = await Promise.all([db.listReminders(), db.listExams(), db.listGrades()]);
-  const openRems = rems.filter((r) => !r.done).length;
+  const tab = homeTab();
+  view.classList.toggle('enter', lastView !== 'library' || lastTab !== tab);
+  lastView = 'library'; lastTab = tab;
   const sphOn = !!((await vplanCfg()) || {}).url, unread = sphOn ? await unreadCount() : 0;
-  const tile = (cls, ic, title, sub, view) => h('button.ptile' + cls, { on: { click: () => go({ view }) } }, h('span.ptileic', null, icon(ic)), h('b', { text: title }), h('small', { text: sub }));
-  view.append(h('h2.section', { text: 'Planer' }), h('div.ptiles', null,
-    tile('', 'grid', 'Stundenplan', 'Fächer, Räume, Zeiten', 'timetable'),
-    tile('', 'bookmark', 'Arbeiten', exams.length ? plural(exams.filter((x) => x.date >= new Date().toISOString().slice(0, 10)).length, 'geplant', 'geplant') : 'Arbeiten und Präsentationen', 'exams'),
-    tile('', 'homework', 'Noten', grades.length ? plural(grades.length, 'Note', 'Noten') : 'Schnitt pro Fach', 'grades'),
-    tile('.rementry', 'clock', 'Erinnerungen', openRems ? `${openRems} offen` : 'Für alles, was du nicht vergessen willst', 'reminders'),
-    sphOn ? tile('', 'inbox', 'Nachrichten', unread ? `${unread} ungelesen` : 'Schulportal', 'messages') : null));
-  // Werkzeuge
-  view.append(h('h2.section', { text: 'Werkzeuge' }), h('div.ptiles.kit', null,
-    ...KIT_TABS.map(([k, l, ic, sub]) => h('button.ptile', { on: { click: () => go({ view: 'kit', tab: k }) } }, h('span.ptileic', null, icon(ic)), h('b', { text: l }), h('small', { text: sub })))));
-  view.append(h('button.gbanner', { on: { click: () => go({ view: 'games' }) } }, h('span.ptileic', null, icon('game')), h('span.gbantx', null, h('b', { text: 'Games' }), h('small', { text: 'Turnier, Tic-Tac-Toe, Windflug, Papierflieger, Strichkampf' })), icon('right')));
+  const feats = features(featureActs(sphOn));
+  view.append(areaBar(tab, () => render(), { faecher: inbox.length, planer: unread }));
 
-  // Programmieren
-  const nCode = (await db.listCode()).length;
-  view.append(h('h2.section', { text: 'Programmieren' }),
-    h('button.inbox.codeentry', { on: { click: () => go({ view: 'code' }) } },
-      h('span.codeicon', null, icon('code')),
-      h('span.inboxtext', null,
-        h('b', { text: 'Code' }),
-        h('small', { text: nCode ? `${plural(nCode, 'Projekt', 'Projekte')} · Web, Python, Lua` : 'Kleine Spiele und Programme bauen: Web, Python, Lua' }))));
+  const emptyStart = () => h('section.empty', null,
+    h('div.emptyart', { 'aria-hidden': 'true' }, h('span'), h('span'), h('span')),
+    h('h2', { text: 'Leg dein erstes Fach an' }),
+    h('p', { text: 'In jedes Fach kommen deine Bücher, Hefte und Mappen. Tipp ein Fach an, um es anzulegen.' }),
+    presetChips([], () => render()));
 
-  // Eingang: Seiten, die noch keinem Buch zugeordnet sind (Versionshinweis kommt ganz ans Ende)
-  if (inbox.length) {
-    const strip = h('div.strip');
-    for (const p of inbox.slice(0, 8)) {
-      const img = h('img', { alt: '' });
-      setThumb(img, p.id);
-      strip.append(h('span.mini', null, img));
-    }
-    view.append(
-      h('div.colhead.inboxhead', null, h('h2.section', { text: 'Eingang' }), h('button.txt.strong', { on: { click: () => go({ view: 'sort' }) } }, 'Einsortieren →')),
-      h('button.inbox', { on: { click: () => go({ view: 'book', book: { id: INBOX, title: 'Eingang', kind: 'inbox' } }) } },
-        h('span.inboxtext', null,
-          h('b', { text: plural(inbox.length, 'Seite', 'Seiten') + ' noch nicht einsortiert' }),
-          h('small', { text: 'Tippe auf „Einsortieren“: Die App schlägt das Fach vor' })),
-        strip));
+  if (tab === 'heute') {
+    const banner = await dueBanner({ go });
+    if (banner) view.append(banner);
+    const bk = await backupBanner({ saveFile, after: render });
+    if (bk) view.append(bk);
+    const fp = focusPill(go);
+    if (fp) view.append(fp);
+    view.append(quickRow(feats, render));
+    if (subjects.length) {
+      view.append(h('section.dashrow', null, await nowCard({ go, subjects }), await examCard({ go, subjects })));
+      view.append(await weekCard({ go, subjects, after: render }));
+      await todaySection(view, subjects);
+    } else view.append(emptyStart());
+    if (inbox.length) view.append(inboxCard(inbox));
   }
+
+  if (tab === 'faecher') {
+    if (!subjects.length) view.append(emptyStart());
+    else {
+      const grid = h('div.subjects');
+      const [hwAll, exAll] = await Promise.all([db.listHomework(), db.listExams()]);
+      const todayIso = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+      for (const s of subjects) {
+        const sb = books.filter((b) => b.subjectId === s.id);
+        const n = all.filter((p) => sb.some((b) => b.id === p.bookId)).length;
+        const nHw = hwAll.filter((x) => x.subjectId === s.id && !x.done).length;
+        const nEx = exAll.filter((x) => x.subjectId === s.id && x.date >= todayIso).length;
+        grid.append(h('button.subject', { style: { '--c': s.color }, on: { click: () => go({ view: 'subject', subject: s }) } },
+          (nHw || nEx) ? h('span.sbadges', null, nEx ? h('em.sbadge.ex', { text: nEx > 1 ? `${nEx} Arbeiten` : 'Arbeit' }) : null, nHw ? h('em.sbadge', { text: `${nHw} HA` }) : null) : null,
+          h('span.mono', { text: s.name.slice(0, 2) }),
+          h('span.sname', { text: s.name }),
+          h('span.smeta', { text: `${plural(sb.length, 'Buch', 'Bücher')} · ${plural(n, 'Seite', 'Seiten')}` })));
+      }
+      grid.append(h('button.subject.add', { on: { click: () => addSubjectFlow() } }, icon('plus'), h('span.sname', { text: 'Fach hinzufügen' })));
+      view.append(h('h2.section', { text: 'Fächer' }), grid);
+    }
+    if (inbox.length) view.append(inboxCard(inbox));
+  }
+
+  const tile = (cls, ic, title, sub, onClick) => h('button.ptile' + cls, { on: { click: onClick } }, h('span.ptileic', null, icon(ic)), h('b', { text: title }), h('small', { text: sub }));
+  if (tab === 'planer') {
+    const [rems, exams, grades] = await Promise.all([db.listReminders(), db.listExams(), db.listGrades()]);
+    const openRems = rems.filter((r) => !r.done).length;
+    view.append(h('h2.section', { text: 'Planer' }), h('div.ptiles', null,
+      tile('', 'grid', 'Stundenplan', 'Fächer, Räume, Zeiten', () => go({ view: 'timetable' })),
+      tile('', 'bookmark', 'Arbeiten', exams.length ? plural(exams.filter((x) => x.date >= new Date().toISOString().slice(0, 10)).length, 'geplant', 'geplant') : 'Arbeiten und Präsentationen', () => go({ view: 'exams' })),
+      tile('', 'homework', 'Noten', grades.length ? plural(grades.length, 'Note', 'Noten') : 'Schnitt pro Fach', () => go({ view: 'grades' })),
+      tile('.rementry', 'clock', 'Erinnerungen', openRems ? `${openRems} offen` : 'Für alles, was du nicht vergessen willst', () => go({ view: 'reminders' })),
+      sphOn ? tile('', 'inbox', 'Nachrichten', unread ? `${unread} ungelesen` : 'Schulportal', () => go({ view: 'messages' })) : null));
+    if (subjects.length) view.append(await weekCard({ go, subjects, after: render }));
+  }
+
+  if (tab === 'werkzeuge') {
+    const nCode = (await db.listCode()).length;
+    view.append(h('h2.section', { text: 'Werkzeuge' }), h('div.ptiles.kit.kitall', null,
+      ...KIT_TABS.map(([k, l, ic, sub]) => tile('', ic, l, sub, () => go({ view: 'kit', tab: k }))),
+      tile('', 'code', 'Programmieren', nCode ? `${plural(nCode, 'Projekt', 'Projekte')} · Web, Python, Lua` : 'Spiele und Programme bauen: Web, Python, Lua', () => go({ view: 'code' }))));
+    view.append(h('h2.section', { text: 'Einstellungen' }), h('div.ptiles', null,
+      tile('', 'save', 'Sicherung', 'Alles sichern oder laden', () => backupSheet({ saveFile, onLoad: () => $('fileBackup').click(), after: render })),
+      tile('', 'moon', 'Darstellung', 'Hell oder dunkel', () => themeSheet()),
+      tile('', 'bolt', 'Lokale KI', 'Für Lernkarten aus Text', async () => (await import('./autocards.js')).aiSettingsSheet()),
+      tile('', 'search', 'Texterkennung', 'Text in allen Scans erkennen', async () => ocrFlow(await db.listAllPages()))));
+  }
+
+  if (tab === 'spiele') {
+    view.append(h('button.gbanner', { on: { click: () => { try { localStorage.setItem('gCat', '"alle"'); } catch (e) { /* egal */ } go({ view: 'games' }); } } }, h('span.ptileic', null, icon('game')), h('span.gbantx', null, h('b', { text: 'Alle Spiele' }), h('small', { text: 'Turnier, Quiz, allein, Partyspiele und Duelle zu zweit' })), icon('right')));
+    view.append(...gameHome(go));
+  }
+
   view.append(h('p.appversion', { text: 'Version ' + APP_VERSION }));
+}
+
+let lastTab = null;
+// Eingang: Seiten, die noch keinem Buch zugeordnet sind
+function inboxCard(inbox) {
+  const strip = h('div.strip');
+  for (const p of inbox.slice(0, 8)) {
+    const img = h('img', { alt: '' });
+    setThumb(img, p.id);
+    strip.append(h('span.mini', null, img));
+  }
+  return h('section.inboxsec', null,
+    h('div.colhead.inboxhead', null, h('h2.section', { text: 'Eingang' }), h('button.txt.strong', { on: { click: () => go({ view: 'sort' }) } }, 'Einsortieren →')),
+    h('button.inbox', { on: { click: () => go({ view: 'book', book: { id: INBOX, title: 'Eingang', kind: 'inbox' } }) } },
+      h('span.inboxtext', null,
+        h('b', { text: plural(inbox.length, 'Seite', 'Seiten') + ' noch nicht einsortiert' }),
+        h('small', { text: 'Tippe auf „Einsortieren“: Die App schlägt das Fach vor' })),
+      strip));
+}
+// Was die Funktions-Suche und der Schnellzugriff ausführen können
+function featureActs(sphOn) {
+  return {
+    go, sphOn,
+    tab: (k) => { try { localStorage.setItem('homeTab', JSON.stringify(k)); } catch (e) { /* egal */ } go({ view: 'library' }); },
+    scan: () => startScan(INBOX, 'camera'),
+    note: () => quickNote(),
+    worksheet: () => worksheetScan(),
+    addSubject: () => addSubjectFlow(),
+    backup: () => backupSheet({ saveFile, onLoad: () => $('fileBackup').click(), after: render }),
+    theme: () => themeSheet(),
+    ai: async () => (await import('./autocards.js')).aiSettingsSheet(),
+  };
 }
 
 // "Heute": offene Hausaufgaben und fällige Lernkarten über alle Fächer
@@ -619,12 +657,17 @@ async function searchFlow() {
   const sub = new Map(subjects.map((s) => [s.id, s]));
   const bookMap = new Map(books.map((b) => [b.id, b]));
   const norm = (t) => t.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const feats = features(featureActs(!!((await vplanCfg()) || {}).url));
   await sheet('Suchen', (body, close) => {
-    const input = h('input.field', { type: 'search', placeholder: 'Fach, Buch, Wort auf einer Seite, Vokabel …', id: 'searchField', autocomplete: 'off' });
+    const input = h('input.field', { type: 'search', placeholder: 'Funktion, Fach, Buch, Wort auf einer Seite …', id: 'searchField', autocomplete: 'off' });
     const list = h('div.targets.results');
     const show = () => {
       const q = norm(input.value.trim());
       list.textContent = '';
+      for (const f of matchFeatures(feats, q).slice(0, 8)) {
+        list.append(h('button.target.feat', { on: { click: () => { close(true); f.run(); } } },
+          icon(f.ic), h('span', { text: f.name }), h('small', { text: f.game ? 'Spiel' : 'Funktion · ' + f.area })));
+      }
       const hitsS = subjects.filter((s) => !q || norm(s.name).includes(q));
       const hitsB = books.filter((b) => q && (norm(b.title).includes(q) || norm(sub.get(b.subjectId)?.name || '').includes(q)));
       for (const s of hitsS) {

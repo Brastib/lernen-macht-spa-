@@ -1,5 +1,6 @@
 // Games: Spieler, Duelle (Tic-Tac-Toe, Windflug, Papierflieger) und Turnier „jeder gegen jeden“.
 import { $, h, icon, sheet, menu, toast, confirmSheet } from './ui.js';
+import { enhanceGames } from './nav.js';
 
 const COLORS = ['#4f7cff', '#ff6b5a', '#2fbf71', '#f2b632', '#a46bff', '#ff7ac8', '#21b8c9', '#8a8f98'];
 const store = {
@@ -195,6 +196,8 @@ export async function renderGames(ctx) {
       h('button.gskinbtn', { title: 'Skin für Windflug malen', 'aria-label': `Skin für ${p.name} malen`, on: { click: async () => { if (await skinEditor(p)) again(); } } },
         skinOf(p.name) ? h('img', { src: skinOf(p.name), alt: '' }) : icon('pen'), h('span', { text: 'Skin' }))))));
   }
+  enhanceGames(view, ctx.launch);
+  ctx.launch = null;
 }
 const dot = (p) => h('span.gdot', { style: { background: p.color } });
 const num = (n, l) => h('span.gnum', null, h('b', { text: String(n) }), h('small', { text: l }));
