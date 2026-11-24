@@ -79,6 +79,7 @@ async function close() {
   await Promise.all(saves);
   const closed = usedSplit ? null : page;   // null: Bibliothek erneuert alle Vorschaubilder
   if (split) endSplit(false);
+  if (LP.on) lpShow(false);
   $('editor').hidden = true;
   page = null; bg = null; strokes = [];
   if (onCloseCb) onCloseCb(closed);
@@ -111,6 +112,7 @@ function activate(i) {
   pane = i;
   put(stash[i]); stash[i] = null;
   updateToolbar(); updatePaneHeads();
+  lpSync();
 }
 
 async function startSplit() {
@@ -325,6 +327,7 @@ function updateToolbar() {
   $('edSplit').classList.toggle('on', split);
   $('edSplit').setAttribute('aria-label', split ? 'Geteilte Ansicht beenden' : 'Zweites Blatt daneben');
   $('edSplit').title = split ? 'Rechtes Blatt schließen' : 'Zweites Blatt daneben öffnen';
+  lpUpdateUi();
 }
 
 $('ed_pen').addEventListener('click', () => setTool('pen'));
@@ -489,6 +492,7 @@ function layout(rerender) {
   drawSel();
   styleText();
   renderBand(true);
+  lpSync();
 }
 
 // Lange Seiten: Die Zeichenflächen decken nur den sichtbaren Bereich (plus Rand) ab, nicht die ganze Seite.
@@ -583,10 +587,12 @@ function redrawInk() {
     }
     drawStroke(ctx, st, s);
   }
+  lpRefresh();
 }
 
 function clearLive() {
   wipe($('edLive'));
+  if (LP.on) lpWipe('lpLive');
 }
 
 // Zeichnet höchstens einmal pro Bildschirm-Bild (schnell, auch bei langen Strichen).
@@ -599,9 +605,11 @@ function scheduleLive() {
     if (cur.tool === 'marker') {
       clearLive();
       drawStroke(ctx, cur, scale());
+      if (cur.lupe) lpLiveDraw(cur, 3);
     } else {
       // Stift: nur die neuen Stücke zeichnen
       drawStroke(ctx, cur, scale(), liveFrom, false);
+      if (cur.lupe) lpLiveDraw(cur, liveFrom);
       liveFrom = Math.max(3, cur.pts.length);
     }
   });
@@ -813,6 +821,7 @@ function finishStroke() {
     drawStroke($('edInk').getContext('2d'), st, scale());
     undo.push({ type: 'add', stroke: st }); redo = [];
     changed();
+    if (c.lupe) lpAfter(st);
   }
   clearLive();
   updateToolbar();
@@ -1720,6 +1729,7 @@ document.addEventListener('visibilitychange', () => { if (document.hidden && pag
 // ---------- Speichern ----------
 function changed() {
   dirty = true;
+  lpRefresh();
   clearTimeout(saveTimer);
   saveTimer = setTimeout(flushSave, 900);
 }
@@ -1761,3 +1771,296 @@ export function edInsertText(text) {
   strokes.push(st); undo.push({ type: 'add', stroke: st }); redo = []; changed(); redrawInk(); updateToolbar();
   return true;
 }
+
+// ---------- Schreib-Lupe ----------
+// Unten ein großes Schreibfeld: Was man dort groß schreibt, landet klein auf dem Blatt (im Rahmen).
+// Schreibt man nach rechts, rückt der Rahmen automatisch weiter; am Zeilenende geht es in die nächste Zeile.
+const LP_M = [2, 2.5, 3, 4, 5, 6.5, 8];      // Blattbreite / Rahmenbreite
+const LP = { on: false, x: 0, y: 0, w: 250, h: 60, m: 4, auto: true, pid: null, pane: 0, lineX: 0, P: 1, dpr: 1, reach: 0, timer: 0, raf: 0, pan: null, drag: null };
+try {
+  const m = +localStorage.getItem('lupeM'); if (LP_M.includes(m)) LP.m = m;
+  LP.auto = localStorage.getItem('lupeAuto') !== '0';
+} catch (e) { /* egal */ }
+const lpEl = (id) => document.getElementById(id);
+const LP_BASE = 0.7;   // Schreiblinie in der Lupe (Anteil der Höhe)
+const lpFrame = el('div.lupeframe', { 'aria-hidden': 'true' });
+const lpGrip = el('button.lupegrip', { type: 'button', title: 'Ziehen, um die Lupe zu verschieben', 'aria-label': 'Lupe verschieben' });
+lpGrip.innerHTML = '<svg class="ic"><use href="#i-loupe"/></svg><span>ziehen</span>';
+lpFrame.append(lpGrip);
+
+function lpLines() {
+  if (!page || page.kind !== 'blank') return null;
+  const L = paperLines(page.paper);
+  return L && L.gy ? L.gy : null;           // [Abstand, Versatz]
+}
+// Abstand für „Neue Zeile“
+function lpStep() {
+  const g = lpLines();
+  if (g && g[0] > 3) return g[0] * Math.max(1, Math.round(LP.h * 0.78 / g[0]));
+  return LP.h * 0.8;
+}
+// Rahmen so legen, dass eine Papierlinie auf der Schreiblinie liegt
+function lpSnapY(y) {
+  const g = lpLines();
+  if (!g || g[0] <= 3) return y;
+  const step = lpStep() > g[0] * 1.5 ? g[0] * 2 : g[0];
+  const n = Math.round((y + LP.h * LP_BASE - g[1]) / step);
+  return g[1] + n * step - LP.h * LP_BASE;
+}
+function lpClamp() {
+  const H = pageHeight(page);
+  LP.x = Math.max(0, Math.min(PAGE_W - LP.w, LP.x));
+  LP.y = Math.max(-LP.h * 0.2, Math.min(H - LP.h * 0.8, LP.y));
+}
+function lpSize() {
+  const st = lpEl('lpStage');
+  const cw = st.clientWidth || 600, ch = st.clientHeight || 200;
+  LP.dpr = Math.min(3, window.devicePixelRatio || 1);
+  LP.w = PAGE_W / LP.m; LP.P = cw / LP.w; LP.h = ch / LP.P;
+  for (const id of ['lpBg', 'lpInk', 'lpLive']) { const c = lpEl(id); c.width = Math.round(cw * LP.dpr); c.height = Math.round(ch * LP.dpr); }
+  lpEl('editor').style.setProperty('--lupe-h', lpEl('edLupe').offsetHeight + 'px');
+}
+// Sichtbarer Teil des Blatts (ohne die Lupe unten), in Seiten-Einheiten
+function lpView() {
+  const sr = $('edScroll').getBoundingClientRect(), pr = $('edPage').getBoundingClientRect(), k = pr.width / PAGE_W;
+  const bottom = Math.min(sr.bottom, lpEl('edLupe').getBoundingClientRect().top - 8);
+  return { l: (sr.left - pr.left) / k, t: (sr.top - pr.top) / k, w: sr.width / k, h: Math.max(40, (bottom - sr.top) / k), k, sr, bottom };
+}
+function lpReset() {
+  const v = lpView();
+  LP.x = Math.max(0, v.l) + (v.l <= 0 ? 12 * MM : 8);
+  LP.y = lpSnapY(Math.max(0, v.t) + Math.min(v.h * 0.15, 40 * MM));
+  lpClamp();
+  LP.lineX = LP.x; LP.pid = page.id; LP.pane = pane; LP.reach = 0;
+}
+function lpPlace() {
+  const wrap = $('edPage'), H = pageHeight(page);
+  if (lpFrame.parentNode !== wrap) wrap.append(lpFrame);
+  Object.assign(lpFrame.style, { left: LP.x / PAGE_W * 100 + '%', width: LP.w / PAGE_W * 100 + '%', top: LP.y / H * 100 + '%', height: LP.h / H * 100 + '%' });
+  lpDrawBg(); lpDrawInk(); lpWipe('lpLive');
+}
+function lpWipe(id) { const c = lpEl(id); c.getContext('2d').clearRect(0, 0, c.width, c.height); }
+function lpDrawBg() {
+  const c = lpEl('lpBg'), ctx = c.getContext('2d'), S = LP.P * LP.dpr, H = pageHeight(page);
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+  if (bg) {
+    const f = bg.width / PAGE_W;
+    ctx.drawImage(bg, LP.x * f, LP.y * f, LP.w * f, LP.h * f, 0, 0, c.width, c.height);
+  } else {
+    ctx.save(); ctx.translate(-LP.x * S, -LP.y * S);
+    drawPaper(ctx, page.paper || 'blank', PAGE_W, H, S);
+    ctx.restore();
+  }
+  // Seitenrand sichtbar machen
+  ctx.fillStyle = 'rgba(120, 130, 150, .18)';
+  if (LP.y < 0) ctx.fillRect(0, 0, c.width, -LP.y * S);
+  if (LP.y + LP.h > H) ctx.fillRect(0, (H - LP.y) * S, c.width, c.height);
+  // Leeres Blatt oder Scan: zarte Schreiblinie als Hilfe (wird nicht gespeichert)
+  if (!lpLines()) {
+    ctx.strokeStyle = 'rgba(42, 85, 212, .28)'; ctx.lineWidth = Math.max(1, LP.dpr);
+    ctx.setLineDash([8 * LP.dpr, 8 * LP.dpr]);
+    ctx.beginPath(); ctx.moveTo(0, c.height * LP_BASE); ctx.lineTo(c.width, c.height * LP_BASE); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+}
+function lpDrawInk() {
+  const c = lpEl('lpInk'), ctx = c.getContext('2d'), S = LP.P * LP.dpr;
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, c.width, c.height);
+  ctx.setTransform(1, 0, 0, 1, -LP.x * S, -LP.y * S);
+  const x0 = LP.x, x1 = LP.x + LP.w, y0 = LP.y, y1 = LP.y + LP.h;
+  for (const st of strokes) {
+    if (textEd && st === textEd.st) continue;
+    if (st.tool !== 'fill' && st.tool !== 'text' && st.tool !== 'axes') {
+      const p = st.pts || [], pad = (st.size || 10) * 2;
+      let lo = Infinity, hi = -Infinity, lx = Infinity, hx = -Infinity;
+      for (let i = 1; i < p.length; i += 3) { if (p[i] < lo) lo = p[i]; if (p[i] > hi) hi = p[i]; if (p[i - 1] < lx) lx = p[i - 1]; if (p[i - 1] > hx) hx = p[i - 1]; }
+      if (hi < y0 - pad || lo > y1 + pad || hx < x0 - pad || lx > x1 + pad) continue;
+    }
+    drawStroke(ctx, st, S);
+  }
+}
+function lpRefresh() {
+  if (!LP.on || LP.raf) return;
+  LP.raf = requestAnimationFrame(() => { LP.raf = 0; if (LP.on && page && LP.pane === pane) lpDrawInk(); });
+}
+function lpLiveDraw(c, from) {
+  if (!LP.on) return;
+  const cv = lpEl('lpLive'), ctx = cv.getContext('2d'), S = LP.P * LP.dpr;
+  if (c.tool === 'marker' || from <= 3) { ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, cv.width, cv.height); from = 3; }
+  ctx.setTransform(1, 0, 0, 1, -LP.x * S, -LP.y * S);
+  drawStroke(ctx, c, S, from, false);
+}
+function lpToPage(e) {
+  const r = lpEl('lpStage').getBoundingClientRect();
+  return [r1(LP.x + (e.clientX - r.left) / LP.P), r1(LP.y + (e.clientY - r.top) / LP.P)];
+}
+// Rahmen bewegen; dx in Seiten-Einheiten (für die kleine Gleit-Bewegung)
+function lpMoveTo(nx, ny, { wrap = true, slide = true } = {}) {
+  clearTimeout(LP.timer); LP.timer = 0;
+  if (wrap && nx + LP.w > PAGE_W - 3 * MM && nx > LP.x) { nx = LP.lineX; ny = LP.y + lpStep(); }
+  const ox = LP.x, oy = LP.y;
+  LP.x = nx; LP.y = ny; lpClamp(); LP.reach = 0;
+  lpPlace(); lpShowFrame(); lpEnsureVisible();
+  if (slide && Math.abs(LP.y - oy) < 0.5 && Math.abs(LP.x - ox) > 0.5) {
+    const st = lpEl('lpStage'), d = (LP.x - ox) * LP.P;
+    st.classList.remove('lpslide'); st.style.setProperty('--lp-dx', d + 'px');
+    void st.offsetWidth; st.classList.add('lpslide');
+  }
+}
+function lpShowFrame() { lpFrame.classList.remove('pulse'); void lpFrame.offsetWidth; lpFrame.classList.add('pulse'); }
+// Rahmen im sichtbaren Bereich halten (nicht hinter der Lupe)
+function lpEnsureVisible() {
+  const sc = $('edScroll'), fr = lpFrame.getBoundingClientRect(), sr = sc.getBoundingClientRect();
+  const bottom = Math.min(sr.bottom, lpEl('edLupe').getBoundingClientRect().top - 16);
+  let dx = 0, dy = 0;
+  if (fr.right > sr.right - 16) dx = fr.right - sr.right + 40; else if (fr.left < sr.left + 16) dx = fr.left - sr.left - 40;
+  if (fr.bottom > bottom) dy = fr.bottom - bottom + 30; else if (fr.top < sr.top + 12) dy = fr.top - sr.top - 30;
+  if (dx || dy) sc.scrollBy({ left: dx, top: dy, behavior: 'smooth' });
+}
+// Nach jedem Strich: weiter rechts als ~70 % geschrieben? Dann kurz danach weiterrücken.
+function lpAfter(st) {
+  if (!LP.auto || st.tool === 'eraser') return;
+  const p = st.pts; let hx = -Infinity;
+  for (let i = 0; i < p.length; i += 3) if (p[i] > hx) hx = p[i];
+  LP.reach = Math.max(LP.reach, hx);
+  clearTimeout(LP.timer);
+  if (LP.reach - LP.x > LP.w * 0.7) {
+    const target = LP.reach - LP.w * 0.22;
+    LP.timer = setTimeout(() => { if (!cur) lpMoveTo(target, LP.y); }, 420);
+  }
+}
+function lpSync() {
+  if (!LP.on || !page) return;
+  lpSize();
+  if (LP.pid !== page.id || LP.pane !== pane) lpReset(); else lpClamp();
+  lpPlace();
+}
+function lpShow(on) {
+  LP.on = on;
+  lpEl('edLupe').hidden = !on;
+  lpEl('editor').classList.toggle('lupeon', on);
+  if (!on) { lpFrame.remove(); clearTimeout(LP.timer); }
+  else {
+    LP.pid = null; lpSync();
+    requestAnimationFrame(() => { lpSync(); lpEnsureVisible(); lpShowFrame(); });
+    try { if (!localStorage.getItem('tipLupe')) { localStorage.setItem('tipLupe', '1'); toast('Schreib-Lupe: Unten groß schreiben, es landet klein im blauen Rahmen. Den Rahmen am Griff ziehen oder unten mit dem Finger schieben.', 6500); } } catch (e) { /* egal */ }
+  }
+  updateToolbar();
+}
+function lpUpdateUi() {
+  const b = lpEl('edLupeBtn');
+  b.classList.toggle('on', LP.on); b.setAttribute('aria-pressed', String(LP.on));
+  lpEl('lpAuto').classList.toggle('on', LP.auto); lpEl('lpAuto').setAttribute('aria-pressed', String(LP.auto));
+  lpEl('edLupe').classList.toggle('noauto', !LP.auto);
+  lpEl('lpBigger').disabled = LP.m >= LP_M[LP_M.length - 1];
+  lpEl('lpSmaller').disabled = LP.m <= LP_M[0];
+}
+lpEl('edLupeBtn').addEventListener('click', () => { if (!page) return; finishStroke(); commitText(); lpShow(!LP.on); });
+lpEl('lpClose').addEventListener('click', () => lpShow(false));
+lpEl('lpNext').addEventListener('click', () => lpMoveTo(LP.x + LP.w * 0.6, LP.y));
+lpEl('lpBack').addEventListener('click', () => {
+  if (LP.x <= 0.5) { lpMoveTo(PAGE_W - LP.w, LP.y - lpStep(), { wrap: false, slide: false }); return; }
+  lpMoveTo(LP.x - LP.w * 0.6, LP.y, { wrap: false });
+});
+lpEl('lpLine').addEventListener('click', () => lpMoveTo(LP.lineX, LP.y + lpStep(), { wrap: false, slide: false }));
+lpEl('lpAuto').addEventListener('click', () => {
+  LP.auto = !LP.auto;
+  try { localStorage.setItem('lupeAuto', LP.auto ? '1' : '0'); } catch (e) { /* egal */ }
+  toast(LP.auto ? 'Die Lupe rückt beim Schreiben von selbst weiter.' : 'Die Lupe bleibt stehen. Weiter geht es mit dem Pfeil.', 2600);
+  lpUpdateUi();
+});
+function lpZoom(dir) {
+  const i = Math.max(0, Math.min(LP_M.length - 1, LP_M.indexOf(LP.m) + dir));
+  if (LP_M[i] === LP.m) return;
+  const bx = LP.x, by = LP.y + LP.h * LP_BASE;     // Anfang der Schreiblinie bleibt
+  LP.m = LP_M[i];
+  try { localStorage.setItem('lupeM', String(LP.m)); } catch (e) { /* egal */ }
+  lpSize();
+  LP.x = bx; LP.y = lpSnapY(by - LP.h * LP_BASE); lpClamp();
+  lpPlace(); lpEnsureVisible(); lpUpdateUi();
+}
+lpEl('lpBigger').addEventListener('click', () => lpZoom(1));
+lpEl('lpSmaller').addEventListener('click', () => lpZoom(-1));
+
+// Schreiben in der Lupe
+const lpStage = lpEl('lpStage');
+for (const t of ['touchstart', 'touchmove']) lpStage.addEventListener(t, (e) => e.preventDefault(), { passive: false });
+lpStage.addEventListener('contextmenu', (e) => e.preventDefault());
+lpStage.addEventListener('pointerdown', (e) => {
+  if (!page || !LP.on) return;
+  e.preventDefault();
+  if (e.pointerType === 'pen' && !penSeen) { penSeen = true; if (fingerDraws) { fingerDraws = false; updateToolbar(); } }
+  if (e.pointerType === 'touch' && !fingerDraws) {
+    // Finger schiebt den Ausschnitt (Handballen beim Schreiben wird ignoriert)
+    if ((cur && cur.type === 'pen') || performance.now() - penUpAt < 350 || LP.pan) return;
+    LP.pan = { id: e.pointerId, cx: e.clientX, cy: e.clientY, x: LP.x, y: LP.y };
+    try { lpStage.setPointerCapture(e.pointerId); } catch (err) { /* egal */ }
+    return;
+  }
+  if (cur) { if (e.pointerType === 'touch' && cur.type === 'pen') return; finishStroke(); }
+  if (textEd) commitText();
+  if (sel) clearSel();
+  clearTimeout(LP.timer); LP.timer = 0;
+  try { lpStage.setPointerCapture(e.pointerId); } catch (err) { /* egal */ }
+  const [x, y] = lpToPage(e);
+  if (tool === 'eraser') { cur = { erase: true, lupe: true, id: e.pointerId, type: e.pointerType, removed: [] }; eraseAt(x, y); return; }
+  const t = tool === 'marker' ? 'marker' : 'pen';
+  cur = { id: e.pointerId, type: e.pointerType, tool: t, lupe: true, color: t === 'marker' ? markerColor : color, size: SIZES[t][sizeIdx], pts: [x, y, pressureOf(e)], snap: null };
+  liveFrom = 3;
+  clearLive();
+  scheduleLive();
+});
+lpStage.addEventListener('pointermove', (e) => {
+  if (LP.pan && e.pointerId === LP.pan.id) {
+    LP.x = LP.pan.x - (e.clientX - LP.pan.cx) / LP.P;
+    LP.y = LP.pan.y - (e.clientY - LP.pan.cy) / LP.P;
+    lpClamp(); lpPlace();
+    return;
+  }
+  if (!cur || !cur.lupe || e.pointerId !== cur.id) return;
+  const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [];
+  for (const ev of (evs.length ? evs : [e])) {
+    const [x, y] = lpToPage(ev);
+    if (cur.erase) { eraseAt(x, y); continue; }
+    const n = cur.pts.length;
+    if (Math.hypot(x - cur.pts[n - 3], y - cur.pts[n - 2]) < 0.15) continue;
+    cur.pts.push(x, y, pressureOf(ev));
+  }
+  if (!cur.erase) scheduleLive();
+});
+function lpUp(e) {
+  if (LP.pan && e.pointerId === LP.pan.id) {
+    const moved = Math.hypot(LP.x - LP.pan.x, LP.y - LP.pan.y) > 0.5;
+    LP.pan = null;
+    if (moved) { LP.y = lpSnapY(LP.y); lpClamp(); LP.lineX = LP.x; LP.reach = 0; lpPlace(); lpEnsureVisible(); }
+    return;
+  }
+  if (cur && cur.lupe && e.pointerId === cur.id) { if (cur.type === 'pen') penUpAt = performance.now(); finishStroke(); }
+}
+lpStage.addEventListener('pointerup', lpUp);
+lpStage.addEventListener('pointercancel', lpUp);
+
+// Rahmen auf dem Blatt am Griff verschieben
+lpGrip.addEventListener('pointerdown', (e) => {
+  e.preventDefault(); e.stopPropagation();
+  const k = $('edPage').getBoundingClientRect().width / PAGE_W;
+  LP.drag = { id: e.pointerId, cx: e.clientX, cy: e.clientY, x: LP.x, y: LP.y, k };
+  try { lpGrip.setPointerCapture(e.pointerId); } catch (err) { /* egal */ }
+});
+lpGrip.addEventListener('pointermove', (e) => {
+  const d = LP.drag; if (!d || e.pointerId !== d.id) return;
+  e.stopPropagation();
+  LP.x = d.x + (e.clientX - d.cx) / d.k; LP.y = d.y + (e.clientY - d.cy) / d.k;
+  lpClamp(); lpPlace();
+});
+function lpGripUp(e) {
+  const d = LP.drag; if (!d || e.pointerId !== d.id) return;
+  e.stopPropagation();
+  LP.drag = null; LP.y = lpSnapY(LP.y); lpClamp(); LP.lineX = LP.x; LP.reach = 0; lpPlace();
+}
+lpGrip.addEventListener('pointerup', lpGripUp);
+lpGrip.addEventListener('pointercancel', lpGripUp);
+for (const t of ['touchstart', 'touchmove']) lpGrip.addEventListener(t, (e) => { e.stopPropagation(); e.preventDefault(); }, { passive: false });
+window.addEventListener('resize', () => { if (LP.on && page) requestAnimationFrame(lpSync); });
+window.__lupe = () => ({ on: LP.on, x: LP.x, y: LP.y, w: LP.w, h: LP.h, m: LP.m, lineX: LP.lineX, auto: LP.auto });

@@ -30,6 +30,8 @@
     <symbol id="i-redo" viewBox="0 0 24 24"><path d="M15 14l5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></symbol>
     <symbol id="i-zoom-in" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.3-4.3M11 8v6M8 11h6"/></symbol>
     <symbol id="i-split" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M12 4.5v15"/></symbol>
+    <symbol id="i-loupe" viewBox="0 0 24 24"><rect x="3.5" y="13" width="17" height="7.5" rx="2"/><path d="M7 17.5c1-1.6 2-1.6 3 0s2 1.6 3 0 2-1.6 3 0"/><circle cx="12" cy="7" r="3.6"/><path d="M14.6 9.6l1.9 1.9"/></symbol>
+    <symbol id="i-newline" viewBox="0 0 24 24"><path d="M19 5v6a3 3 0 0 1-3 3H6"/><path d="M9.5 10.5L6 14l3.5 3.5"/></symbol>
     <symbol id="i-chev" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5"/></symbol>
     <symbol id="i-swap" viewBox="0 0 24 24"><path d="M7 7h12M15.5 3.5L19 7l-3.5 3.5"/><path d="M17 17H5M8.5 13.5L5 17l3.5 3.5"/></symbol>
     <symbol id="i-fitpage" viewBox="0 0 24 24"><rect x="6.5" y="3.5" width="11" height="17" rx="1.8"/><path d="M9.5 8h5M9.5 11.5h5M9.5 15h3"/></symbol>
@@ -256,6 +258,7 @@
       <button id="edMath" class="qt mathbtn" aria-label="Mehr Mathe-Werkzeuge" title="Mehr Mathe-Werkzeuge"><svg class="ic"><use href="#i-more"/></svg></button>
     </div>
     <div class="edright">
+      <button id="edLupeBtn" class="icbtn" aria-label="Schreib-Lupe" aria-pressed="false" title="Schreib-Lupe: groß schreiben, klein auf dem Blatt"><svg class="ic"><use href="#i-loupe"/></svg></button>
       <button id="edSplit" class="icbtn" aria-label="Zweites Blatt daneben" title="Zweites Blatt daneben öffnen"><svg class="ic"><use href="#i-split"/></svg></button>
       <button id="edSpeak" class="icbtn" aria-label="Vorlesen und Diktieren" title="Vorlesen und Diktieren"><svg class="ic"><use href="#i-speak"/></svg></button>
       <button id="edShare" class="icbtn" aria-label="Arbeitsblatt teilen" title="Als PDF teilen, Name und Datum"><svg class="ic"><use href="#i-share"/></svg></button>
@@ -300,6 +303,29 @@
       </div>
     </div>
   </div>
+  </div>
+  <div id="edLupe" class="lupe" hidden>
+    <div class="lpside">
+      <button id="lpLine" class="lpbtn" title="Neue Zeile"><svg class="ic"><use href="#i-newline"/></svg><span>Zeile</span></button>
+      <button id="lpBack" class="lpbtn" title="Ein Stück zurück"><svg class="ic"><use href="#i-left"/></svg><span>Zurück</span></button>
+    </div>
+    <div id="lpStage" class="lpstage">
+      <canvas id="lpBg"></canvas>
+      <canvas id="lpInk"></canvas>
+      <canvas id="lpLive"></canvas>
+      <div class="lpzone" aria-hidden="true"><svg class="ic"><use href="#i-right"/></svg></div>
+    </div>
+    <div class="lpside lpright">
+      <button id="lpNext" class="lpbtn lpmain" title="Weiterrücken"><svg class="ic"><use href="#i-right"/></svg><span>Weiter</span></button>
+      <div class="lprow">
+        <button id="lpSmaller" class="lpmini" aria-label="Schrift kleiner (Lupe weiter weg)" title="Größerer Ausschnitt"><svg class="ic"><use href="#i-zoom-out"/></svg></button>
+        <button id="lpBigger" class="lpmini" aria-label="Schrift größer (Lupe näher)" title="Kleinerer Ausschnitt, größere Schrift"><svg class="ic"><use href="#i-zoom-in"/></svg></button>
+      </div>
+      <div class="lprow">
+        <button id="lpAuto" class="lpmini lpauto" aria-pressed="true" title="Automatisch weiterrücken">Auto</button>
+        <button id="lpClose" class="lpmini" aria-label="Lupe schließen" title="Lupe schließen"><svg class="ic"><use href="#i-close"/></svg></button>
+      </div>
+    </div>
   </div>
 </section>
 
