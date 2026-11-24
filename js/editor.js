@@ -1,7 +1,7 @@
 // Schreib-Ansicht: mit Apple Pencil (oder Finger) auf Blätter und Scans schreiben.
 import * as db from './db.js';
 import { fillHit } from './paper.js';
-import { PAGE_W, drawPaper, drawStroke, renderPage, pageHeight, blobToImage, paperLines, fitText, lhOf, lineHeight, textWidthMax, FONT } from './paper.js';
+import { PAGE_W, A4_H, drawPaper, drawStroke, renderPage, pageHeight, blobToImage, paperLines, fitText, lhOf, lineHeight, textWidthMax, FONT } from './paper.js';
 import { makeTool, drawTool, hitTool, findEdge, snapPoint, niceAngle, niceRadius, magnetTool, TOOL_NAMES, KNOB_OFF, MM } from './tools.js';
 import { menu, sheet, h as el, toast, busy, promptSheet, shareReady } from './ui.js';
 import { compile, mathify } from './mathfn.js';
@@ -118,7 +118,11 @@ function updateToolbar() {
   $('edTools').classList.toggle('erasing', tool === 'eraser' || tool === 'lasso');
   $('edTools').classList.toggle('texting', tool === 'text');
   $('edTools').classList.toggle('filling', tool === 'fill');
-  $('edMath').classList.toggle('on', !!tpl);
+  $('edMath').classList.toggle('on', !!tpl && tpl.type !== 'ruler' && tpl.type !== 'triangle');
+  $('edQRuler').classList.toggle('on', !!tpl && tpl.type === 'ruler');
+  $('edQTri').classList.toggle('on', !!tpl && tpl.type === 'triangle');
+  $('edQRuler').setAttribute('aria-pressed', String(!!tpl && tpl.type === 'ruler'));
+  $('edQTri').setAttribute('aria-pressed', String(!!tpl && tpl.type === 'triangle'));
   $('edSelDelete').hidden = !sel;
   $('edUndo').disabled = !undo.length;
   $('edRedo').disabled = !redo.length;
@@ -265,7 +269,8 @@ $('edFinger').addEventListener('click', () => {
 // ---------- Größe und Zeichnen der Ebenen ----------
 function fitWidth() {
   const sc = $('edScroll');
-  const h = pageHeight(page);
+  // Heftseiten: Breite wie bei einem A4-Blatt, auch wenn die Seite nach unten länger wird
+  const h = page.kind === 'blank' ? A4_H : pageHeight(page);
   return Math.min(sc.clientWidth - 48, (sc.clientHeight - 48) * PAGE_W / h) || 600;
 }
 
@@ -283,19 +288,72 @@ function layout(rerender) {
   wrap.style.width = cssW + 'px';
   wrap.style.height = cssH + 'px';
   if (!rerender) return;
-  const dpr = window.devicePixelRatio || 1;
-  const pxW = Math.min(2600, Math.round(cssW * dpr));
-  const pxH = Math.round(pxW * h / PAGE_W);
-  for (const id of ['edBg', 'edInk', 'edLive']) { const c = $(id); c.width = pxW; c.height = pxH; }
-  const s = pxW / PAGE_W;
   for (const id of ['edTpl', 'edSel']) $(id).setAttribute('viewBox', `0 0 ${PAGE_W} ${h}`);
   drawTool($('edTpl'), tpl);
   drawSel();
   styleText();
+  renderBand(true);
+}
+
+// Lange Seiten: Die Zeichenflächen decken nur den sichtbaren Bereich (plus Rand) ab, nicht die ganze Seite.
+// Sonst würde eine endlose Heftseite den Speicher des iPads sprengen. band = { y0, y1 } in Seiten-Einheiten.
+let band = { y0: 0, y1: 0 };
+const MAX_PX = 9e6;   // höchstens so viele Pixel pro Zeichenfläche
+function renderBand(force) {
+  if (!page) return;
+  const h = pageHeight(page), wrap = $('edPage'), sc = $('edScroll');
+  const cssW = wrap.clientWidth || parseFloat(wrap.style.width) || 1;
+  const dpr = window.devicePixelRatio || 1;
+  const pxW = Math.min(2600, Math.round(cssW * dpr));
+  const k = cssW / PAGE_W;                 // CSS-Pixel pro Seiten-Einheit
+  let y0 = 0, y1 = h;
+  if (pxW * pxW * h / PAGE_W > MAX_PX) {
+    const pr = wrap.getBoundingClientRect(), sr = sc.getBoundingClientRect();
+    const vTop = (sr.top - pr.top) / k, vH = sr.height / k;
+    const want = Math.max(vH * 2.2, Math.min(h, MAX_PX * PAGE_W / (pxW * pxW)));
+    const need0 = Math.max(0, vTop - vH * 0.1), need1 = Math.min(h, vTop + vH * 1.1);
+    if (!force && band.y0 <= need0 && band.y1 >= need1 && band.y1 - band.y0 > 0) return;
+    y0 = Math.max(0, vTop + vH / 2 - want / 2); y1 = Math.min(h, y0 + want); y0 = Math.max(0, y1 - want);
+  } else if (!force && band.y0 === 0 && band.y1 === h) return;
+  band = { y0, y1 };
+  const pxH = Math.max(1, Math.round(pxW * (y1 - y0) / PAGE_W));
+  const s = pxW / PAGE_W;
+  for (const id of ['edBg', 'edInk', 'edLive']) {
+    const c = $(id); c.width = pxW; c.height = pxH;
+    c.style.top = (y0 * k) + 'px'; c.style.height = ((y1 - y0) * k) + 'px'; c.style.bottom = 'auto';
+    c.getContext('2d').setTransform(1, 0, 0, 1, 0, -y0 * s);
+  }
   const bctx = $('edBg').getContext('2d');
-  if (bg) { bctx.fillStyle = '#fff'; bctx.fillRect(0, 0, pxW, pxH); bctx.drawImage(bg, 0, 0, pxW, pxH); }
+  if (bg) { bctx.fillStyle = '#fff'; bctx.fillRect(0, y0 * s, pxW, pxH); bctx.drawImage(bg, 0, 0, pxW, h * s); }
   else drawPaper(bctx, page.paper || 'blank', PAGE_W, h, s);
   redrawInk();
+}
+// Leinwand leeren (unabhängig vom Ausschnitt)
+function wipe(c) { const x = c.getContext('2d'); x.save(); x.setTransform(1, 0, 0, 1, 0, 0); x.clearRect(0, 0, c.width, c.height); x.restore(); }
+let bandRaf = 0;
+$('edScroll').addEventListener('scroll', () => { if (!bandRaf) bandRaf = requestAnimationFrame(() => { bandRaf = 0; renderBand(false); }); }, { passive: true });
+
+// Endlose Heftseite: Wenn unten geschrieben wird, kommt neues Papier dazu (in halben Seiten).
+function contentBottom() {
+  let b = 0;
+  for (const st of strokes) {
+    const p = st.pts || [];
+    for (let i = 1; i < p.length; i += 3) if (p[i] > b) b = p[i];
+    if (st.tool === 'text') b = Math.max(b, (p[1] || 0) + (st.lh || 40) * (String(st.text || '').split('\n').length + 1));
+  }
+  return b;
+}
+function growPage() {
+  if (!page || page.kind !== 'blank') return;
+  const H = pageHeight(page), b = contentBottom(), step = A4_H / 2;
+  if (b < H - A4_H * 0.4) return;
+  const nh = Math.ceil((b + A4_H * 0.6) / step) * step;
+  if (nh <= H) return;
+  page.h = nh;
+  db.updatePage(page.id, { h: nh }).catch((e) => console.warn(e));
+  const sc = $('edScroll'), top = sc.scrollTop;
+  layout(true);
+  sc.scrollTop = top;
 }
 window.addEventListener('resize', () => { if (page) layout(true); });
 
@@ -303,14 +361,23 @@ const scale = () => $('edInk').width / PAGE_W;
 
 function redrawInk() {
   const c = $('edInk'), ctx = c.getContext('2d');
-  ctx.clearRect(0, 0, c.width, c.height);
-  const s = scale();
-  for (const st of strokes) if (!textEd || st !== textEd.st) drawStroke(ctx, st, s);
+  wipe(c);
+  const s = scale(), y0 = band.y0, y1 = band.y1;
+  for (const st of strokes) {
+    if (textEd && st === textEd.st) continue;
+    if (y0 > 0 || y1 < pageHeight(page)) {
+      // nur Striche im Ausschnitt zeichnen (schneller bei langen Seiten)
+      const p = st.pts || []; let lo = Infinity, hi = -Infinity;
+      for (let i = 1; i < p.length; i += 3) { if (p[i] < lo) lo = p[i]; if (p[i] > hi) hi = p[i]; }
+      const pad = st.tool === 'text' ? 400 : (st.size || 10) * 4 + 20;
+      if (st.tool !== 'fill' && (hi < y0 - pad || lo > y1 + pad)) continue;
+    }
+    drawStroke(ctx, st, s);
+  }
 }
 
 function clearLive() {
-  const c = $('edLive');
-  c.getContext('2d').clearRect(0, 0, c.width, c.height);
+  wipe($('edLive'));
 }
 
 // Zeichnet höchstens einmal pro Bildschirm-Bild (schnell, auch bei langen Strichen).
@@ -526,6 +593,7 @@ function finishStroke() {
   }
   clearLive();
   updateToolbar();
+  growPage();
 }
 
 // ---------- Karo-Hilfe: gerade Striche an Linien und Kästchen ausrichten ----------
@@ -677,6 +745,7 @@ function commitText() {
   }
   redrawInk();
   updateToolbar();
+  growPage();
 }
 function applyText(st, v) {
   Object.assign(st, v);
@@ -874,6 +943,10 @@ function showTool(type) {
   if (tool === 'eraser' || tool === 'lasso') setTool('pen');
   updateToolbar();
 }
+// Umschalter: antippen = Werkzeug zeigen, nochmal antippen = ausblenden
+function toggleTool(k) { showTool(tpl && tpl.type === k ? null : k); }
+$('edQRuler').addEventListener('click', () => toggleTool('ruler'));
+$('edQTri').addEventListener('click', () => toggleTool('triangle'));
 $('edMath').addEventListener('click', (e) => {
   menu(e.currentTarget, [
     { label: 'Koordinatensystem …', icon: 'axes', onClick: axesFlow },
@@ -884,7 +957,7 @@ $('edMath').addEventListener('click', (e) => {
     ...(page && page.kind !== 'blank' ? [{ label: 'Lernkarten aus Markiertem', icon: 'cards', onClick: async () => { finishStroke(); commitText(); await flushSave(); const m = await import('./markcards.js'); m.cardsFromMarks({ page, strokes, pageW: PAGE_W }); } }] : []),
     ...(page ? [{ label: 'Lernkarten automatisch (KI) …', icon: 'bolt', onClick: async () => { finishStroke(); commitText(); await flushSave(); const tb = strokes.filter((x) => x.tool === 'text').map((x) => x.text).join('\n'); const m = await import('./autocards.js'); m.autoCardsFlow([{ ...page, textBoxes: tb }]); } }] : []),
     'sep',
-    ...Object.entries(TOOL_NAMES).map(([k, label]) => ({ label: (tpl && tpl.type === k ? '✓ ' : '') + label, icon: 'tool-' + k, onClick: () => showTool(k) })),
+    ...Object.entries(TOOL_NAMES).map(([k, label]) => ({ label: (tpl && tpl.type === k ? '✓ ' : '') + label, icon: 'tool-' + k, onClick: () => toggleTool(k) })),
     'sep',
     { label: 'Werkzeug weglegen', icon: 'close', onClick: () => showTool(null) },
     ...(page && page.kind === 'blank' && paperLines(page.paper) ? ['sep', {
@@ -1218,7 +1291,12 @@ async function flushSave() {
   if (!dirty || !page) return;
   dirty = false;
   const pg = page, list = strokes.map((s) => ({ ...s }));
-  const thumbCanvas = renderPage(pg, bg, list, 260);
+  let thumbCanvas = renderPage(pg, bg, list, 260);
+  if (pg.kind === 'blank' && thumbCanvas.height > Math.round(260 * A4_H / PAGE_W) + 1) {
+    // lange Heftseite: Vorschaubild zeigt den Anfang im A4-Format
+    const t = document.createElement('canvas'); t.width = 260; t.height = Math.round(260 * A4_H / PAGE_W);
+    t.getContext('2d').drawImage(thumbCanvas, 0, 0); thumbCanvas = t;
+  }
   const thumb = await new Promise((r) => thumbCanvas.toBlob(r, 'image/jpeg', 0.7));
   await db.saveInk(pg.id, list, thumb);
 }

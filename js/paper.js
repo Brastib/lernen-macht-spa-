@@ -270,7 +270,7 @@ export function renderPage(page, bg, strokes, widthPx) {
 }
 
 export function pageHeight(page) {
-  if (page.kind === 'blank') return A4_H;
+  if (page.kind === 'blank') return Math.max(A4_H, page.h || 0);   // Heftseiten wachsen nach unten (page.h)
   return Math.round(PAGE_W * page.height / page.width);
 }
 
