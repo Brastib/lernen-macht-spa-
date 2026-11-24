@@ -6,6 +6,7 @@ import { fmtBytes } from './ui.js';
 export const MODELS = {
   klein: { id16: 'Qwen2.5-1.5B-Instruct-q4f16_1-MLC', id32: 'Qwen2.5-1.5B-Instruct-q4f32_1-MLC', label: 'Schnell', size: 'ca. 1 GB', note: 'Schneller, braucht weniger Arbeitsspeicher. Karten etwas einfacher.' },
   gross: { id16: 'Qwen2.5-3B-Instruct-q4f16_1-MLC', id32: 'Qwen2.5-3B-Instruct-q4f32_1-MLC', label: 'Genauer', size: 'ca. 2 GB', note: 'Bessere Karten, aber langsamer. Braucht ein iPad mit viel Arbeitsspeicher.' },
+  beste: { id16: 'Qwen2.5-7B-Instruct-q4f16_1-MLC', id32: 'Qwen2.5-7B-Instruct-q4f32_1-MLC', label: 'Beste', size: 'ca. 5 GB', note: 'Am klügsten, auch für freie Fragen an Big Boy. Für starke iPads (z. B. iPad Pro mit M-Chip). Startet langsamer.' },
 };
 
 let lib = null;
@@ -136,4 +137,12 @@ export async function aiCards(text, onProgress = () => {}, shouldStop = () => fa
   }
   const seen = new Set();
   return all.filter((c) => { const k = c.front.toLowerCase().replace(/[^\p{L}\p{N}]/gu, ''); if (seen.has(k)) return false; seen.add(k); return true; });
+}
+
+// Freier Chat mit der Text-KI (für Big Boy). messages: [{role, content}]
+export async function chat(messages, { maxTokens = 600, temperature = 0.4, onProgress = () => {} } = {}) {
+  const eng = await getEngine(onProgress);
+  onProgress('Big Boy denkt nach …');
+  const r = await eng.chat.completions.create({ messages, temperature, max_tokens: maxTokens });
+  return String(r.choices[0].message.content || '').replace(/<think>[\s\S]*?<\/think>/g, '').trim();
 }

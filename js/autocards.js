@@ -225,19 +225,24 @@ export async function aiSettingsSheet() {
     const V = await import('./visionai.js');
     const vbox = h('div.aclist');
     const vfill = async () => {
-      const vh = await V.visionDownloaded();
-      vbox.replaceChildren(h('div.acopt', null, icon('eye'),
-        h('span', null, h('b', { text: `Bild-KI (${V.VSIZE})` }), h('small', { text: 'Liest ganze Seiten, auch Handschrift, und macht neue Aufgaben wie auf einem Arbeitsblatt. ' + (vh ? 'Heruntergeladen.' : 'Lädt beim ersten Benutzen.') })),
-        ...(vh ? [h('button.btn.small', { text: 'Löschen', on: { click: async () => {
-          if (!(await confirmSheet('Bild-KI löschen?', `Die Bild-KI wird vom Gerät gelöscht (${V.VSIZE} frei). Du kannst sie später wieder laden.`))) return;
-          await V.deleteVision(); toast('Bild-KI gelöscht.'); vfill();
-        } } })] : [])));
+      const cur = V.visionChoice(), rows = [];
+      for (const [k, m] of Object.entries(V.VCHOICES)) {
+        const vh = await V.visionDownloaded(k), off = k === 'beste' && !sup.f16;
+        rows.push(h('div.acopt' + (k === cur ? '.on' : ''), null,
+          h('button.acpick', { 'aria-pressed': String(k === cur), disabled: off, on: { click: () => { V.setVisionChoice(k); vfill(); } } }, icon(k === cur ? 'select' : 'eye'),
+            h('span', null, h('b', { text: `${m.label} (${m.size})` }), h('small', { text: off ? 'Geht auf diesem Gerät nicht (kein shader-f16).' : m.note + (vh ? ' Heruntergeladen.' : ' Lädt beim ersten Benutzen.') }))),
+          ...(vh ? [h('button.btn.small', { text: 'Löschen', on: { click: async () => {
+            if (!(await confirmSheet('Bild-KI löschen?', 'Alle Stufen der Bild-KI werden vom Gerät gelöscht. Du kannst sie später wieder laden.'))) return;
+            await V.deleteVision(); toast('Bild-KI gelöscht.'); vfill();
+          } } })] : [])));
+      }
+      vbox.replaceChildren(...rows);
     };
     await vfill();
     const used = await ai.storageInfo();
     body.append(
       h('p.dlgtext', { text: 'Die KI läuft direkt auf deinem Gerät. Einmal herunterladen (am besten im WLAN), danach geht sie ohne Internet und kostet nichts. Deine Seiten verlassen das Gerät nicht.' }),
-      h('label.fieldlabel', { text: 'Text-KI für Lernkarten' }),
+      h('label.fieldlabel', { text: 'Text-KI (Lernkarten, Big Boy)' }),
       list,
       h('label.fieldlabel', { text: 'Bild-KI' }),
       vbox,

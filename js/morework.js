@@ -335,3 +335,19 @@ async function showText(page, text, hint) {
         h('button.btn.primary', { text: 'Fertig', on: { click: async () => { if (ta.value !== text) await db.updatePage(page.id, { aiText: ta.value }); close(true); } } })));
   }, { wide: true });
 }
+
+// Blatt direkt anlegen (für Big Boy). tasks wie in moreTasksFlow. Gibt die erste neue Seite zurück.
+export async function createSheet(tasks, { title, sub = '', bookId, solutions = true }) {
+  const { compress, makeThumb } = await import('./scanner.js');
+  const canv = renderSheets(tasks, { title, sub, solutions });
+  let first = null;
+  for (const c of canv) {
+    const out = await compress(c, 700 * 1024);
+    const p = await db.addPage({ bookId, image: out.blob, thumb: await makeThumb(c), width: out.width, height: out.height });
+    first ||= p;
+  }
+  return { first, count: canv.length };
+}
+export function groupsToTasks(groups) {
+  return groups.map((g) => ({ text: g.title, items: g.items, solution: g.items.map((it, k) => `${LETTERS[k]}) ${it.a}`).join('  ·  '), sure: true, on: true }));
+}

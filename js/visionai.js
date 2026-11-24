@@ -5,9 +5,14 @@
 
 export const VMODEL = 'onnx-community/LFM3-VL-2B-ONNX';
 const HF = `https://huggingface.co/${VMODEL}/resolve/main/`;
-const DT16 = { vision_encoder: 'fp16', embed_tokens: 'fp16', decoder_model_merged: 'q4f16' };
-const DT32 = { vision_encoder: 'q4', embed_tokens: 'q4', decoder_model_merged: 'q4' };
-export const VSIZE = 'ca. 2 GB';
+// Zwei Stufen: Standard (gepackt, ca. 2 GB) und Beste (ungepackt fp16, liest genauer, ca. 4,4 GB, braucht shader-f16)
+export const VCHOICES = {
+  standard: { label: 'Standard', size: 'ca. 2 GB', note: 'Liest Druck und saubere Handschrift.', dt16: { vision_encoder: 'fp16', embed_tokens: 'fp16', decoder_model_merged: 'q4f16' }, dt32: { vision_encoder: 'q4', embed_tokens: 'q4', decoder_model_merged: 'q4' } },
+  beste: { label: 'Beste', size: 'ca. 4,4 GB', note: 'Ungepackt: liest genauer, auch schwierigere Handschrift. Für starke iPads (z. B. iPad Pro mit M-Chip).', dt16: { vision_encoder: 'fp16', embed_tokens: 'fp16', decoder_model_merged: 'fp16' }, dt32: null },
+};
+export function visionChoice() { try { const k = localStorage.getItem('visionModel'); return VCHOICES[k] ? k : 'standard'; } catch (e) { return 'standard'; } }
+export let VSIZE = VCHOICES[visionChoice()].size;
+export function setVisionChoice(k) { try { localStorage.setItem('visionModel', k); } catch (e) { /* egal */ } VSIZE = VCHOICES[visionChoice()].size; }
 const TF_URL = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.3.2/dist/transformers.min.js';
 
 let lib = null;
@@ -21,17 +26,19 @@ async function loadLib() {
   return lib;
 }
 
-async function dtypes() {
+async function dtypes(key = visionChoice()) {
   const { aiSupport } = await import('./localai.js');
   const s = await aiSupport();
-  return s.f16 ? DT16 : DT32;
+  const c = VCHOICES[key] || VCHOICES.standard;
+  if (s.f16) return c.dt16;
+  return c.dt32 || VCHOICES.standard.dt32;   // „Beste“ braucht f16, sonst Standard
 }
 const fileOf = (part, dt) => `onnx/${part}${dt === 'fp32' ? '' : '_' + dt}.onnx_data`;
 
 // Liegt das Modell schon im Speicher? (die größte Datei prüfen)
-export async function visionDownloaded() {
+export async function visionDownloaded(key = visionChoice()) {
   try {
-    const dt = await dtypes();
+    const dt = await dtypes(key);
     const c = await caches.open('transformers-cache');
     return !!(await c.match(HF + fileOf('decoder_model_merged', dt.decoder_model_merged)));
   } catch (e) { return false; }
@@ -42,10 +49,13 @@ export async function deleteVision() {
   for (const r of await c.keys()) if (r.url.includes(VMODEL)) await c.delete(r);
 }
 
-let model = null, processor = null;
+let model = null, processor = null, loadedKey = '';
 export async function loadVision(onProgress = () => {}) {
-  if (model) return;
-  const { aiSupport } = await import('./localai.js');
+  const key = JSON.stringify(await dtypes());
+  if (model && loadedKey === key) return;
+  if (model) await unloadVision();
+  const { aiSupport, unloadAi } = await import('./localai.js');
+  await unloadAi();   // nicht zwei KIs gleichzeitig im Speicher
   const s = await aiSupport();
   if (!s.ok) throw new Error(s.why);
   const L = await loadLib();
@@ -62,10 +72,11 @@ export async function loadVision(onProgress = () => {}) {
   };
   processor = await L.AutoProcessor.from_pretrained(VMODEL, { progress_callback });
   model = await L.AutoModelForImageTextToText.from_pretrained(VMODEL, { device: 'webgpu', dtype: await dtypes(), progress_callback });
+  loadedKey = key;
 }
 export async function unloadVision() {
   if (model) { try { await model.dispose(); } catch (e) { /* egal */ } }
-  model = null; processor = null;
+  model = null; processor = null; loadedKey = '';
 }
 
 // Bild (Blob oder Canvas) auf höchstens maxSide Pixel bringen und als RawImage für Transformers.js

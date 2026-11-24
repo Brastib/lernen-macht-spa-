@@ -1514,3 +1514,20 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) { fin
 
 // für Tests
 window.__editorState = () => ({ texts: strokes.filter((s) => s.tool === 'text').map((s) => ({ text: s.text, pts: s.pts.slice(), lh: s.lh })), editing: !!textEd, gridAssist, cur: !!cur, strokes: strokes.length, touches: touches.size, tpl: tpl && { ...tpl }, last: strokes.length ? strokes[strokes.length - 1].pts.slice() : null, sel: sel ? sel.strokes.size : 0 });
+
+// ---------- Für Big Boy (Chat-Helfer) ----------
+export function edState() { return { open: !$('editor').hidden && !!page, page, strokes }; }
+export async function edFlush() { finishStroke(); commitText(); await flushSave(); return { ...page, strokes: strokes.length }; }
+// Text als Textfeld sichtbar auf die Seite setzen (rückgängig machbar wie jedes Textfeld)
+export function edInsertText(text) {
+  if ($('editor').hidden || !page) return false;
+  finishStroke(); commitText();
+  const sc = $('edScroll').getBoundingClientRect(), pr = $('edPage').getBoundingClientRect();
+  const k = pr.width / PAGE_W, H = pageHeight(page);
+  const x = Math.max(15 * MM, Math.min(PAGE_W - 80 * MM, (sc.left + 40 - pr.left) / k));
+  const y = Math.max(12 * MM, Math.min(H - 30 * MM, (sc.top + sc.height * 0.35 - pr.top) / k));
+  const st = { tool: 'text', color, size: SIZES.text[sizeIdx] || 18, text, pts: [x, y, 0, x, y + 24, 0] };
+  fitText(st);
+  strokes.push(st); undo.push({ type: 'add', stroke: st }); redo = []; changed(); redrawInk(); updateToolbar();
+  return true;
+}
