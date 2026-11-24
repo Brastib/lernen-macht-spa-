@@ -70,7 +70,7 @@ const QUICK_DEFAULT = ['scan', 'note', 'timetable', 'grades', 'kit-calc', 'games
 export function quickRow(list, onChange) {
   const byId = new Map(list.map((f) => [f.id, f]));
   const ids = store.get('quick', QUICK_DEFAULT).filter((id) => byId.has(id));
-  const grid = h('div.qgrid');
+  const grid = h('div.qgrid', { style: { '--n': String(Math.max(ids.length, 4)) } });
   for (const id of ids) {
     const f = byId.get(id);
     grid.append(h('button.qtile', { on: { click: () => f.run() } }, h('span.qic', null, icon(f.ic)), h('span.qname', { text: f.name })));

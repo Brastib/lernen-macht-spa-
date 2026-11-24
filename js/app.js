@@ -201,15 +201,10 @@ async function renderLibrary() {
   }
 
   if (tab === 'werkzeuge') {
-    view.append(h('h2.section', { text: 'Werkzeuge' }), h('div.ptiles.kit', null,
-      ...KIT_TABS.map(([k, l, ic, sub]) => tile('', ic, l, sub, () => go({ view: 'kit', tab: k })))));
     const nCode = (await db.listCode()).length;
-    view.append(h('h2.section', { text: 'Programmieren' }),
-      h('button.inbox.codeentry', { on: { click: () => go({ view: 'code' }) } },
-        h('span.codeicon', null, icon('code')),
-        h('span.inboxtext', null,
-          h('b', { text: 'Code' }),
-          h('small', { text: nCode ? `${plural(nCode, 'Projekt', 'Projekte')} · Web, Python, Lua` : 'Kleine Spiele und Programme bauen: Web, Python, Lua' }))));
+    view.append(h('h2.section', { text: 'Werkzeuge' }), h('div.ptiles.kit.kitall', null,
+      ...KIT_TABS.map(([k, l, ic, sub]) => tile('', ic, l, sub, () => go({ view: 'kit', tab: k }))),
+      tile('', 'code', 'Programmieren', nCode ? `${plural(nCode, 'Projekt', 'Projekte')} · Web, Python, Lua` : 'Spiele und Programme bauen: Web, Python, Lua', () => go({ view: 'code' }))));
     view.append(h('h2.section', { text: 'Einstellungen' }), h('div.ptiles', null,
       tile('', 'save', 'Sicherung', 'Alles sichern oder laden', () => backupSheet({ saveFile, onLoad: () => $('fileBackup').click(), after: render })),
       tile('', 'moon', 'Darstellung', 'Hell oder dunkel', () => themeSheet()),
