@@ -2610,3 +2610,19 @@ textarea.field.vpboth { min-height: 64px; padding: 12px 14px; resize: vertical; 
 .ptlink { display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 18px; background: var(--surface); box-shadow: inset 0 0 0 2px var(--pc); animation: ptin .35s ease; }
 @keyframes ptin { from { opacity: 0; transform: translateY(10px); } }
 @media (max-width: 600px) { .ptstirn { grid-template-columns: 1fr; grid-template-rows: auto 1fr auto; } .ptside { min-height: 72px; flex-direction: row; } }
+
+/* Lernkarten automatisch (autocards.js) */
+.aclist { display: flex; flex-direction: column; gap: 10px; margin: 14px 0 4px; }
+.acopt { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 64px; padding: 12px 14px; border: 1px solid var(--line, rgba(0,0,0,.08)); border-radius: 16px; background: var(--surface-2); color: inherit; font: inherit; text-align: left; cursor: pointer; transition: background .15s, border-color .15s, transform .1s; }
+button.acopt:active { transform: scale(.985); }
+button.acopt:hover { border-color: var(--accent); }
+.acopt.off, .acopt:disabled { opacity: .5; cursor: default; }
+.acopt.on { border-color: var(--accent); background: var(--accent-soft); }
+.acopt > .ic, .acpick > .ic { flex: none; width: 26px; height: 26px; color: var(--accent); }
+.acopt span { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1; }
+.acopt b { font-size: 16px; font-weight: 650; overflow-wrap: anywhere; }
+.acopt small { font-size: 13.5px; line-height: 1.35; color: var(--muted); overflow-wrap: anywhere; }
+div.acopt { cursor: default; }
+.acpick { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.acopt .btn.small { flex: none; }
+.mcb { white-space: pre-wrap; }

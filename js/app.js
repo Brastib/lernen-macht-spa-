@@ -2,7 +2,7 @@
 import { resumeVplanSetup, vplanCfg } from './vplan.js';
 import { renderMessages, unreadCount } from './messages.js';
 import * as db from './db.js';
-const APP_VERSION = '74';   // gleich wie VERSION in sw.js
+const APP_VERSION = '75';   // gleich wie VERSION in sw.js
 import { openEditor } from './editor.js';
 import { renderPage, PAPERS } from './paper.js';
 import { detectPage, defaultCorners } from './scanner.js';
@@ -118,6 +118,7 @@ async function renderLibrary() {
         { label: 'Sicherung laden', icon: 'restore', onClick: () => $('fileBackup').click() },
         'sep',
         { label: 'Text in allen Scans erkennen', icon: 'search', onClick: async () => ocrFlow(await db.listAllPages()) },
+        { label: 'Lokale KI (für Lernkarten) …', icon: 'bolt', onClick: async () => (await import('./autocards.js')).aiSettingsSheet() },
         'sep',
         { label: 'Darstellung (hell/dunkel)', icon: 'moon', onClick: () => themeSheet() },
       ])),
@@ -435,6 +436,7 @@ async function renderBook() {
     } },
     { label: 'Inhaltsverzeichnis', icon: 'list', onClick: async () => { const i = await tocSheet(pages, b.title); if (i != null) openBook(i); } },
     { label: 'Als PDF speichern', icon: 'pdf', onClick: () => pdfExportFlow(pages, b.title) },
+    { label: selecting && selected.size ? `Lernkarten automatisch (${selected.size} Seiten) …` : 'Lernkarten automatisch (KI) …', icon: 'bolt', onClick: async () => { const sel = selecting && selected.size ? pages.filter((p) => selected.has(p.id)) : pages; if (sel.length > 40) { toast('Höchstens 40 Seiten auf einmal. Tipp auf „Auswählen“ und markiere die Seiten, aus denen Karten werden sollen.', 5500); return; } const m = await import('./autocards.js'); m.autoCardsFlow(sel, { title: b.title }); } },
     { label: 'Text erkennen (für die Suche)', icon: 'search', onClick: () => ocrFlow(pages) },
     ...(pages.some((p) => p.kind !== 'blank') ? [{ label: 'Seiten säubern (schärfer, weißes Papier)', icon: 'auto', onClick: () => cleanFlow(selecting && selected.size ? pages.filter((p) => selected.has(p.id)) : pages) }] : []),
     ...(pages.some((p) => p.cleaned) ? [{ label: 'Säubern rückgängig (Original)', icon: 'restore', onClick: () => uncleanFlow(selecting && selected.size ? pages.filter((p) => selected.has(p.id)) : pages) }] : []),

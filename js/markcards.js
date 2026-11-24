@@ -107,17 +107,18 @@ export async function cardsFromMarks({ page, strokes, pageW }) {
   await reviewSheet(items, page);
 }
 
-async function reviewSheet(items, page) {
+const KIND_LABEL = { gap: 'Lückentext', pair: 'Wortpaar', term: 'Begriff', def: 'Definition', name: 'Fachbegriff', list: 'Aufzählung', year: 'Jahreszahl', ki: 'KI' };
+export async function reviewSheet(items, page, opts = {}) {
   const book = page.bookId ? await db.getBook(page.bookId) : null;
   const subjects = await db.listSubjects();
   let subjectId = book && book.subjectId || (subjects[0] && subjects[0].id);
   if (!subjectId) { toast('Leg zuerst ein Fach an.'); return; }
   const last = (() => { try { return localStorage.getItem('markDeck') || ''; } catch (e) { return ''; } })();
-  const res = await sheet(plural(items.length, 'Karte aus Markiertem', 'Karten aus Markiertem'), async (body, close) => {
+  const res = await sheet(opts.title ? `${opts.title} (${items.length})` : plural(items.length, 'Karte aus Markiertem', 'Karten aus Markiertem'), async (body, close) => {
     const subjSel = h('select.field', { id: 'mcSubj' }, ...subjects.map((s) => h('option', { value: s.id, text: s.name })));
     subjSel.value = subjectId;
     const deckSel = h('select.field', { id: 'mcDeck' });
-    const newName = h('input.field', { type: 'text', placeholder: 'Name des neuen Stapels', value: book ? `${book.title}` : 'Markiertes', autocomplete: 'off' });
+    const newName = h('input.field', { type: 'text', placeholder: 'Name des neuen Stapels', value: opts.deckName || (book ? `${book.title}` : 'Markiertes'), autocomplete: 'off' });
     const fillDecks = async () => {
       const decks = (await db.listDecks(subjSel.value)).sort((a, b) => a.title.localeCompare(b.title));
       deckSel.replaceChildren(...decks.map((d) => h('option', { value: d.id, text: d.title })), h('option', { value: '__new', text: 'Neuer Stapel …' }));
@@ -133,11 +134,11 @@ async function reviewSheet(items, page) {
     const upd = () => { const n = items.filter((x) => x.on && x.front.trim() && x.back.trim()).length; count.textContent = n ? `${plural(n, 'Karte', 'Karten')} anlegen` : 'Nichts ausgewählt'; go.disabled = !n; };
     items.forEach((it) => {
       const f = h('textarea.field.mcf', { rows: 2, 'aria-label': 'Vorderseite' }); f.value = it.front;
-      const b = h('textarea.field.mcb', { rows: 2, 'aria-label': 'Rückseite', placeholder: it.kind === 'term' ? 'Erklärung oder Übersetzung eintragen' : '' }); b.value = it.back;
+      const b = h('textarea.field.mcb', { rows: Math.min(6, Math.max(2, (it.back.match(/\n/g) || []).length + 1)), 'aria-label': 'Rückseite', placeholder: it.kind === 'term' ? 'Erklärung oder Übersetzung eintragen' : '' }); b.value = it.back;
       const row = h('div.mcrow' + (it.on ? '' : '.off'), null,
         h('button.hwcheck', { 'aria-label': 'Karte verwenden', 'aria-pressed': String(it.on), on: { click: (e) => { it.on = !it.on; row.classList.toggle('off', !it.on); e.currentTarget.setAttribute('aria-pressed', String(it.on)); upd(); } } }, icon('select')),
         h('div.mcfields', null,
-          h('em.mckind', { text: it.kind === 'gap' ? 'Lückentext' : it.kind === 'pair' ? 'Wortpaar' : 'Begriff' }),
+          h('em.mckind', { text: KIND_LABEL[it.kind] || 'Begriff' }),
           h('label', null, h('small', { text: 'Vorderseite' }), f),
           h('label', null, h('small', { text: 'Rückseite' }), b)));
       f.addEventListener('input', () => { it.front = f.value; upd(); });
@@ -146,7 +147,7 @@ async function reviewSheet(items, page) {
     });
     go.addEventListener('click', () => close({ subjectId: subjSel.value, deck: deckSel.value, name: newName.value.trim() }));
     body.append(
-      h('p.dlgtext', { text: 'Prüf die Vorschläge kurz. Die Texterkennung kann sich bei einzelnen Buchstaben irren.' }),
+      h('p.dlgtext', { text: opts.hint || 'Prüf die Vorschläge kurz. Die Texterkennung kann sich bei einzelnen Buchstaben irren.' }),
       list,
       h('div.fieldgrid', null, h('div', null, h('label.fieldlabel', { for: 'mcSubj', text: 'Fach' }), subjSel), h('div', null, h('label.fieldlabel', { for: 'mcDeck', text: 'Stapel' }), deckSel)),
       newName,
