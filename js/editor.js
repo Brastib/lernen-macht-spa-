@@ -8,7 +8,11 @@ import { compile, mathify } from './mathfn.js';
 import { axesBox, axesFrame } from './paper.js';
 import { detectGaps, textForGap, baselineShift, gapAt } from './gaps.js';
 
-const $ = (id) => document.getElementById(id);
+// Geteilte Ansicht: Es gibt zwei Blatt-Bereiche (links/rechts). Die Kennungen der Zeichenflächen
+// zeigen immer auf den Bereich, in dem gerade geschrieben wird (pane 0 = links, 1 = rechts).
+const PANE_IDS = new Set(['edScroll', 'edPage', 'edBg', 'edInk', 'edLive', 'edTpl', 'edSel']);
+let pane = 0, split = false;
+const $ = (id) => document.getElementById(pane && PANE_IDS.has(id) ? id + '2' : id);
 const COLORS = [
   ['#1d1d1f', 'Graphit'], ['#1f4fbf', 'Blau'], ['#c62f2f', 'Rot'],
   ['#23764a', 'Grün'], ['#f2c230', 'Gelb'], ['#e2679f', 'Rosa'],
@@ -40,19 +44,25 @@ try { const g = localStorage.getItem('gridAssist'); if (g !== null) gridAssist =
 const assistLines = () => (page && page.kind === 'blank' && gridAssist ? paperLines(page.paper) : null);
 
 export async function openEditor(p, { onClose } = {}) {
-  page = p; onCloseCb = onClose;
-  strokes = await db.getInk(p.id);
-  undo = []; redo = []; dirty = false; zoom = 1;
-  cur = null; touches.clear(); pinch = null; tpl = null; tplDrag = null; sel = null; textEd = null;
-  exitGapMode();
-  bg = null;
-  if (p.kind !== 'blank') {
-    const blob = await db.getImage(p.id);
-    if (blob) bg = await blobToImage(blob);
-  }
+  if (split) endSplit(false);
+  pane = 0;
+  onCloseCb = onClose; usedSplit = false;
+  await loadInto(p);
   $('editor').hidden = false;
   buildPalette();
   layout(true);
+  updatePaneHeads();
+}
+
+// Lädt ein Blatt in den aktiven Bereich
+async function loadInto(p) {
+  const [ink, blob] = await Promise.all([db.getInk(p.id), p.kind !== 'blank' ? db.getImage(p.id) : null]);
+  const img = blob ? await blobToImage(blob) : null;
+  page = p; strokes = ink; bg = img;
+  undo = []; redo = []; dirty = false; zoom = 1;
+  cur = null; touches.clear(); pinch = null; tpl = null; tplDrag = null; sel = null; textEd = null;
+  band = { y0: 0, y1: 0 };
+  exitGapMode();
 }
 
 async function close() {
@@ -60,11 +70,187 @@ async function close() {
   snapAllGaps();
   exitGapMode();
   commitText();
-  await flushSave();
+  const saves = [flushSave()];
+  if (split) withPane(1 - pane, () => saves.push(flushSave()));
+  await Promise.all(saves);
+  const closed = usedSplit ? null : page;   // null: Bibliothek erneuert alle Vorschaubilder
+  if (split) endSplit(false);
   $('editor').hidden = true;
-  const closed = page;
   page = null; bg = null; strokes = [];
   if (onCloseCb) onCloseCb(closed);
+}
+
+// ---------- Geteilte Ansicht: zwei Blätter nebeneinander ----------
+const stash = [null, null];   // Zustand des gerade nicht aktiven Bereichs
+let usedSplit = false;
+const grab = () => ({ page, bg, strokes, undo, redo, dirty, zoom, tpl, band });
+function put(s) { ({ page, bg, strokes, undo, redo, dirty, zoom, tpl, band } = s); }
+const paneEl = (i) => document.querySelector(`#edPanes .edpane[data-pane="${i}"]`);
+
+// Kurz in den anderen Bereich wechseln (ohne Nebenwirkungen), z. B. zum Neuzeichnen beim Scrollen
+function withPane(i, fn) {
+  if (!split || i === pane) { fn(); return; }
+  const mine = grab(), keepSel = sel, old = pane;
+  sel = null;
+  put(stash[i]); pane = i;
+  try { fn(); } finally { stash[i] = grab(); pane = old; put(mine); sel = keepSel; }
+}
+
+// Bereich i zum Schreiben auswählen (Werkzeugleiste wirkt dann dort)
+function activate(i) {
+  if (!split || i === pane) return;
+  finishStroke(); commitText(); exitGapMode();
+  if (sel) { sel = null; drawSel(); }
+  flushSave();
+  touches.clear(); pinch = null; tplDrag = null; cur = null;
+  stash[pane] = grab();
+  pane = i;
+  put(stash[i]); stash[i] = null;
+  updateToolbar(); updatePaneHeads();
+}
+
+async function startSplit() {
+  const p2 = await pickPage({ title: 'Zweites Blatt daneben', exclude: page.id, startBook: page.bookId });
+  if (!p2 || !page) return;
+  finishStroke(); commitText(); exitGapMode();
+  if (sel) { sel = null; drawSel(); }
+  flushSave();
+  split = true; usedSplit = true;
+  $('editor').classList.add('split');
+  $('edPanes').classList.add('split');
+  paneEl(1).hidden = false;
+  stash[0] = grab();
+  pane = 1;
+  await loadInto(p2);
+  layout(true);
+  $('edScroll').scrollTop = 0;
+  withPane(0, () => layout(true));
+  updateToolbar(); updatePaneHeads();
+}
+
+// Rechtes Blatt schließen; das linke bleibt offen
+function endSplit(relayout = true) {
+  if (!split) return;
+  if (pane === 1) {
+    finishStroke(); commitText(); exitGapMode();
+    if (sel) { sel = null; drawSel(); }
+    flushSave();
+    put(stash[0]); pane = 0;
+  } else { flushSave(); withPane(1, () => flushSave()); }
+  stash[0] = stash[1] = null;
+  split = false;
+  for (const id of ['edBg2', 'edInk2', 'edLive2']) { const c = document.getElementById(id); c.width = c.height = 1; }
+  paneEl(1).hidden = true;
+  $('editor').classList.remove('split');
+  $('edPanes').classList.remove('split');
+  if (relayout) { layout(true); updateToolbar(); updatePaneHeads(); }
+}
+
+// Seiten links und rechts tauschen
+function swapPanes() {
+  if (!split) return;
+  finishStroke(); commitText(); exitGapMode();
+  if (sel) { sel = null; drawSel(); }
+  const o = 1 - pane, mine = grab();
+  put(stash[o]); stash[o] = mine;          // Inhalte tauschen, aktiver Bereich bleibt
+  layout(true);
+  withPane(o, () => layout(true));
+  updateToolbar(); updatePaneHeads();
+}
+
+// Im Bereich i ein anderes Blatt öffnen
+async function showInPane(i, p) {
+  activate(i);
+  finishStroke(); commitText();
+  flushSave();
+  await loadInto(p);
+  layout(true);
+  $('edScroll').scrollTop = 0;
+  updateToolbar(); updatePaneHeads();
+}
+
+const bookCache = new Map();
+async function bookTitle(id) {
+  if (id === db.INBOX_BOOK) return 'Eingang';
+  if (!bookCache.has(id)) bookCache.set(id, (await db.getBook(id).catch(() => null))?.title || 'Blatt');
+  return bookCache.get(id);
+}
+async function updatePaneHeads() {
+  for (const i of [0, 1]) paneEl(i).classList.toggle('active', split && i === pane);
+  if (!split) return;
+  for (const i of [0, 1]) {
+    let pg = null;
+    withPane(i, () => { pg = page; });
+    if (!pg) continue;
+    const list = await db.listPages(pg.bookId);
+    const k = list.findIndex((x) => x.id === pg.id);
+    const head = paneEl(i).querySelector('.edphead');
+    head.querySelector('.edpname').textContent = await bookTitle(pg.bookId);
+    head.querySelector('.edpnum').textContent = k >= 0 ? `Seite ${k + 1} von ${list.length}` : '';
+    const other = () => { let o = null; withPane(1 - i, () => { o = page; }); return o; };
+    const step = (d) => { let j = k + d; if (list[j] && other() && list[j].id === other().id) j += d; return list[j] || null; };
+    head.querySelector('[data-act="prev"]').disabled = !step(-1);
+    head.querySelector('[data-act="next"]').disabled = !step(1);
+    head._step = step;
+  }
+}
+for (const i of [0, 1]) {
+  paneEl(i).querySelector('.edphead').addEventListener('click', async (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    const head = e.currentTarget, act = b.dataset.act;
+    if (act === 'close') { endSplit(); return; }
+    if (act === 'swap') { swapPanes(); return; }
+    if (act === 'prev' || act === 'next') { const p = head._step && head._step(act === 'prev' ? -1 : 1); if (p) showInPane(i, p); return; }
+    if (act === 'pick') {
+      let mine = null, other = null;
+      withPane(i, () => { mine = page; }); withPane(1 - i, () => { other = page; });
+      const p = await pickPage({ title: i ? 'Blatt rechts wählen' : 'Blatt links wählen', exclude: other && other.id, current: mine && mine.id, startBook: mine && mine.bookId });
+      if (p && (!mine || p.id !== mine.id)) showInPane(i, p);
+    }
+  });
+}
+
+// Auswahl: erst Buch/Heft/Mappe, dann die Seite (mit Vorschaubildern)
+async function pickPage({ title, exclude, current, startBook }) {
+  const [subjects, books] = await Promise.all([db.listSubjects(), db.listAllBooks()]);
+  const subj = new Map(subjects.map((s) => [s.id, s]));
+  const order = (b) => [subjects.findIndex((s) => s.id === b.subjectId), b.title || ''];
+  books.sort((a, b) => { const [x1, y1] = order(a), [x2, y2] = order(b); return x1 - x2 || y1.localeCompare(y2, 'de'); });
+  const places = [{ id: db.INBOX_BOOK, title: 'Eingang', color: 'var(--muted)', kind: 'inbox' },
+    ...books.map((b) => ({ id: b.id, title: b.title || 'Ohne Namen', color: subj.get(b.subjectId)?.color || 'var(--muted)', sub: subj.get(b.subjectId)?.name || '', kind: b.kind }))];
+  const urls = [];
+  const res = await sheet(title, (body, done) => {
+    const list = el('div.pickbooks', { role: 'listbox', 'aria-label': 'Bücher und Hefte' });
+    const grid = el('div.pickpages');
+    let token = 0;
+    const show = async (pl) => {
+      list.querySelectorAll('.pickbook').forEach((x) => x.classList.toggle('on', x.dataset.id === pl.id));
+      const my = ++token;
+      grid.replaceChildren(el('p.pickempty', { text: 'Lädt …' }));
+      const pages = await db.listPages(pl.id);
+      if (my !== token) return;
+      grid.replaceChildren();
+      if (!pages.length) { grid.append(el('p.pickempty', { text: 'Hier sind noch keine Seiten.' })); return; }
+      pages.forEach((p, k) => {
+        const busyHere = p.id === exclude, here = p.id === current;
+        const img = el('img', { alt: '' });
+        const tile = el('button.picktile' + (here ? '.on' : ''), { disabled: busyHere, on: { click: () => done(p) } },
+          el('span.pickthumb', null, img),
+          el('small', { text: busyHere ? 'schon offen' : here ? `Seite ${k + 1} · offen` : `Seite ${k + 1}` }));
+        grid.append(tile);
+        db.getThumb(p.id).then((t) => { if (t && my === token) { const u = URL.createObjectURL(t); urls.push(u); img.src = u; } }).catch(() => {});
+      });
+    };
+    for (const pl of places) {
+      list.append(el('button.pickbook', { 'data-id': pl.id, style: { '--c': pl.color }, on: { click: () => show(pl) } },
+        el('i.dot'), el('span', null, el('b', { text: pl.title }), pl.sub ? el('small', { text: pl.sub }) : null)));
+    }
+    body.append(el('div.pickcols', null, list, grid));
+    show(places.find((x) => x.id === startBook) || places[0]);
+    setTimeout(() => list.querySelector('.pickbook.on')?.scrollIntoView({ block: 'nearest' }), 30);
+  }, { wide: true });
+  for (const u of urls) URL.revokeObjectURL(u);
+  return res || null;
 }
 
 // ---------- Werkzeugleiste ----------
@@ -129,6 +315,9 @@ function updateToolbar() {
   $('edFinger').classList.toggle('on', fingerDraws);
   $('edFinger').setAttribute('aria-pressed', fingerDraws);
   $('edFingerLabel').textContent = fingerDraws ? 'Finger schreibt' : 'Finger blättert';
+  $('edSplit').classList.toggle('on', split);
+  $('edSplit').setAttribute('aria-label', split ? 'Geteilte Ansicht beenden' : 'Zweites Blatt daneben');
+  $('edSplit').title = split ? 'Rechtes Blatt schließen' : 'Zweites Blatt daneben öffnen';
 }
 
 $('ed_pen').addEventListener('click', () => setTool('pen'));
@@ -154,6 +343,7 @@ $('ed_fill').addEventListener('click', () => {
 $('edUndo').addEventListener('click', doUndo);
 $('edRedo').addEventListener('click', doRedo);
 $('edDone').addEventListener('click', close);
+$('edSplit').addEventListener('click', () => { if (split) endSplit(); else startSplit(); });
 // ---------- Arbeitsblatt: Name/Datum einsetzen, als PDF teilen ----------
 $('edShare').addEventListener('click', (e) => {
   menu(e.currentTarget, [
@@ -330,8 +520,12 @@ function renderBand(force) {
 }
 // Leinwand leeren (unabhängig vom Ausschnitt)
 function wipe(c) { const x = c.getContext('2d'); x.save(); x.setTransform(1, 0, 0, 1, 0, 0); x.clearRect(0, 0, c.width, c.height); x.restore(); }
-let bandRaf = 0;
-$('edScroll').addEventListener('scroll', () => { if (!bandRaf) bandRaf = requestAnimationFrame(() => { bandRaf = 0; renderBand(false); }); }, { passive: true });
+const bandRaf = [0, 0];
+for (const i of [0, 1]) {
+  document.getElementById(i ? 'edScroll2' : 'edScroll').addEventListener('scroll', () => {
+    if (!bandRaf[i]) bandRaf[i] = requestAnimationFrame(() => { bandRaf[i] = 0; if (page && (i === pane || split)) withPane(i, () => renderBand(false)); });
+  }, { passive: true });
+}
 
 // Endlose Heftseite: Wenn unten geschrieben wird, kommt neues Papier dazu (in halben Seiten).
 function contentBottom() {
@@ -355,7 +549,7 @@ function growPage() {
   layout(true);
   sc.scrollTop = top;
 }
-window.addEventListener('resize', () => { if (page) layout(true); });
+window.addEventListener('resize', () => { if (!page) return; layout(true); if (split) withPane(1 - pane, () => layout(true)); });
 
 const scale = () => $('edInk').width / PAGE_W;
 
@@ -411,7 +605,18 @@ function pressureOf(e) {
   return 0.5;
 }
 
-const area = $('edScroll');
+const areas = [document.getElementById('edScroll'), document.getElementById('edScroll2')];
+const area = { addEventListener: (t, fn, o) => areas.forEach((a, i) => a.addEventListener(t, (e) => onArea(i, t, e, fn), o)) };
+// Ereignisse aus dem anderen Bereich: beim Aufsetzen dorthin wechseln, sonst ignorieren
+function onArea(i, t, e, fn) {
+  if (i !== pane && t === 'pointerdown') {
+    if (!split) return;
+    // Handballen im anderen Bereich, während der Pencil schreibt: nicht wechseln
+    if (e.pointerType === 'touch' && (cur || touches.size || tplDrag)) return;
+    activate(i);
+  }
+  fn(e);
+}
 
 // iPad: Scribble, Lupe und Text-Auswahl abfangen, sonst gehen Pencil-Striche verloren
 for (const t of ['touchstart', 'touchmove']) {
@@ -434,7 +639,7 @@ area.addEventListener('pointerdown', (e) => {
     // Wie bei Apple: sobald der Pencil benutzt wird, blättert der Finger nur noch
     if (fingerDraws) { fingerDraws = false; updateToolbar(); }
   }
-  const onPage = !!e.target.closest('#edPage');
+  const onPage = !!e.target.closest('.edpage');
   const [x, y] = toPage(e);
   const drawsHere = e.pointerType !== 'touch' || fingerDraws;
 
@@ -456,7 +661,7 @@ area.addEventListener('pointerdown', (e) => {
     {
       tplDrag = { mode: hit, id: e.pointerId, type: e.pointerType, start: [x, y], last: [x, y], x0: tpl.x, y0: tpl.y, a0: tpl.angle,
         off: Math.atan2(y - tpl.y, x - tpl.x) * 180 / Math.PI - tpl.angle };
-      try { area.setPointerCapture(e.pointerId); } catch (err) { /* egal */ }
+      try { $('edScroll').setPointerCapture(e.pointerId); } catch (err) { /* egal */ }
       e.preventDefault();
       return;
     }
@@ -465,7 +670,7 @@ area.addEventListener('pointerdown', (e) => {
   if (tool === 'text' && onPage && !cur && (e.pointerType !== 'touch' || touches.size === 0)) {
     // Textfeld: beim Loslassen öffnen (iPad zeigt die Tastatur nur bei einer echten Berührung)
     cur = { textTap: true, id: e.pointerId, type: e.pointerType, at: [x, y], cx: e.clientX, cy: e.clientY, scrolling: false };
-    try { area.setPointerCapture(e.pointerId); } catch (err) { /* egal */ }
+    try { $('edScroll').setPointerCapture(e.pointerId); } catch (err) { /* egal */ }
     e.preventDefault();
     return;
   }
@@ -489,7 +694,7 @@ area.addEventListener('pointerdown', (e) => {
     // Ein altes Ende ging verloren (passiert auf dem iPad manchmal): alten Strich abschließen
     finishStroke();
   }
-  try { area.setPointerCapture(e.pointerId); } catch (err) { /* egal */ }
+  try { $('edScroll').setPointerCapture(e.pointerId); } catch (err) { /* egal */ }
   e.preventDefault();
   if (tool === 'eraser') { cur = { erase: true, id: e.pointerId, type: e.pointerType, removed: [] }; eraseAt(x, y); return; }
   if (tool === 'lasso') {
@@ -523,7 +728,7 @@ area.addEventListener('pointermove', (e) => {
     // Mit dem Finger wischen statt tippen: Blatt schieben
     const dx = e.clientX - cur.cx, dy = e.clientY - cur.cy;
     if (cur.scrolling || Math.hypot(dx, dy) > 10) {
-      if (e.pointerType === 'touch') { cur.scrolling = true; area.scrollLeft -= dx; area.scrollTop -= dy; cur.cx = e.clientX; cur.cy = e.clientY; }
+      if (e.pointerType === 'touch') { cur.scrolling = true; $('edScroll').scrollLeft -= dx; $('edScroll').scrollTop -= dy; cur.cx = e.clientX; cur.cy = e.clientY; }
     }
     return;
   }
@@ -1272,7 +1477,7 @@ function moveTouch(e) {
     setZoom(pinch.zoom * d / pinch.d, false);
     return;
   }
-  area.scrollLeft -= dx; area.scrollTop -= dy;
+  $('edScroll').scrollLeft -= dx; $('edScroll').scrollTop -= dy;
 }
 function startPinch() {
   const [a, b] = [...touches.values()];

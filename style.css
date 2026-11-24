@@ -432,9 +432,10 @@ body.selmode #view { padding-bottom: 90px; }
 }
 /* iPad quer: Lineal/Geodreieck-Knöpfe sollen noch in dieselbe Zeile passen */
 @media (min-width: 1000px) and (max-width: 1300px) {
-  .tool { width: 40px; }
-  .swatch, .sizes button { width: 33px; }
-  .edright .icbtn { width: 40px; }
+  .tool { width: 38px; }
+  .swatch, .sizes button { width: 32px; }
+  .edright .icbtn { width: 37px; }
+  .edbar { gap: 8px; }
   .edbar .chip { margin-left: 2px; }
 }
 
@@ -2640,3 +2641,53 @@ div.acopt { cursor: default; }
 .acpick { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .acopt .btn.small { flex: none; }
 .mcb { white-space: pre-wrap; }
+
+/* ---------- Geteilte Ansicht: zwei Blätter nebeneinander ---------- */
+.edpanes { flex: 1; min-height: 0; display: flex; }
+.edpane { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; }
+.edpane[hidden] { display: none; }
+.edpane .edscroll { min-height: 0; }
+.edphead { display: none; }
+.edpanes.split .edpane + .edpane { box-shadow: -1px 0 0 var(--line); }
+.edpanes.split .edscroll { padding: 16px; }
+.edpanes.split .edphead {
+  display: flex; align-items: center; gap: 2px; flex: none; height: 50px; padding: 0 8px;
+  background: var(--surface); box-shadow: inset 0 -1px 0 var(--line); position: relative;
+}
+.edpanes.split .edpane.active .edphead::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: 0; height: 3px; border-radius: 3px 3px 0 0; background: var(--accent); }
+.edptitle { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 10px; border-radius: 10px; color: var(--ink); text-align: left; }
+.edptitle:active { background: var(--surface-2); }
+.edpname { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; font-weight: 600; }
+.edpnum { flex: none; color: var(--muted); font-size: 13px; white-space: nowrap; }
+.edptitle .ic { flex: none; width: 16px; height: 16px; color: var(--muted); }
+.edphead .icbtn { flex: none; width: 38px; height: 38px; }
+.edphead .icbtn:disabled { opacity: .3; }
+.edpanes.split .edpane:not(.active) .edpname { color: var(--muted); }
+#edSplit.on { color: var(--accent); background: var(--accent-soft); }
+.editor.split .chip.floating { top: auto; bottom: calc(env(safe-area-inset-bottom, 0px) + 20px); }
+@media (max-width: 900px) {
+  .edpnum { display: none; }
+  .edphead .icbtn { width: 34px; }
+  .edpanes.split .edscroll { padding: 10px; }
+}
+/* Auswahl des zweiten Blatts */
+.pickcols { display: grid; grid-template-columns: minmax(150px, 210px) minmax(0, 1fr); gap: 12px; height: min(62vh, 540px); }
+.pickbooks { overflow: auto; display: flex; flex-direction: column; gap: 2px; padding-right: 4px; border-right: 1px solid var(--line); }
+.pickbook { display: flex; align-items: center; gap: 10px; min-height: 46px; padding: 6px 10px; border-radius: 10px; text-align: left; color: var(--ink); }
+.pickbook .dot { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--c); }
+.pickbook span { min-width: 0; display: flex; flex-direction: column; }
+.pickbook b, .pickbook small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pickbook b { font-size: 14px; font-weight: 600; }
+.pickbook small { font-size: 12px; color: var(--muted); }
+.pickbook.on { background: var(--accent-soft); }
+.pickbook.on b { color: var(--accent); }
+.pickpages { overflow: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); align-content: start; gap: 14px 12px; padding: 2px 4px 8px; }
+.picktile { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; padding: 0; color: var(--ink); }
+.pickthumb { width: 100%; aspect-ratio: 1 / 1.414; display: block; border-radius: 4px; overflow: hidden; background: var(--paper); box-shadow: 0 0 0 1px var(--line), 0 2px 6px rgba(15,20,35,.08); }
+.pickthumb img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.picktile small { font-size: 12px; color: var(--muted); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.picktile.on .pickthumb { box-shadow: 0 0 0 2.5px var(--accent); }
+.picktile.on small { color: var(--accent); font-weight: 600; }
+.picktile:disabled { opacity: .4; }
+.pickempty { grid-column: 1 / -1; color: var(--muted); font-size: 14px; padding: 20px 4px; }
+@media (max-width: 600px) { .pickcols { grid-template-columns: 1fr; height: auto; } .pickbooks { max-height: 30vh; border-right: 0; } .pickpages { max-height: 40vh; } }
