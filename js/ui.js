@@ -241,3 +241,20 @@ export function zoomBar(opts) {
     update(z) { pct.textContent = Math.round(z * 100) + ' %'; },
   };
 }
+
+// ---------- iPad: keine Lupe / Textauswahl beim Gedrückthalten ----------
+// Nur Eingabefelder und Bereiche, die ausdrücklich markierbar sind (CSS user-select: text), dürfen markieren.
+(function noLoupe() {
+  const elOf = (t) => (t && t.nodeType === 1 ? t : t && t.parentElement);
+  const selectable = (t) => {
+    const e = elOf(t);
+    if (!e) return false;
+    if (e.closest('input, textarea, select, [contenteditable=""], [contenteditable="true"]')) return true;
+    const us = getComputedStyle(e).webkitUserSelect || getComputedStyle(e).userSelect;
+    return us === 'text';
+  };
+  document.addEventListener('selectstart', (e) => { if (!selectable(e.target)) e.preventDefault(); });
+  document.addEventListener('contextmenu', (e) => { if (!selectable(e.target)) e.preventDefault(); });
+  // Langes Drücken auf Bildern/Zeichenflächen: iOS-Vorschau und Lupe nicht starten
+  document.addEventListener('dragstart', (e) => { const el = elOf(e.target); if (el && el.closest('img, canvas, svg')) e.preventDefault(); });
+})();

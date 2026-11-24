@@ -323,6 +323,9 @@ function endPointer(e) {
       return;
     }
     lastTap = { t: now, x: e.clientX, y: e.clientY };
+    // Seite antippen wählt sie (iPad: der normale Klick fällt weg, weil das Gedrückthalten abgefangen wird)
+    const rp = e.target.closest && e.target.closest('.rpage');
+    if (rp && e.pointerType === 'touch') rp.click();
     return;
   }
   if (z.s <= 1.001 && Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)) go(dx < 0 ? 1 : -1);
@@ -339,6 +342,11 @@ stage.addEventListener('wheel', (e) => {
     e.preventDefault();
     z.x -= e.deltaX; z.y -= e.deltaY; clampZ(); applyZ(false);
   }
+}, { passive: false });
+// iPad: Gedrückthalten auf der Seite soll keine Lupe/Auswahl öffnen (Knöpfe bleiben normal antippbar)
+stage.addEventListener('touchstart', (e) => {
+  if (e.target.closest('button:not(.rpage), a, input, textarea, select, .zbar, .nav')) return;
+  e.preventDefault();
 }, { passive: false });
 // Safari: eigene Seiten-Zoom-Geste im Leser abfangen
 for (const ev of ['gesturestart', 'gesturechange']) stage.addEventListener(ev, (e) => e.preventDefault());

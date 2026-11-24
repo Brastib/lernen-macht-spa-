@@ -3164,3 +3164,9 @@ body:has(.gamefx) .bbfab, body:has(.planefx) .bbfab, body:has(.study:not([hidden
 .edpanes.split .zbar { right: 54px; bottom: 10px; }
 .edpanes.split .edpane[data-pane="0"] .zbar { right: 10px; }
 .readstage .rdzbar { right: 58px; }
+
+/* iPad: Gedrückthalten soll keine Apple-Lupe, Textauswahl oder Bild-Menü öffnen.
+   Eingabefelder und bewusst markierbare Texte (eigene Klassen mit user-select: text) bleiben ausgenommen. */
+*:not(input):not(textarea):not([contenteditable]) { -webkit-touch-callout: none; }
+img, canvas, svg, video { -webkit-user-select: none; user-select: none; -webkit-user-drag: none; }
+button, [role="button"], .tool, .icbtn, .chip { -webkit-user-select: none; user-select: none; }
