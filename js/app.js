@@ -2,7 +2,7 @@
 import { resumeVplanSetup, vplanCfg } from './vplan.js';
 import { renderMessages, unreadCount } from './messages.js';
 import * as db from './db.js';
-const APP_VERSION = '79';   // gleich wie VERSION in sw.js
+const APP_VERSION = '81';   // gleich wie VERSION in sw.js
 import { openEditor } from './editor.js';
 import { renderPage, PAPERS } from './paper.js';
 import { detectPage, defaultCorners } from './scanner.js';
@@ -14,7 +14,8 @@ import { playerCard, profileSheet } from './game.js';
 import { renderKit, TABS as KIT_TABS, focusWatch } from './kit.js';
 import { backupBanner, backupSheet, backupNow } from './backup.js';
 import { greeting, applyTheme, themeSheet, focusPill, weekCard } from './dash.js';
-import { renderTimetable, renderExams, renderGrades, nowCard, examCard, subjectSchoolBox } from './school.js';
+import { renderGrades, renderGradeSubject } from './grades.js';
+import { renderTimetable, renderExams, nowCard, examCard, subjectSchoolBox } from './school.js';
 import { editHomework, hwList, sortHw } from './homework.js';
 import { renderPlan, todayPlan } from './plan.js';
 import { renderSorter, dateGroup, fmtDay } from './organize.js';
@@ -96,6 +97,7 @@ async function render() {
   if (nav.view === 'sort') return renderSorter({ setHeader, btn, iconBtn, go });
   if (nav.view === 'plan') return renderPlan({ setHeader, btn, iconBtn, go }, nav.examId);
   if (nav.view === 'grades') return renderGrades({ setHeader, btn, iconBtn, go });
+  if (nav.view === 'gradesubj') return renderGradeSubject({ setHeader, btn, iconBtn, go }, nav.subjectId);
   if (nav.view === 'deck') return renderDeck(nav.deck, { setHeader, btn, iconBtn, go, subject: nav.subject, saveFile });
   return renderBook();
 }

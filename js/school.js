@@ -606,7 +606,7 @@ export async function renderExams(ctx) {
 async function gradeForExam(ex, after) {
   const subjects = await db.listSubjects();
   const existing = ex.gradeId ? (await db.listGrades()).find((g) => g.id === ex.gradeId) : null;
-  const g = await editGrade(existing || { subjectId: ex.subjectId, cat: 'schriftlich', label: ex.kind + (ex.topic ? ': ' + ex.topic.split('\n')[0].slice(0, 40) : ''), date: ex.date }, { subjects });
+  const g = await editGrade(existing || { subjectId: ex.subjectId, cat: /Präsentation|Referat/.test(ex.kind) ? 'praesi' : 'schriftlich', label: ex.kind + (ex.topic ? ': ' + ex.topic.split('\n')[0].slice(0, 40) : ''), date: ex.date }, { subjects });
   if (g && g.id) { ex.gradeId = g.id; await db.putItems('exams', ex); }
   after();
 }
@@ -626,20 +626,23 @@ export async function examCard({ go, subjects }) {
 }
 
 // ================= Noten =================
-const NOTEN = [['1+', 0.7], ['1', 1], ['1-', 1.3], ['2+', 1.7], ['2', 2], ['2-', 2.3], ['3+', 2.7], ['3', 3], ['3-', 3.3], ['4+', 3.7], ['4', 4], ['4-', 4.3], ['5+', 4.7], ['5', 5], ['5-', 5.3], ['6', 6]];
+export const NOTEN = [['1+', 0.7], ['1', 1], ['1-', 1.3], ['2+', 1.7], ['2', 2], ['2-', 2.3], ['3+', 2.7], ['3', 3], ['3-', 3.3], ['4+', 3.7], ['4', 4], ['4-', 4.3], ['5+', 4.7], ['5', 5], ['5-', 5.3], ['6', 6]];
 export async function gradeCfg() { return (await db.getMeta('gradecfg')) || { id: 'gradecfg', scale: 'noten', written: 50 }; }
-const fmt1 = (v) => v.toFixed(2).replace('.', ',');
+export const fmt1 = (v) => v.toFixed(2).replace('.', ',');
 export function gradeLabel(v, scale) { if (scale === 'punkte') return String(v); const f = NOTEN.find(([, x]) => Math.abs(x - v) < 0.01); return f ? f[0] : fmt1(v); }
 // Note gut/mittel/schlecht (für Farbe)
-const tone = (v, scale) => { const n = scale === 'punkte' ? (17 - v) / 3 : v; return n <= 2.5 ? 'good' : n <= 4 ? 'mid' : 'bad'; };
-export function average(grades, cfg) {
-  const cat = (c) => { const g = grades.filter((x) => x.cat === c); const w = g.reduce((a, x) => a + (x.weight || 1), 0); return w ? g.reduce((a, x) => a + x.value * (x.weight || 1), 0) / w : null; };
-  const s = cat('schriftlich'), m = cat('muendlich');
-  if (s == null && m == null) return null;
-  if (s == null) return m;
-  if (m == null) return s;
-  return s * cfg.written / 100 + m * (100 - cfg.written) / 100;
+export const tone = (v, scale) => { const n = scale === 'punkte' ? (17 - v) / 3 : v; return n <= 2.5 ? 'good' : n <= 4 ? 'mid' : 'bad'; };
+// Präsentationen zählen je nach Einstellung zu schriftlich oder mündlich
+export const catOf = (x, cfg) => (x.cat === 'praesi' ? (cfg.pres || 'muendlich') : x.cat);
+// Anteil schriftlich in Prozent, pro Fach überschreibbar
+export const writtenFor = (cfg, sid) => (cfg.subj && sid && cfg.subj[sid] && cfg.subj[sid].written != null ? cfg.subj[sid].written : cfg.written);
+export function avgParts(grades, cfg, sid) {
+  const cat = (c) => { const g = grades.filter((x) => x.value != null && catOf(x, cfg) === c); const w = g.reduce((a, x) => a + (x.weight || 1), 0); return w ? g.reduce((a, x) => a + x.value * (x.weight || 1), 0) / w : null; };
+  const s = cat('schriftlich'), m = cat('muendlich'), w = writtenFor(cfg, sid);
+  const avg = s == null && m == null ? null : s == null ? m : m == null ? s : s * w / 100 + m * (100 - w) / 100;
+  return { s, m, w, avg };
 }
+export function average(grades, cfg, sid) { return avgParts(grades, cfg, sid).avg; }
 
 export async function editGrade(g, { subjects, after } = {}) {
   const cfg = await gradeCfg();
@@ -654,7 +657,7 @@ export async function editGrade(g, { subjects, after } = {}) {
     }
     const subj = h('select.field', { id: 'grSubj' }, ...subjects.map((s) => h('option', { value: s.id, text: s.name })));
     subj.value = g.subjectId || (subjects[0] && subjects[0].id) || '';
-    const cat = h('select.field', { id: 'grCat' }, h('option', { value: 'schriftlich', text: 'Schriftlich (Arbeit, Test)' }), h('option', { value: 'muendlich', text: 'Mündlich / Mitarbeit' }));
+    const cat = h('select.field', { id: 'grCat' }, h('option', { value: 'schriftlich', text: 'Schriftlich (Arbeit, Test)' }), h('option', { value: 'muendlich', text: 'Mündlich / Mitarbeit' }), h('option', { value: 'praesi', text: 'Präsentation / Referat' }));
     cat.value = g.cat || 'schriftlich';
     const label = h('input.field', { type: 'text', id: 'grLabel', placeholder: 'z. B. 1. Klassenarbeit', value: g.label || '', autocomplete: 'off' });
     const weight = h('select.field', { id: 'grW' }, ...[[0.5, 'halb'], [1, 'normal'], [2, 'doppelt']].map(([v, l]) => h('option', { value: String(v), text: `Gewicht: ${l}` })));
@@ -680,59 +683,14 @@ export async function editGrade(g, { subjects, after } = {}) {
   return saved;
 }
 
-export async function renderGrades(ctx) {
-  const [grades, subjects, cfg] = await Promise.all([db.listGrades(), db.listSubjects(), gradeCfg()]);
-  const again = () => renderGrades(ctx);
-  const per = subjects.map((s) => { const g = grades.filter((x) => x.subjectId === s.id && x.value != null); return { s, g, avg: average(g, cfg) }; });
-  const withAvg = per.filter((x) => x.avg != null);
-  const total = withAvg.length ? withAvg.reduce((a, x) => a + x.avg, 0) / withAvg.length : null;
-  ctx.setHeader({
-    back: { label: 'Bibliothek', go: () => ctx.go({ view: 'library' }) },
-    eyebrow: 'Planer', title: 'Noten',
-    meta: total != null ? `Gesamtschnitt ${cfg.scale === 'punkte' ? total.toFixed(1).replace('.', ',') + ' Punkte' : fmt1(total)}` : 'Noch keine Noten',
-    actions: [ctx.iconBtn('more', 'Einstellungen', (e) => menu(e.currentTarget, [
-      { label: cfg.scale === 'punkte' ? 'Auf Noten 1–6 umstellen' : 'Auf Punkte 0–15 umstellen', icon: 'list', onClick: async () => {
-        if (grades.length && !(await confirmSheet('Skala wechseln?', 'Schon eingetragene Noten werden nicht umgerechnet. Am besten nur am Anfang wechseln.', 'Wechseln', false))) return;
-        cfg.scale = cfg.scale === 'punkte' ? 'noten' : 'punkte'; await db.putItems('meta', cfg); again(); } },
-      { label: `Gewichtung schriftlich ${cfg.written} % …`, icon: 'edit', onClick: async () => {
-        const v = await sheet('Gewichtung', (body, close) => {
-          const sel = h('select.field', { id: 'wSel' }, ...[30, 40, 50, 60, 67, 70].map((n) => h('option', { value: String(n), text: `Schriftlich ${n} % · mündlich ${100 - n} %` })));
-          sel.value = String(cfg.written);
-          body.append(h('p.dlgtext', { text: 'Frag im Zweifel deine Lehrkraft. Oft ist es 50 zu 50.' }), sel,
-            h('div.dlgactions', null, h('button.btn.primary', { text: 'Sichern', on: { click: () => close(+sel.value) } })));
-        });
-        if (v) { cfg.written = v; await db.putItems('meta', cfg); again(); }
-      } },
-    ])), ctx.btn('Note', 'plus', () => subjects.length ? editGrade({}, { subjects, after: again }) : toast('Leg zuerst ein Fach an'), '.primary')],
-  });
-  const view = $('view');
-  view.textContent = '';
-  if (!subjects.length) { view.append(h('p.calm', { text: 'Leg zuerst deine Fächer an.' })); return; }
-  const grid = h('div.gradegrid');
-  for (const { s, g, avg } of per) {
-    const chips = h('div.gchips');
-    for (const x of g.sort((a, b) => (a.date || '').localeCompare(b.date || ''))) {
-      chips.append(h('button.gchip.' + tone(x.value, cfg.scale) + (x.cat === 'muendlich' ? '.oral' : ''), { title: [x.label, x.cat === 'muendlich' ? 'mündlich' : 'schriftlich'].filter(Boolean).join(' · '),
-        on: { click: () => editGrade(x, { subjects, after: again }) } }, gradeLabel(x.value, cfg.scale)));
-    }
-    chips.append(h('button.gchip.add', { 'aria-label': 'Note hinzufügen', on: { click: () => editGrade({ subjectId: s.id }, { subjects, after: again }) } }, '+'));
-    grid.append(h('div.gradecard', { style: { '--c': s.color } },
-      h('div.gchead', null, h('b', { text: s.name }),
-        h('span.gavg' + (avg != null ? '.' + tone(avg, cfg.scale) : ''), { text: avg == null ? '–' : cfg.scale === 'punkte' ? avg.toFixed(1).replace('.', ',') : fmt1(avg) })),
-      chips,
-      h('small.gcount', { text: g.length ? `${g.filter((x) => x.cat === 'schriftlich').length} schriftlich · ${g.filter((x) => x.cat === 'muendlich').length} mündlich` : 'Noch keine Noten' })));
-  }
-  view.append(grid, h('p.calm.small', { text: `Schnitt = schriftlich ${cfg.written} % + mündlich ${100 - cfg.written} %. Mündliche Noten haben einen gestrichelten Rand. Das ist eine Schätzung, deine Lehrkraft kann anders rechnen.` }));
-}
-
 // Kleine Zusammenfassung für die Fach-Seite
 export async function subjectSchoolBox(s, { go, after }) {
   const [grades, exams, cfg, subjects] = await Promise.all([db.listGrades(), db.listExams(), gradeCfg(), db.listSubjects()]);
   const g = grades.filter((x) => x.subjectId === s.id);
-  const avg = average(g, cfg);
+  const avg = average(g, cfg, s.id);
   const next = exams.filter((x) => x.subjectId === s.id && daysUntil(x.date) >= 0).sort((a, b) => a.date.localeCompare(b.date))[0];
   return h('section.subsec.schoolbox', null,
-    h('button.sbitem', { on: { click: () => go({ view: 'grades' }) } }, h('small', { text: 'Schnitt' }), h('b', { text: avg == null ? '–' : cfg.scale === 'punkte' ? avg.toFixed(1).replace('.', ',') : fmt1(avg) }), h('span', { text: plural(g.length, 'Note', 'Noten') })),
+    h('button.sbitem', { on: { click: () => go({ view: 'gradesubj', subjectId: s.id }) } }, h('small', { text: 'Schnitt' }), h('b', { text: avg == null ? '–' : cfg.scale === 'punkte' ? avg.toFixed(1).replace('.', ',') : fmt1(avg) }), h('span', { text: plural(g.length, 'Note', 'Noten') })),
     h('button.sbitem', { on: { click: () => (next ? editExam(next, { subjects, after }) : editExam({ subjectId: s.id }, { subjects, after })) } },
       h('small', { text: 'Nächste Arbeit' }), h('b', { text: next ? (next.approx ? 'ca. ' : '') + countdownText(daysUntil(next.date)) : '–' }), h('span', { text: next ? next.kind : 'eintragen' })),
     h('button.sbitem.add', { on: { click: () => editGrade({ subjectId: s.id }, { subjects, after }) } }, icon('plus'), h('span', { text: 'Note eintragen' })));
