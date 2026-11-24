@@ -2839,3 +2839,43 @@ div.acopt { cursor: default; }
   .ngtile b { font-size: 24px; }
   .ngtile span { font-size: 11.5px; }
 }
+
+/* ---------- Übersicht: Bereiche, Schnellzugriff, Spiele-Filter (v81) ---------- */
+.areabar { position: sticky; top: 0; z-index: 30; margin: -10px 0 0; padding: calc(env(safe-area-inset-top, 0px) + 8px) 0 10px; background: linear-gradient(var(--bg) 78%, color-mix(in srgb, var(--bg) 0%, transparent)); }
+.areaseg { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; padding: 4px; border-radius: 16px; background: var(--surface-2); box-shadow: 0 0 0 1px var(--line); }
+.areaseg button { position: relative; display: flex; align-items: center; justify-content: center; gap: 8px; min-width: 0; min-height: 46px; padding: 0 8px; border-radius: 12px; font: 600 15px/1.1 var(--font); color: var(--muted); transition: background .15s ease, color .15s ease; }
+.areaseg button span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.areaseg button .ic { width: 20px; height: 20px; }
+.areaseg button.on { background: var(--surface); color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,.14); }
+.areaseg button:active { transform: scale(.98); }
+.areabadge { flex: none; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px; background: var(--accent); color: var(--on-accent); font: 700 12px/20px var(--font); font-style: normal; text-align: center; }
+@media (max-width: 720px) {
+  .areaseg button { flex-direction: column; gap: 4px; min-height: 56px; padding: 6px 2px; font-size: 12px; }
+  .areabadge { position: absolute; top: 4px; right: 6px; min-width: 18px; height: 18px; font-size: 11px; line-height: 18px; padding: 0 5px; }
+}
+
+.quick .colhead { margin-bottom: 10px; }
+.qgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(124px, 1fr)); gap: 10px; }
+.qtile { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; min-width: 0; min-height: 96px; padding: 12px 8px; border-radius: 16px; background: var(--surface); box-shadow: 0 0 0 1px var(--line); text-align: center; color: var(--ink); transition: transform .12s ease; }
+.qtile:active { transform: scale(.97); }
+.qic { width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); }
+.qname { max-width: 100%; font-size: 14px; font-weight: 600; line-height: 1.2; overflow-wrap: anywhere; }
+.qedit { display: flex; flex-direction: column; gap: 6px; max-height: min(56vh, 520px); overflow-y: auto; margin: 4px 0 8px; padding-right: 2px; }
+.qegroup { margin: 10px 0 2px; font: 600 12px/1.2 var(--font); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.qechips { display: flex; flex-wrap: wrap; gap: 8px; }
+.qechip { display: inline-flex; align-items: center; gap: 6px; min-height: 38px; max-width: 100%; padding: 0 14px 0 10px; border-radius: 999px; background: var(--surface-2); font-size: 14px; font-weight: 500; color: var(--ink); }
+.qechip span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qechip .ic { width: 18px; height: 18px; color: var(--muted); }
+.qechip.on { background: var(--accent); color: var(--on-accent); }
+.qechip.on .ic { color: var(--on-accent); }
+.target.feat .ic { color: var(--accent); }
+.inboxsec { display: flex; flex-direction: column; }
+
+.gfilter { display: flex; flex-direction: column; gap: 10px; }
+.gfind { max-width: 460px; }
+.gcats { display: flex; gap: 8px; overflow-x: auto; padding: 2px 1px 4px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.gcats::-webkit-scrollbar { display: none; }
+.gcat { flex: none; min-height: 38px; padding: 0 16px; border-radius: 999px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); font-size: 14px; font-weight: 500; color: var(--ink); white-space: nowrap; }
+.gcat.on { background: var(--ink); color: var(--bg); box-shadow: none; }
+.gsec { display: flex; flex-direction: column; gap: 14px; }
+.gsec[hidden], .ptile[hidden], .gempty[hidden] { display: none; }
