@@ -3036,3 +3036,26 @@ div.acopt { cursor: default; }
 .mwtext { width: 100%; min-height: 260px; font-size: 16px; line-height: 1.5; resize: vertical; margin-top: 10px; }
 .dlgbody .seg + .fieldlabel, .dlgbody .seg { margin-bottom: 6px; }
 .mwsol .hwcheck[aria-pressed="true"] .ic { background: var(--accent); box-shadow: none; stroke: var(--on-accent); }
+
+/* Meine Schrift (myhand.js) */
+.mhbody [hidden] { display: none !important; }
+.mhbody > .seg { align-self: flex-start; max-width: 100%; flex-wrap: wrap; border-radius: 18px; }
+.mhbar { height: 6px; border-radius: 999px; background: var(--surface-2); overflow: hidden; margin: 12px 0 10px; }
+.mhbar i { display: block; height: 100%; width: 0; background: var(--accent); border-radius: inherit; transition: width .3s; }
+.mhprompt { display: flex; align-items: baseline; gap: 14px; margin: 12px 0 8px; }
+.mhprompt:has(.mhbig:not([hidden])) { min-height: 64px; }
+.mhhead { font-size: 16px; color: var(--muted); font-weight: 600; }
+.mhbig { font: 600 52px/1 var(--font-display); color: var(--ink); overflow-wrap: anywhere; }
+.mhpadwrap { border-radius: 16px; background: var(--surface); border: 1px solid var(--line, rgba(0,0,0,.1)); overflow: hidden; }
+.mhpad { display: block; width: 100%; height: min(34vh, 280px); color: var(--ink); cursor: crosshair; }
+.mhres { min-height: 26px; margin-top: 10px; font-weight: 600; font-size: 16px; }
+.mhres.ok { color: #2f8f5b; }
+.mhres.bad { color: var(--danger, #c0392b); }
+.mhinfo { margin-top: 2px; }
+.mhgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 8px; margin-top: 12px; max-height: 46vh; overflow-y: auto; }
+.mhcell { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 4px; border-radius: 12px; background: var(--surface-2); border: 2px solid transparent; color: inherit; font: inherit; cursor: pointer; }
+.mhcell b { font-size: 22px; font-weight: 600; }
+.mhcell small { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.mhcell.good { border-color: rgba(47,143,91,.6); }
+.mhcell.mid { border-color: rgba(201,140,30,.7); }
+.mhcell.bad { border-color: rgba(192,57,43,.7); }

@@ -131,8 +131,13 @@ export async function readInk(pages, drawStroke, onProgress = () => {}, shouldSt
     for (const p of todo) {
       if (shouldStop()) break;
       onProgress(`Handschrift wird gelesen … Seite ${done + 1} von ${todo.length}`);
-      const c = inkCanvas(await db.getInk(p.id), drawStroke);
+      const ink = await db.getInk(p.id);
       let text = '';
+      // Eigene trainierte Schrift (Meine Schrift) zuerst, sonst Tesseract
+      let mine = '';
+      try { const mh = await import('./myhand.js'); if (await mh.ready()) mine = (await mh.readStrokes(ink)).trim(); } catch (e) { /* egal */ }
+      const c = mine ? null : inkCanvas(ink, drawStroke);
+      if (mine) text = mine;
       if (c) {
         const blob = await new Promise((r) => c.toBlob(r, 'image/png'));
         const { data } = await worker.recognize(blob, {}, { text: true, blocks: true });

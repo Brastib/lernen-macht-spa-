@@ -301,11 +301,16 @@ export async function transcribeFlow(page) {
   const sup = await aiSupport();
   if (!sup.ok) { toast(sup.why, 6000); return; }
   const have = await V.visionDownloaded();
+  const mh = await import('./myhand.js');
+  const mine = page.strokes && await mh.ready();
   if (!have) {
     const ok = await sheet('Bild-KI herunterladen?', (body, close) => body.append(
-      h('p.dlgtext', { text: `Zum Lesen von Handschrift braucht die App einmal die Bild-KI (${V.VSIZE}). Am besten im WLAN. Danach geht es offline und kostenlos, und die Seiten bleiben auf dem Gerät.` }),
-      h('div.dlgactions', null, h('button.btn', { text: 'Abbrechen', on: { click: () => close(false) } }), h('button.btn.primary', { text: 'Herunterladen', on: { click: () => close(true) } }))));
+      h('p.dlgtext', { text: `Zum Lesen von Handschrift braucht die App einmal die Bild-KI (${V.VSIZE}). Am besten im WLAN. Danach geht es offline und kostenlos, und die Seiten bleiben auf dem Gerät.` + (mine ? ' Oder du nimmst deine trainierte Schrift: sofort, aber nur für das, was du mit dem Stift in der App geschrieben hast.' : '') }),
+      h('div.dlgactions', null, h('button.btn', { text: 'Abbrechen', on: { click: () => close(false) } }),
+        ...(mine ? [h('button.btn', { text: 'Mit meiner Schrift', on: { click: () => close('mine') } })] : []),
+        h('button.btn.primary', { text: 'Herunterladen', on: { click: () => close(true) } }))));
     if (!ok) return;
+    if (ok === 'mine') return showText(page, await mh.readStrokes(await db.getInk(page.id)), 'Mit deiner trainierten Schrift gelesen (nur Stift-Striche). Falsche Zeichen? Trainiere sie unter „Meine Schrift“ nach.');
   }
   busy(true, have ? 'Bild-KI wird gestartet …' : 'Bild-KI wird heruntergeladen …');
   let text = '';
@@ -315,12 +320,15 @@ export async function transcribeFlow(page) {
   } catch (err) { busy(false); await V.unloadVision(); toast('Lesen hat nicht geklappt: ' + err.message, 6000); return; }
   busy(false);
   await V.unloadVision();
+  return showText(page, text, 'Das hat die KI gelesen. Unsichere Stellen sind mit [?] markiert. Der Text ist jetzt auch in der Suche zu finden.');
+}
+async function showText(page, text, hint) {
   await db.updatePage(page.id, { aiText: text, aiAt: Date.now() });
   page.aiText = text;
   await sheet('Seite abgeschrieben', (body, close) => {
     const ta = h('textarea.field.mwtext', { rows: 14 }); ta.value = text;
     body.append(
-      h('p.dlgtext', { text: 'Das hat die KI gelesen. Unsichere Stellen sind mit [?] markiert. Der Text ist jetzt auch in der Suche zu finden.' }),
+      h('p.dlgtext', { text: hint }),
       ta,
       h('div.dlgactions', null,
         h('button.btn', { text: 'Kopieren', on: { click: async () => { try { await navigator.clipboard.writeText(ta.value); toast('Kopiert.'); } catch (e) { ta.select(); toast('Markiert. Jetzt kopieren.'); } } } }),
