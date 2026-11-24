@@ -2,7 +2,7 @@
 import { resumeVplanSetup, vplanCfg } from './vplan.js';
 import { renderMessages, unreadCount } from './messages.js';
 import * as db from './db.js';
-const APP_VERSION = '86';   // gleich wie VERSION in sw.js
+const APP_VERSION = '87';   // gleich wie VERSION in sw.js
 import { openEditor } from './editor.js';
 import { renderPage, PAPERS } from './paper.js';
 import { detectPage, defaultCorners } from './scanner.js';
@@ -495,6 +495,7 @@ async function renderBook() {
     } },
     { label: 'Inhaltsverzeichnis', icon: 'list', onClick: async () => { const i = await tocSheet(pages, b.title); if (i != null) openBook(i); } },
     { label: 'Als PDF speichern', icon: 'pdf', onClick: () => pdfExportFlow(pages, b.title) },
+    { label: 'Neue Aufgaben wie dieses Blatt (KI) …', icon: 'page', onClick: async () => { const sel = selecting && selected.size ? pages.filter((p) => selected.has(p.id)) : pages.length <= 3 ? pages : null; if (!sel || sel.length > 3) { toast('Tipp auf „Auswählen“ und markiere das Arbeitsblatt (1 bis 3 Seiten).', 5000); return; } const m = await import('./morework.js'); m.moreTasksFlow(sel, { title: b.title, after: () => render() }); } },
     { label: selecting && selected.size ? `Lernkarten automatisch (${selected.size} Seiten) …` : 'Lernkarten automatisch (KI) …', icon: 'bolt', onClick: async () => { const sel = selecting && selected.size ? pages.filter((p) => selected.has(p.id)) : pages; if (sel.length > 40) { toast('Höchstens 40 Seiten auf einmal. Tipp auf „Auswählen“ und markiere die Seiten, aus denen Karten werden sollen.', 5500); return; } const m = await import('./autocards.js'); m.autoCardsFlow(sel, { title: b.title }); } },
     { label: 'Text erkennen (für die Suche)', icon: 'search', onClick: () => ocrFlow(pages) },
     ...(pages.some((p) => p.kind !== 'blank') ? [{ label: 'Seiten säubern (schärfer, weißes Papier)', icon: 'auto', onClick: () => cleanFlow(selecting && selected.size ? pages.filter((p) => selected.has(p.id)) : pages) }] : []),
@@ -713,7 +714,7 @@ async function searchFlow() {
         let nText = 0;
         for (const p of all) {
           if (nText >= 30) break;
-          const src = [p.tags, p.ocr, p.textBoxes].filter(Boolean).join('\n');
+          const src = [p.tags, p.ocr, p.textBoxes, p.aiText].filter(Boolean).join('\n');
           if (!src || !norm(src).includes(q)) continue;
           const b = p.bookId === INBOX ? { id: INBOX, title: 'Eingang', kind: 'inbox' } : bookMap.get(p.bookId); if (!b) continue;
           const s = sub.get(b.subjectId);
@@ -728,7 +729,7 @@ async function searchFlow() {
         for (const p of all) {
           if (nInk >= 20) break;
           if (!p.ink) continue;
-          const already = [p.tags, p.ocr, p.textBoxes].filter(Boolean).join('\n');
+          const already = [p.tags, p.ocr, p.textBoxes, p.aiText].filter(Boolean).join('\n');
           if (already && norm(already).includes(q)) continue;
           const w = fuzzyFind(p.ink, q, norm); if (!w) continue;
           const b = p.bookId === INBOX ? { id: INBOX, title: 'Eingang', kind: 'inbox' } : bookMap.get(p.bookId); if (!b) continue;

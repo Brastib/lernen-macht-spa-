@@ -221,17 +221,33 @@ export async function aiSettingsSheet() {
       list.replaceChildren(...rows);
     };
     await fill();
+    // Bild-KI (liest Handschrift, macht Aufgaben)
+    const V = await import('./visionai.js');
+    const vbox = h('div.aclist');
+    const vfill = async () => {
+      const vh = await V.visionDownloaded();
+      vbox.replaceChildren(h('div.acopt', null, icon('eye'),
+        h('span', null, h('b', { text: `Bild-KI (${V.VSIZE})` }), h('small', { text: 'Liest ganze Seiten, auch Handschrift, und macht neue Aufgaben wie auf einem Arbeitsblatt. ' + (vh ? 'Heruntergeladen.' : 'Lädt beim ersten Benutzen.') })),
+        ...(vh ? [h('button.btn.small', { text: 'Löschen', on: { click: async () => {
+          if (!(await confirmSheet('Bild-KI löschen?', `Die Bild-KI wird vom Gerät gelöscht (${V.VSIZE} frei). Du kannst sie später wieder laden.`))) return;
+          await V.deleteVision(); toast('Bild-KI gelöscht.'); vfill();
+        } } })] : [])));
+    };
+    await vfill();
     const used = await ai.storageInfo();
     body.append(
       h('p.dlgtext', { text: 'Die KI läuft direkt auf deinem Gerät. Einmal herunterladen (am besten im WLAN), danach geht sie ohne Internet und kostet nichts. Deine Seiten verlassen das Gerät nicht.' }),
+      h('label.fieldlabel', { text: 'Text-KI für Lernkarten' }),
       list,
+      h('label.fieldlabel', { text: 'Bild-KI' }),
+      vbox,
       h('p.dlgtext', { text: 'Kleine KIs irren sich manchmal. Darum prüfst du die Karten immer vor dem Speichern.' + (used ? ` Die App belegt gerade ${used}.` : '') }),
       h('div.dlgactions', null, h('button.btn.primary', { text: 'Fertig', on: { click: () => close(true) } })));
   });
 }
 
 // ---------- Ablauf ----------
-function pageText(p) { return [p.ocr, p.textBoxes, p.ink].filter(Boolean).join('\n\n'); }
+function pageText(p) { return [p.ocr, p.textBoxes, p.aiText || p.ink].filter(Boolean).join('\n\n'); }
 
 // pages: Seiten (Buch, Heft, Mappe). title: für die Anzeige.
 export async function autoCardsFlow(pages, { title = '' } = {}) {
@@ -248,7 +264,7 @@ export async function autoCardsFlow(pages, { title = '' } = {}) {
   const choice = await sheet('Lernkarten automatisch', (body, close) => {
     const opt = (key, ic, b, small, dis = false) => h('button.acopt' + (dis ? '.off' : ''), { disabled: dis, on: { click: () => close(key) } }, icon(ic), h('span', null, h('b', { text: b }), h('small', { text: small })));
     body.append(
-      h('p.dlgtext', { text: `${pages.length === 1 ? 'Diese Seite' : pages.length + ' Seiten'}${title ? ' aus „' + title + '“' : ''}: Die App sucht die wichtigen Infos und macht Karten daraus. Du prüfst sie, bevor sie gespeichert werden.` + (hasBlank ? ' Handschrift wird nur unsicher erkannt, getippte Textfelder klappen gut.' : '') }),
+      h('p.dlgtext', { text: `${pages.length === 1 ? 'Diese Seite' : pages.length + ' Seiten'}${title ? ' aus „' + title + '“' : ''}: Die App sucht die wichtigen Infos und macht Karten daraus. Du prüfst sie, bevor sie gespeichert werden.` + (hasBlank ? ' Handschrift liest am besten die Bild-KI (KI-Einstellungen), sonst nur unsicher.' : '') }),
       h('div.aclist', null,
         sup.ok
           ? opt('ai', 'bolt', have ? `Mit lokaler KI (${m.label})` : `Lokale KI herunterladen (${m.size})`, have ? 'Versteht den Text und findet mehr. Läuft auf dem Gerät, offline, kostenlos. Dauert etwas.' : 'Einmalig, am besten im WLAN. Danach offline und kostenlos.', !have && navigator.onLine === false)
@@ -268,6 +284,23 @@ export async function autoCardsFlow(pages, { title = '' } = {}) {
     try { const { ocrPages } = await import('./ocr.js'); await ocrPages(todo, (t) => { const b = document.getElementById('busyText'); if (b) b.textContent = t; }); }
     catch (err) { busy(false); toast('Texterkennung fehlgeschlagen: ' + err.message, 5000); return; }
     busy(false);
+  }
+  // Handschrift: wenn die Bild-KI da ist, liest sie Seiten mit Stift-Strichen (höchstens 10)
+  if (choice === 'ai') {
+    const V = await import('./visionai.js');
+    const hw = pages.filter((p) => (p.kind === 'blank' || p.strokes) && !p.aiText).slice(0, 10);
+    if (hw.length && await V.visionDownloaded()) {
+      busy(true, 'Handschrift wird gelesen …');
+      try {
+        for (let i = 0; i < hw.length; i++) {
+          const t = await V.readPage(await V.pageImage(hw[i]), (x) => { const b = document.getElementById('busyText'); if (b) b.textContent = `Seite ${i + 1}/${hw.length}: ${x}`; });
+          hw[i].aiText = t;
+          if (!hw[i].id.startsWith('tmp')) await db.updatePage(hw[i].id, { aiText: t, aiAt: Date.now() });
+        }
+      } catch (err) { toast('Handschrift lesen hat nicht geklappt: ' + err.message, 5000); }
+      await V.unloadVision();
+      busy(false);
+    }
   }
   const text = pages.map(pageText).filter((t) => t.trim()).join('\n\n');
   if (!text.trim()) { toast(hasBlank ? 'Auf den Seiten wurde kein Text gefunden. Handschrift erkennt die App nur schlecht. Getippte Textfelder gehen.' : 'Auf den Seiten wurde kein Text gefunden.', 6000); return; }
