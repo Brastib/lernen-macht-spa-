@@ -955,6 +955,7 @@ $('edMath').addEventListener('click', (e) => {
     { label: 'Taschenrechner', icon: 'calc', onClick: () => import('./kit.js').then((m) => m.calcSheet()) },
     ...(page && page.kind !== 'blank' ? [{ label: (gapMode ? '✓ ' : '') + 'Lücken ausfüllen', icon: 'text', onClick: () => (gapMode ? exitGapMode() : enterGapMode()) }] : []),
     ...(page && page.kind !== 'blank' ? [{ label: 'Lernkarten aus Markiertem', icon: 'cards', onClick: async () => { finishStroke(); commitText(); await flushSave(); const m = await import('./markcards.js'); m.cardsFromMarks({ page, strokes, pageW: PAGE_W }); } }] : []),
+    ...(page ? [{ label: 'Lernkarten automatisch (KI) …', icon: 'bolt', onClick: async () => { finishStroke(); commitText(); await flushSave(); const tb = strokes.filter((x) => x.tool === 'text').map((x) => x.text).join('\n'); const m = await import('./autocards.js'); m.autoCardsFlow([{ ...page, textBoxes: tb }]); } }] : []),
     'sep',
     ...Object.entries(TOOL_NAMES).map(([k, label]) => ({ label: (tpl && tpl.type === k ? '✓ ' : '') + label, icon: 'tool-' + k, onClick: () => toggleTool(k) })),
     'sep',

@@ -1,0 +1,4 @@
+web-llm.js = @mlc-ai/web-llm 0.2.89 (lib/index.js, Apache-2.0, siehe LICENSE).
+Lädt beim ersten Benutzen das Modell (Qwen2.5 Instruct, MLC-Format) von huggingface.co
+und die passende WebGPU-Datei von raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs.
+Danach liegt alles im Browser-Speicher (Cache „webllm/...“) und läuft offline.
