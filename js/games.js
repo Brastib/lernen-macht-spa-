@@ -163,6 +163,11 @@ export async function renderGames(ctx) {
     soloTile('eraser', 'Radierer-Rabatz', 'Dein Team gegen den Computer', () => vsCpu('erasers')),
     soloTile('golfcart', 'Kritzel-Kart', 'Golfwagen-Rennen gegen den Computer', () => vsCpu('kart'))));
 
+  // Partyspiele reihum
+  view.append(h('h2.section', { text: 'Partyspiele (reihum, 2 bis 8)' }), h('div.ptiles.gtiles', null,
+    ...[['stirn', 'party', 'Stirnraten', 'Wer bin ich? iPad an die Stirn'], ['verbot', 'mute', 'Wort-Verbot', 'Erklären ohne verbotene Wörter'], ['wuerfel', 'dice', 'Kritzel-Würfel', 'Malen, erklären oder vormachen'], ['post', 'pen', 'Kritzel-Stille-Post', 'Malen und raten im Kreis']].map(([k, ic, name, sub]) =>
+      h('button.ptile', { on: { click: () => import('./p8.js').then((m) => m.party(k, openFx, players())) } }, h('span.ptileic', null, icon(ic)), h('b', { text: name }), h('small', { text: sub })))));
+
   // Duelle
   view.append(h('h2.section', { text: 'Duell zu zweit' }), h('div.ptiles.gtiles', null,
     ...Object.entries(GAMES).map(([k, g]) => h('button.ptile', { on: { click: () => freeDuel(k, again) } },
