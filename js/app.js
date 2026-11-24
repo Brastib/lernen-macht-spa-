@@ -2,7 +2,7 @@
 import { resumeVplanSetup, vplanCfg } from './vplan.js';
 import { renderMessages, unreadCount } from './messages.js';
 import * as db from './db.js';
-const APP_VERSION = '88';   // gleich wie VERSION in sw.js
+const APP_VERSION = '89';   // gleich wie VERSION in sw.js
 import { openEditor } from './editor.js';
 import { renderPage, PAPERS } from './paper.js';
 import { detectPage, defaultCorners } from './scanner.js';
@@ -984,3 +984,15 @@ startReminderWatch(() => {
 
 // für Tests
 window.__lernapp = { db, detectPage, defaultCorners, openEditor, nav: () => nav };
+
+// Big Boy (Chat-Helfer)
+import('./bigboy.js').then((m) => m.initBigBoy({
+  go, nav: () => nav, render,
+  features: async () => features(featureActs(!!((await vplanCfg()) || {}).url)),
+  openBookAt: async (book, subject, page) => {
+    if (!document.getElementById('editor').hidden) { toast('Schließ zuerst das Blatt, dann öffne ich es.'); return; }
+    nav = { view: 'book', book, subject }; await render();
+    const i = page ? pages.findIndex((p) => p.id === page.id) : 0;
+    openBook(Math.max(0, i));
+  },
+})).catch(() => {});

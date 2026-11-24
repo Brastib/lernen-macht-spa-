@@ -177,7 +177,8 @@ function solveText(task, kind) {
   if (isZero(a)) throw new Error('keine Lösung');
   return div(b, a);
 }
-const pretty = (t) => t.replace(/\*/g, '·').replace(/(\d)\.(\d)/g, '$1,$2');
+const SUPD = '⁰¹²³⁴⁵⁶⁷⁸⁹';
+const pretty = (t) => t.replace(/\*/g, '·').replace(/(\d)\.(\d)/g, '$1,$2').replace(/\s*\^\s*(\d+)/g, (m, d) => [...d].map((c) => SUPD[+c]).join(''));
 
 // Eine neue Aufgabe wie das Vorbild
 export function variant(d, level = 'gleich') {
