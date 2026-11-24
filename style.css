@@ -2940,7 +2940,7 @@ div.acopt { cursor: default; }
 }
 
 /* ---------- Übersicht: Bereiche, Schnellzugriff, Spiele-Filter (v81) ---------- */
-.areabar { position: sticky; top: 0; z-index: 30; margin: -10px 0 0; padding: calc(env(safe-area-inset-top, 0px) + 8px) 0 10px; background: linear-gradient(var(--bg) 78%, color-mix(in srgb, var(--bg) 0%, transparent)); }
+.areabar { position: sticky; top: 0; z-index: 9; margin: -10px 0 0; padding: calc(env(safe-area-inset-top, 0px) + 8px) 0 10px; background: linear-gradient(var(--bg) 78%, color-mix(in srgb, var(--bg) 0%, transparent)); }
 .areaseg { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; padding: 4px; border-radius: 16px; background: var(--surface-2); box-shadow: 0 0 0 1px var(--line); }
 .areaseg button { position: relative; display: flex; align-items: center; justify-content: center; gap: 8px; min-width: 0; min-height: 46px; padding: 0 8px; border-radius: 12px; font: 600 15px/1.1 var(--font); color: var(--muted); transition: background .15s ease, color .15s ease; }
 .areaseg button span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -2989,7 +2989,7 @@ div.acopt { cursor: default; }
 .ptile.glast { box-shadow: 0 0 0 2px #e5484d, 0 6px 18px rgba(229, 72, 77, .18); background: color-mix(in srgb, #e5484d 7%, var(--surface)); }
 .ptile.glast .ptileic { background: #e5484d; color: #fff; }
 .ptile.glast::after { content: 'Zuletzt'; position: absolute; top: 10px; right: 10px; padding: 2px 8px; border-radius: 999px; background: #e5484d; color: #fff; font: 700 11px/16px var(--font); letter-spacing: .02em; }
-.gfilter { position: sticky; top: 0; z-index: 30; margin: 0 -4px; padding: calc(env(safe-area-inset-top, 0px) + 8px) 4px 8px; background: linear-gradient(var(--bg) 85%, color-mix(in srgb, var(--bg) 0%, transparent)); }
+.gfilter { position: sticky; top: 0; z-index: 9; margin: 0 -4px; padding: calc(env(safe-area-inset-top, 0px) + 8px) 4px 8px; background: linear-gradient(var(--bg) 85%, color-mix(in srgb, var(--bg) 0%, transparent)); }
 .gfindrow { display: flex; gap: 10px; align-items: center; }
 .gfindrow .gfind { flex: 1; min-width: 0; max-width: none; }
 .gsize { flex: none; white-space: nowrap; }
