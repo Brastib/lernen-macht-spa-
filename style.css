@@ -3110,3 +3110,11 @@ body:has(.gamefx) .bbfab, body:has(.planefx) .bbfab, body:has(.study:not([hidden
 .bbpage { display: flex; flex-direction: column; gap: 4px; }
 .bbpage > .btn { align-self: flex-start; }
 .bbhit b, .bbhit small { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+/* Paket 9: Tintenbahn-Tintenanzeige, Stiftezupfen-Legende */
+.plgap { flex: 1 1 0; min-width: 0; }
+.hsstat.inkstat { min-width: 110px; justify-content: center; }
+.inkmeter { display: block; width: 100%; min-width: 90px; height: 10px; margin-top: 6px; border-radius: 6px; background: var(--line); overflow: hidden; }
+.inkfill { display: block; height: 100%; width: 100%; border-radius: 6px; transition: width .15s; }
+.hsstat.pklegend b { display: flex; gap: 4px; align-items: center; }
+.pkdot { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; font: 800 11px/1 system-ui, sans-serif; color: #fff; text-shadow: 0 0 2px rgba(0,0,0,.5); }
