@@ -3104,3 +3104,9 @@ body:has(.gamefx) .bbfab, body:has(.planefx) .bbfab, body:has(.study:not([hidden
 /* Meldungen nicht unter/über dem Big-Boy-Fenster */
 @media (min-width: 700px) { body.bbopen .toast { left: calc((100vw - 424px) / 2); max-width: calc(100vw - 472px); } }
 @media (max-width: 699px) { body.bbopen .toast { display: none; } }
+.bbsep { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; margin: 4px 0; }
+.bbsep::before, .bbsep::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+.bbclear { border: 0; background: none; color: var(--accent); font: inherit; font-size: 12px; cursor: pointer; padding: 4px 6px; }
+.bbpage { display: flex; flex-direction: column; gap: 4px; }
+.bbpage > .btn { align-self: flex-start; }
+.bbhit b, .bbhit small { min-width: 0; overflow: hidden; text-overflow: ellipsis; }

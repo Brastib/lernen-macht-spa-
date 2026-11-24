@@ -25,7 +25,7 @@ async function open() {
   panel.hidden = false;
   document.body.classList.add('bbopen');
   renderChips();
-  if (!list.childElementCount) say('Hi, ich bin Big Boy. Ich kann Sachen in der App öffnen, Übungsblätter machen, Lernkarten erstellen und dir Blätter erklären. Schreib einfach, was du brauchst.');
+  if (!list.childElementCount && !restoreChat()) say('Hi, ich bin Big Boy. Ich kenne deine Hausaufgaben, Arbeiten, Noten, deinen Stunden- und Vertretungsplan und kann sie für dich eintragen. Ich öffne Sachen, mache Übungsblätter und Lernkarten und erkläre dir Blätter. Schreib einfach, was du brauchst.');
   setTimeout(() => input.focus(), 60);
 }
 function build() {
@@ -45,12 +45,25 @@ function renderChips() {
   const ed = editorOpen();
   const sug = ed
     ? ['Erklär mir das Blatt', 'Schreib ein Beispiel aufs Blatt', 'Mehr Aufgaben wie dieses Blatt', 'Lernkarten aus dieser Seite', 'Lies meine Handschrift']
-    : ['Binomische Formeln, erstell mir was', 'Öffne Mathe', 'Such Fotosynthese', 'Was kannst du?'];
+    : ['Was steht an?', 'Was hab ich auf?', 'Was hab ich morgen?', 'Fällt was aus?', 'Welche Arbeiten kommen?', 'Meine letzten Blätter', 'Binomische Formeln, erstell mir was', 'Was kannst du?'];
   chips.replaceChildren(...sug.map((s) => h('button.bbchip', { text: s, on: { click: () => { input.value = s; submit(); } } })));
 }
 
 // ---------- Nachrichten ----------
-function bubble(who, text, extra = []) {
+const CHAT_KEY = 'bbChat';
+function saveChat(who, text) {
+  try { const a = JSON.parse(localStorage.getItem(CHAT_KEY) || '[]'); a.push({ who, text: String(text).slice(0, 2000), at: Date.now() }); localStorage.setItem(CHAT_KEY, JSON.stringify(a.slice(-40))); } catch (e) { /* egal */ }
+}
+function restoreChat() {
+  let a = []; try { a = JSON.parse(localStorage.getItem(CHAT_KEY) || '[]'); } catch (e) { /* egal */ }
+  if (!a.length) return false;
+  for (const m of a) bubble(m.who === 'me' ? 'me' : 'bot', m.text, [], false);
+  list.append(h('div.bbsep', null, h('span', { text: 'Frühere Nachrichten' }), h('button.bbclear', { text: 'Löschen', on: { click: () => { try { localStorage.removeItem(CHAT_KEY); } catch (e) { /* egal */ } list.textContent = ''; history.length = 0; say('Verlauf gelöscht. Was du mir mit „Merk dir“ gesagt hast, weiß ich noch.'); } } })));
+  for (const m of a.slice(-8)) history.push({ role: m.who === 'me' ? 'user' : 'assistant', content: m.text });
+  return true;
+}
+function bubble(who, text, extra = [], keep = true) {
+  if (keep && text && (who === 'me' || who === 'bot')) saveChat(who, text);
   const b = h('div.bbmsg.' + who, null, ...(text ? String(text).split('\n').map((l) => h('p', { text: l })) : []), ...extra);
   list.append(b);
   list.scrollTop = list.scrollHeight;
@@ -80,6 +93,10 @@ async function currentPage() { if (!editorOpen()) return null; const E = await e
 async function handle(text) {
   const n = norm(text);
   if (/^(hilfe|was kannst du|befehle|wer bist du)/.test(n) || /was kannst du/.test(n)) return help();
+  if (!/^(bitte\s+)?(offne|oeffne|starte?|spiel(e)?)\s/.test(n)) {
+    const D = await import('./bbdata.js');
+    if (await D.handleData(text, { say, btn, row, app, thinking, close })) return;
+  }
   if (/(lernkarte|karteikarte)/.test(n)) return cards();
   if (/(wie (dieses|das) blatt|mehr aufgaben|aehnliche aufgaben|neue aufgaben)/.test(n)) return moreTasks();
   if (/(abschreib|handschrift|lies (mein|das|die))/.test(n)) return transcribe();
@@ -94,7 +111,7 @@ async function handle(text) {
 }
 
 function help() {
-  say('Das kann ich:\n• „Öffne Mathe“, „Öffne Taschenrechner“, „Starte Schach“\n• „Such Fotosynthese“ (sucht auf allen Seiten)\n• „Binomische Formeln, erstell mir was“ (Übungsblatt mit Lösungen)\n• Im Blatt: „Erklär mir das“, „Schreib ein Beispiel aufs Blatt“, „Mehr Aufgaben wie dieses Blatt“, „Lernkarten aus dieser Seite“, „Lies meine Handschrift“\n• Sonst frag mich einfach etwas.\nMathe-Aufgaben rechne ich sicher. Was die KI schreibt, kann Fehler haben.');
+  say('Das kann ich:\n• „Was hab ich auf?“, „Hausaufgabe Mathe S. 54 Nr. 3 bis Freitag“, „Mathe Hausaufgabe erledigt“\n• „Was hab ich morgen?“, „Fällt was aus?“, „Montag 3. Stunde Mathe Raum 204“\n• „Welche Arbeiten kommen?“, „Klassenarbeit Englisch am 3.12.“, „Note 2- in Mathe“, „Mein Notenschnitt“\n• „Was soll ich lernen?“, „Erinner mich morgen um 7 Uhr an Sportsachen“\n• „Meine letzten Blätter“, „Merk dir: …“, „Was hast du dir gemerkt?“, „Was steht an?“\n• „Öffne Mathe“, „Öffne Taschenrechner“, „Starte Schach“\n• „Such Fotosynthese“ (sucht auf allen Seiten)\n• „Binomische Formeln, erstell mir was“ (Übungsblatt mit Lösungen)\n• Im Blatt: „Erklär mir das“, „Schreib ein Beispiel aufs Blatt“, „Mehr Aufgaben wie dieses Blatt“, „Lernkarten aus dieser Seite“, „Lies meine Handschrift“\n• Sonst frag mich einfach etwas.\nÄnderungen mache ich erst nach deinem „Ja“, und du kannst sie rückgängig machen. Mathe-Aufgaben rechne ich sicher. Was die KI schreibt, kann Fehler haben.');
 }
 
 async function cards() {
@@ -258,10 +275,11 @@ async function freeChat(text, wantedVision = false) {
   }
   history.push({ role: 'user', content: text });
   while (history.length > 8) history.shift();
+  const ctx = await (await import('./bbdata.js')).contextSummary();
   const w = thinking();
   let ans = '';
   try {
-    ans = await A.chat([{ role: 'system', content: 'Du bist Big Boy, ein freundlicher, geduldiger Nachhilfe-Lehrer in einer Lern-App für einen Schüler. Antworte kurz, einfach und auf Deutsch. Erkläre Schritt für Schritt mit einem kleinen Beispiel. Wenn du dir nicht sicher bist, sag das ehrlich. Korrigiere keine Rechtschreibung.' }, ...history], { maxTokens: 500, onProgress: w.set });
+    ans = await A.chat([{ role: 'system', content: 'Du bist Big Boy, ein freundlicher, geduldiger Nachhilfe-Lehrer in einer Lern-App für einen Schüler. Antworte kurz, einfach und auf Deutsch. Erkläre Schritt für Schritt mit einem kleinen Beispiel. Wenn du dir nicht sicher bist, sag das ehrlich. Korrigiere keine Rechtschreibung. Erfinde keine Termine oder Aufgaben: Nutze nur die Infos unten.\n\n' + ctx }, ...history], { maxTokens: 500, onProgress: w.set });
   } finally { w.done(); }
   history.push({ role: 'assistant', content: ans });
   say(ans || 'Dazu fällt mir gerade nichts ein.', [h('small.bbnote', { text: 'Von der KI. Kann Fehler haben.' })]);
