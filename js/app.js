@@ -2,7 +2,7 @@
 import { resumeVplanSetup, vplanCfg } from './vplan.js';
 import { renderMessages, unreadCount } from './messages.js';
 import * as db from './db.js';
-const APP_VERSION = '87';   // gleich wie VERSION in sw.js
+const APP_VERSION = '88';   // gleich wie VERSION in sw.js
 import { openEditor } from './editor.js';
 import { renderPage, PAPERS } from './paper.js';
 import { detectPage, defaultCorners } from './scanner.js';
@@ -133,6 +133,7 @@ async function renderLibrary() {
         { label: 'Sicherung laden', icon: 'restore', onClick: () => $('fileBackup').click() },
         'sep',
         { label: 'Text in allen Scans erkennen', icon: 'search', onClick: async () => ocrFlow(await db.listAllPages()) },
+        { label: 'Meine Schrift trainieren …', icon: 'pen', onClick: async () => (await import('./myhand.js')).trainSheet() },
         { label: 'Lokale KI (für Lernkarten) …', icon: 'bolt', onClick: async () => (await import('./autocards.js')).aiSettingsSheet() },
         'sep',
         { label: 'Darstellung (hell/dunkel)', icon: 'moon', onClick: () => themeSheet() },
