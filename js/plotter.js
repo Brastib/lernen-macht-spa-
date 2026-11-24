@@ -2,12 +2,12 @@
 // Nullstellen / Extrempunkte / Schnittpunkte antippbar, Wertetabelle, als Seite ins Heft oder als Zeichnung in die offene Seite.
 import * as db from './db.js';
 import { h, icon, toast, sheet } from './ui.js';
-import { compile, paramsOf, mathify, stripName } from './mathfn.js';
+import { compile, paramsOf, mathify, stripName, expoInput, supify } from './mathfn.js';
 
 const COLORS = ['#2a55d4', '#d0493f', '#2f9e6a', '#c0752a', '#6c5bd4', '#2f8fb3', '#b0577a', '#5f6673'];
 const NAMES = ['f', 'g', 'h', 'i', 'j', 'u', 'v', 'w'];
 const store = { get: (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } }, set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* egal */ } } };
-const DEFAULT = () => ({ fns: [{ src: 'x^2 - 2', color: COLORS[0], on: true }, { src: 'a·x + 1', color: COLORS[1], on: true }], params: { a: 1 }, ranges: {}, view: { cx: 0, cy: 0, s: 40 } });
+const DEFAULT = () => ({ fns: [{ src: 'x² − 2', color: COLORS[0], on: true }, { src: 'a·x + 1', color: COLORS[1], on: true }], params: { a: 1 }, ranges: {}, view: { cx: 0, cy: 0, s: 40 } });
 
 // Zahl schön auf Deutsch: 3 Nachkommastellen, fast-ganze Zahlen glätten
 export function fmt(v, d = 3) {
@@ -115,8 +115,7 @@ export function plotWidget(root, { onInsert } = {}) {
   function insert(t) {
     const inp = lastFocus && lastFocus.isConnected ? lastFocus : list.querySelector('input');
     if (!inp) return;
-    const s = inp.selectionStart ?? inp.value.length, e = inp.selectionEnd ?? inp.value.length;
-    inp.setRangeText(t, s, e, 'end');
+    inp._expo.insert(t);
     inp.dispatchEvent(new Event('input'));
     inp.focus();
   }
@@ -125,8 +124,9 @@ export function plotWidget(root, { onInsert } = {}) {
   function drawList() {
     list.textContent = '';
     st.fns.forEach((fn, i) => {
-      const inp = h('input.plotin', { type: 'text', value: fn.src, placeholder: 'z. B. 0,5x² − 3', autocomplete: 'off', autocapitalize: 'off', spellcheck: false, 'aria-label': `${NAMES[i]}(x)` });
+      const inp = h('input.plotin', { type: 'text', value: supify(fn.src), placeholder: 'z. B. 0,5x² − 3', autocomplete: 'off', autocapitalize: 'off', spellcheck: false, 'aria-label': `${NAMES[i]}(x)` });
       const err = h('small.ploterr');
+      inp._expo = expoInput(inp);
       inp.addEventListener('focus', () => { lastFocus = inp; });
       inp.addEventListener('input', () => { fn.src = inp.value; save(); recompile(); });
       const vis = h('button.plotvis' + (fn.on ? '.on' : ''), { style: { '--c': fn.color }, 'aria-label': 'Ein- oder ausblenden', on: { click: () => { fn.on = !fn.on; save(); drawList(); recompile(); } } });

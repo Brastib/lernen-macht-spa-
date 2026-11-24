@@ -1,6 +1,6 @@
 // Werkzeuge für die Schule: Taschenrechner, Fokus-Timer, Einheiten, Periodensystem, Formelsammlung. Alles offline.
 import { $, h, icon, toast, sheet } from './ui.js';
-import { compile } from './mathfn.js';
+import { compile, expoInput, supify } from './mathfn.js';
 export { de };
 
 export const TABS = [['calc', 'Rechner', 'calc', 'Wissenschaftlich, Grad und Bogenmaß'], ['plot', 'Funktionen', 'graph', 'Graphen live zeichnen, Nullstellen, Schnittpunkte'], ['focus', 'Fokus-Timer', 'clock', 'Konzentriert lernen mit Pausen'], ['units', 'Einheiten', 'ruler2', 'Länge, Masse, Zeit, Temperatur …'], ['chem', 'Chemie', 'atom', 'Periodensystem, Atommodelle, Labor'], ['formulas', 'Formeln', 'sigma', 'Mathe, Physik, Chemie']];
@@ -124,18 +124,14 @@ export function calcWidget(root, { compact = false } = {}) {
     }
     if (!ks.length) varsEl.append(h('small', { text: 'Variablen: tippe z. B. „a = 5“ und dann =, oder nimm „→ Var“.' }));
   }
-  const ins = (t, back = 0) => {
-    const s = inp.selectionStart ?? inp.value.length, e = inp.selectionEnd ?? inp.value.length;
-    inp.setRangeText(t, s, e, 'end');
-    if (back) inp.setSelectionRange(inp.selectionEnd - back, inp.selectionEnd - back);
-    preview();
-  };
+  const expo = expoInput(inp);
+  const ins = (t, back = 0) => { expo.insert(t, back); preview(); };
   const K = [
     [['sin', () => ins('sin()', 1)], ['cos', () => ins('cos()', 1)], ['tan', () => ins('tan()', 1)], ['√', () => ins('sqrt()', 1)], ['x²', () => ins('^2')], ['xʸ', () => ins('^')]],
     [['sin⁻¹', () => ins('arcsin()', 1)], ['cos⁻¹', () => ins('arccos()', 1)], ['tan⁻¹', () => ins('arctan()', 1)], ['ln', () => ins('ln()', 1)], ['log', () => ins('log()', 1)], ['π', () => ins('π')]],
     [['(', () => ins('(')], [')', () => { const c = inp.selectionStart; if (inp.value[c] === ')') { inp.setSelectionRange(c + 1, c + 1); preview(); } else ins(')'); }], ['%', () => ins('%')], ['n!', () => ins('!')], ['Ans', () => ins('Ans')], ['e', () => ins('e')]],
-    [['a'], ['b'], ['x'], ['ⁿ√', () => ins('^(1/)', 1)], ['|x|', () => ins('abs()', 1)], ['a/b', () => { fracFirst = !fracFirst; store.set('calcFrac', fracFirst); if (inp.value.trim()) preview(); else if (last != null) show(last); toast(fracFirst ? 'Ergebnis als Bruch' : 'Ergebnis als Kommazahl'); }, 'frac']],
-    [['7'], ['8'], ['9'], ['C', () => { inp.value = ''; preview(); }, 'fn'], ['⌫', () => { const s = inp.selectionStart; if (s > 0) { inp.setRangeText('', s - 1, s, 'end'); preview(); } }, 'fn']],
+    [['a'], ['b'], ['x'], ['ⁿ√', () => { ins('^(1/'); }], ['|x|', () => ins('abs()', 1)], ['a/b', () => { fracFirst = !fracFirst; store.set('calcFrac', fracFirst); if (inp.value.trim()) preview(); else if (last != null) show(last); toast(fracFirst ? 'Ergebnis als Bruch' : 'Ergebnis als Kommazahl'); }, 'frac']],
+    [['7'], ['8'], ['9'], ['C', () => { expo.reset(); inp.value = ''; preview(); }, 'fn'], ['⌫', () => { expo.reset(); const s = inp.selectionStart, e = inp.selectionEnd; if (e > s) inp.setRangeText('', s, e, 'end'); else if (s > 0) inp.setRangeText('', s - 1, s, 'end'); preview(); }, 'fn']],
     [['4'], ['5'], ['6'], ['×', () => ins('·'), 'op'], ['÷', () => ins('/'), 'op']],
     [['1'], ['2'], ['3'], ['+', () => ins('+'), 'op'], ['−', () => ins('-'), 'op']],
     [['0'], [',', () => ins(',')], ['×10ˣ', () => ins('·10^')], ['=', equals, 'eq', 12]],
@@ -153,7 +149,7 @@ export function calcWidget(root, { compact = false } = {}) {
   function drawHist() {
     histEl.textContent = '';
     for (const x of hist.slice(0, compact ? 3 : 12)) {
-      histEl.append(h('button.hrow', { on: { click: () => { inp.value = x.q; preview(); } } }, h('span', { text: x.q }), h('b', { text: '= ' + de(x.a) })));
+      histEl.append(h('button.hrow', { on: { click: () => { expo.reset(); inp.value = supify(x.q); preview(); } } }, h('span', { text: supify(x.q) }), h('b', { text: '= ' + de(x.a) })));
     }
   }
   drawHist(); drawVars();

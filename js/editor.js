@@ -4,7 +4,7 @@ import { fillHit } from './paper.js';
 import { PAGE_W, A4_H, drawPaper, drawStroke, renderPage, pageHeight, blobToImage, paperLines, fitText, lhOf, lineHeight, textWidthMax, FONT } from './paper.js';
 import { makeTool, drawTool, hitTool, findEdge, snapPoint, niceAngle, niceRadius, magnetTool, TOOL_NAMES, KNOB_OFF, MM } from './tools.js';
 import { menu, sheet, h as el, toast, busy, promptSheet, shareReady } from './ui.js';
-import { compile, mathify } from './mathfn.js';
+import { compile, mathify, expoInput, supify } from './mathfn.js';
 import { axesBox, axesFrame } from './paper.js';
 import { detectGaps, textForGap, baselineShift, gapAt } from './gaps.js';
 
@@ -1053,7 +1053,8 @@ async function graphFlow() {
   commitText();
   const axes = [...strokes].reverse().find((st) => st.tool === 'axes');
   const res = await sheet('Funktionsgraph', (body, close) => {
-    const inp = el('input.field', { id: 'fnInput', type: 'text', placeholder: 'z. B. x^2 - 2x + 1', autocomplete: 'off', autocapitalize: 'off', spellcheck: false });
+    const inp = el('input.field', { id: 'fnInput', type: 'text', placeholder: 'z. B. x² − 2x + 1', autocomplete: 'off', autocapitalize: 'off', spellcheck: false });
+    expoInput(inp);
     const msg = el('p.dlgtext', { text: axes ? 'Wird in das zuletzt eingefügte Koordinatensystem gezeichnet.' : 'Es gibt noch kein Koordinatensystem. Ich füge eins von −5 bis 5 ein.' });
     const ok = () => {
       try { const f = compile(inp.value); f(1); close({ f, src: inp.value.trim() }); } catch (e) { msg.textContent = e.message; msg.classList.add('err'); }
@@ -1064,7 +1065,7 @@ async function graphFlow() {
       if (!inp.value.trim()) return;
       try { compile(inp.value); msg.textContent = 'f(x) = ' + mathify(inp.value.trim().replace(/^(f\s*\(\s*x\s*\)|y)\s*=/i, '').trim()); } catch (e) { msg.textContent = e.message; }
     });
-    const ex = el('div.chips.left', null, ...['x^2', '0,5x^2 - 2', '2x + 1', '(x-1)^2 - 3', 'sqrt(x)', 'sin(x)', '1/x'].map((t) =>
+    const ex = el('div.chips.left', null, ...['x²', '0,5x² − 2', '2x + 1', '(x − 1)² − 3', 'sqrt(x)', 'sin(x)', '1/x'].map((t) =>
       el('button.pchip.small', { text: t, on: { click: () => { inp.value = t; inp.dispatchEvent(new Event('input')); inp.focus(); } } })));
     body.append(el('label.fieldlabel', { for: 'fnInput', text: 'f(x) =' }), inp, msg, ex,
       el('div.dlgactions', null,

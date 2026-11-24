@@ -1,6 +1,6 @@
 // Rechner, Teil 2: Gleichungen lösen (mit Lösungsweg) und Statistik. Alles offline, ohne eval.
 import { h, icon, toast } from './ui.js';
-import { compile } from './mathfn.js';
+import { compile, expoInput, supify } from './mathfn.js';
 import { toFrac, fracEl, de } from './kit.js';
 
 const store = { get: (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } }, set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* egal */ } } };
@@ -152,13 +152,14 @@ export function eqWidget(root) {
 
 function oneEq(root) {
   const inp = h('input.field.eqin', { type: 'text', autocomplete: 'off', autocapitalize: 'off', spellcheck: false, placeholder: 'z. B. x² − 5x + 6 = 0', 'aria-label': 'Gleichung' });
-  inp.value = store.get('eqLast', '');
+  inp.value = supify(store.get('eqLast', ''));
+  const expo = expoInput(inp);
   const res = h('div.eqres');
-  const ins = (t, back = 0) => { const s = inp.selectionStart ?? inp.value.length, e = inp.selectionEnd ?? inp.value.length; inp.setRangeText(t, s, e, 'end'); if (back) inp.setSelectionRange(inp.selectionEnd - back, inp.selectionEnd - back); inp.focus(); run(); };
+  const ins = (t, back = 0) => { expo.insert(t, back); inp.focus(); run(); };
   const keys = h('div.eqkeys', null, ...[['x', 'x'], ['x²', '^2'], ['xʸ', '^'], ['√', 'sqrt()', 1], ['(', '('], [')', ')'], ['=', ' = '], ['·', '·'], ['/', '/']].map(([l, t, b]) =>
     h('button.ck.sci', { text: l, on: { pointerdown: (e) => { e.preventDefault(); ins(t, b || 0); } } })));
-  const ex = h('div.chips.left', null, ...['2x + 3 = 11', 'x² − 5x + 6 = 0', '3(x − 2) = x + 4', 'x² + 2x + 5 = 0', '2^x = 8', 'x³ = 2x + 1'].map((t) =>
-    h('button.pchip.small', { text: t, on: { click: () => { inp.value = t; run(); } } })));
+  const ex = h('div.chips.left', null, ...['2x + 3 = 11', 'x² − 5x + 6 = 0', '3(x − 2) = x + 4', 'x² + 2x + 5 = 0', '2ˣ = 8', 'x³ = 2x + 1'].map((t) =>
+    h('button.pchip.small', { text: t, on: { click: () => { expo.reset(); inp.value = t; run(); } } })));
   let tm;
   function run() {
     clearTimeout(tm);
