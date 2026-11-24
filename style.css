@@ -3170,3 +3170,75 @@ body:has(.gamefx) .bbfab, body:has(.planefx) .bbfab, body:has(.study:not([hidden
 *:not(input):not(textarea):not([contenteditable]) { -webkit-touch-callout: none; }
 img, canvas, svg, video { -webkit-user-select: none; user-select: none; -webkit-user-drag: none; }
 button, [role="button"], .tool, .icbtn, .chip { -webkit-user-select: none; user-select: none; }
+
+/* ---------- Schreib-Lupe (Editor) ---------- */
+.lupe {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 7;
+  height: clamp(200px, 29vh, 300px); box-sizing: content-box;
+  display: flex; gap: 10px; padding: 10px max(12px, env(safe-area-inset-right, 0px)) calc(10px + env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-left, 0px));
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  backdrop-filter: saturate(1.5) blur(18px); -webkit-backdrop-filter: saturate(1.5) blur(18px);
+  box-shadow: 0 -1px 0 var(--line), 0 -10px 30px rgba(15, 20, 35, .12);
+  animation: lupein .2s ease; touch-action: none; -webkit-user-select: none; user-select: none;
+}
+.lupe[hidden] { display: none; }
+@keyframes lupein { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+.lpside { flex: none; width: 76px; display: flex; flex-direction: column; gap: 8px; justify-content: center; }
+.lpbtn {
+  flex: 1; max-height: 86px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  border-radius: 14px; color: var(--ink); background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--line);
+  font-size: 12px; font-weight: 600;
+}
+.lpbtn .ic { width: 26px; height: 26px; }
+.lpbtn:active, .lpmini:active { background: var(--accent-soft); color: var(--accent); }
+.lpbtn.lpmain { color: var(--white, #fff); background: var(--accent); box-shadow: none; }
+.lpbtn.lpmain:active { filter: brightness(.92); background: var(--accent); color: #fff; }
+.lprow { display: flex; gap: 6px; }
+.lpmini {
+  flex: 1; height: 44px; min-width: 0; display: grid; place-items: center; border-radius: 12px;
+  color: var(--ink); background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--line); font-size: 12px; font-weight: 700;
+}
+.lpmini .ic { width: 22px; height: 22px; }
+.lpmini:disabled { opacity: .35; }
+.lpmini.lpauto.on { color: var(--accent); background: var(--accent-soft); box-shadow: inset 0 0 0 1.5px var(--accent); }
+.lpstage {
+  position: relative; flex: 1; min-width: 0; border-radius: 14px; overflow: hidden; background: #fff;
+  box-shadow: 0 0 0 1.5px var(--accent), 0 4px 14px rgba(15, 20, 35, .12); touch-action: none; cursor: crosshair;
+}
+.lpstage canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; }
+.lpstage.lpslide canvas { animation: lpslide .22s cubic-bezier(.2, .7, .3, 1); }
+@keyframes lpslide { from { transform: translateX(var(--lp-dx, 0)); } to { transform: none; } }
+.lpzone {
+  position: absolute; top: 0; bottom: 0; right: 0; width: 30%; pointer-events: none;
+  background: linear-gradient(90deg, rgba(42, 85, 212, 0), rgba(42, 85, 212, .07));
+  border-left: 1.5px dashed rgba(42, 85, 212, .22); display: flex; align-items: center; justify-content: flex-end; padding-right: 8px;
+  color: rgba(42, 85, 212, .45);
+}
+.lpzone .ic { width: 22px; height: 22px; }
+.lupe.noauto .lpzone { display: none; }
+/* Rahmen auf dem Blatt */
+.lupeframe {
+  position: absolute; z-index: 2; pointer-events: none; box-sizing: border-box; border-radius: 3px;
+  border: 2px solid var(--accent); background: rgba(42, 85, 212, .06);
+  box-shadow: 0 0 0 3px rgba(42, 85, 212, .14);
+  transition: left .22s cubic-bezier(.2, .7, .3, 1), top .22s cubic-bezier(.2, .7, .3, 1), width .15s, height .15s;
+}
+.lupeframe.pulse { animation: lpulse .5s ease; }
+@keyframes lpulse { 0% { box-shadow: 0 0 0 3px rgba(42, 85, 212, .14); } 40% { box-shadow: 0 0 0 9px rgba(42, 85, 212, .22); } 100% { box-shadow: 0 0 0 3px rgba(42, 85, 212, .14); } }
+.lupegrip {
+  position: absolute; left: -2px; top: 100%; margin-top: 4px; pointer-events: auto; touch-action: none;
+  display: inline-flex; align-items: center; gap: 4px; height: 30px; padding: 0 10px 0 8px; border-radius: 999px;
+  font-size: 12px; font-weight: 600; color: #fff; background: var(--accent); box-shadow: 0 3px 10px rgba(15, 20, 35, .25); white-space: nowrap;
+}
+.lupegrip .ic { width: 16px; height: 16px; }
+/* Platz für die Lupe: Blatt lässt sich weiter hochschieben, Zoom-Leiste rückt über die Lupe */
+.editor.lupeon .edscroll, .editor.lupeon .edpanes.split .edscroll { padding-bottom: calc(var(--lupe-h, 240px) + 40px); }
+.editor.lupeon .zbar, .editor.lupeon .edpanes.split .zbar { bottom: calc(var(--lupe-h, 240px) + 12px); }
+.editor.lupeon.split .chip.floating { bottom: calc(var(--lupe-h, 240px) + 16px); }
+@media (max-width: 700px) {
+  .lpside { width: 60px; }
+  .lpbtn span { display: none; }
+}
+/* Big-Boy-Punkt und Hinweise über der Lupe, nicht darauf */
+body:has(#editor.lupeon:not([hidden])) .bbfab { bottom: calc(clamp(200px, 29vh, 300px) + 26px + env(safe-area-inset-bottom, 0px)); }
+body:has(#editor.lupeon:not([hidden])) .toast { bottom: calc(clamp(200px, 29vh, 300px) + 84px + env(safe-area-inset-bottom, 0px)); }
