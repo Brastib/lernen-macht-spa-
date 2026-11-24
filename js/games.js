@@ -126,7 +126,7 @@ export async function renderGames(ctx) {
   const soloTile = (ic, name, sub, go, kbd) => h('button.ptile' + (kbd ? '.kbtile' : ''), { on: { click: go } }, h('span.ptileic', null, icon(ic)), kbdLock(kbd), h('b', { text: name }), h('small', { text: sub }));
   view.append(h('h2.section', { text: 'Allein spielen' }), h('div.ptiles.gtiles', null,
     soloTile('wind', 'Windflug', best('gWindBest') ? `Dein Rekord: ${best('gWindBest')} Punkte` : 'So weit fliegen, wie du kannst', () => soloScore('wind')),
-    soloTile('plane', 'Papierflieger', best('gPlaneBest') ? `Dein Rekord: ${String(best('gPlaneBest')).replace('.', ',')} m` : 'Wie weit fliegt dein Flieger?', () => soloScore('plane')),
+    soloTile('plane', 'Papierflieger', best(SOLO.plane.key) ? `Dein Rekord: ${String(best(SOLO.plane.key)).replace('.', ',')} m` : 'Wie weit fliegt dein Flieger? 5 Welten', () => soloScore('plane')),
     soloTile('run', 'Kritzelsprint', best('gRunBest') ? `Dein Rekord: ${best('gRunBest')} m` : 'Rennen und springen, so weit es geht', () => soloScore('run')),
     soloTile('stack', 'Hochstapler', best('gStackBest') ? `Dein Rekord: ${best('gStackBest')} Blöcke` : 'So hoch stapeln, wie du kannst', () => soloStack()),
     soloTile('ttt', 'Tic-Tac-Toe', 'Gegen den Computer', () => vsCpu('ttt')),
@@ -383,7 +383,7 @@ const SOLO = {
   flipper: { title: 'Kritzelflipper', key: 'gFlipBest', run: (fx, p) => import('./p6c.js').then((m) => m.flipper(fx, p, null)), fmt: (x) => `${x} ${x === 1 ? 'Punkt' : 'Punkte'}` },
   hang: { title: 'Galgenmännchen', key: 'gHangBest', run: (fx, p) => import('./p7a.js').then((m) => m.hangman(fx, p, null)), fmt: (x) => `${x} ${x === 1 ? 'Wort' : 'Wörter'}` },
   parkour: { title: 'Kritzel-Parkour', key: 'gParkBest', low: true, run: (fx, p) => import('./p7b.js').then((m) => m.parkour(fx, p, null)), fmt: (x) => `${String(x).replace('.', ',')} s` },
-  plane: { title: 'Papierflieger', key: 'gPlaneBest', run: (fx, p) => planeDuel(fx, p, null), fmt: (x) => x.toFixed(1).replace('.', ',') + ' m' },
+  plane: { title: 'Papierflieger', get key() { const w = store.get('gPlaneWorld', 'desk'); return w === 'free' ? 'gPlaneBest' : 'gPlaneBest_' + w; }, run: (fx, p) => planeDuel(fx, p, null), fmt: (x) => x.toFixed(1).replace('.', ',') + ' m' },
 };
 async function soloScore(k) {
   const g = SOLO[k], p = me();
@@ -803,20 +803,25 @@ function noteCanvas(p, i) {
   return c;
 }
 async function planeDuel(fx, A, B, o = {}) {
-  const { paperPlane, POWERS, POWER_IDS } = await import('./plane.js');
+  const { paperPlane, POWERS, powersFor, WORLDS, sizeText } = await import('./plane.js');
   const fmt = (m) => m.toFixed(1).replace('.', ',') + ' m';
   const dist = [];
   let power = o.power != null ? o.power : store.get('gPower', true);
   const free = o.power == null;
+  let world = store.get('gPlaneWorld', 'desk');
+  if (!WORLDS.some((w) => w.id === world)) world = 'desk';
   for (const [i, p] of [A, B].filter(Boolean).entries()) {
-    const offer = [...POWER_IDS].sort(() => Math.random() - 0.5).slice(0, 3);
+    let offer = [...powersFor(world)].sort(() => Math.random() - 0.5).slice(0, 3);
     let pick = offer[0];
     const r0 = await new Promise((r) => {
       const card = h('div.grescard.pdcard');
       const draw = () => card.replaceChildren(
         h('span.gresic', { style: { color: p.color } }, icon('plane')),
         h('b', { text: `${p.name} wirft` }),
-        h('small', { text: i ? `Zu schlagen: ${fmt(dist[0])}` : !B ? (store.get('gPlaneBest', 0) ? `Dein Rekord: ${fmt(store.get('gPlaneBest', 0))}` : 'Ein Wurf, so weit wie möglich.') : 'Jeder hat einen Wurf. Der weiteste Flieger gewinnt.' }),
+        h('small', { text: i ? `Zu schlagen: ${fmt(dist[0])} · Welt: ${WORLDS.find((w) => w.id === world).name}` : !B ? (store.get(SOLO.plane.key, 0) ? `Dein Rekord hier: ${fmt(store.get(SOLO.plane.key, 0))}` : 'Ein Wurf, so weit wie möglich. Sterne, Ringe und Papierkörbe geben Bonus-Meter.') : 'Jeder hat einen Wurf. Der weiteste Flieger gewinnt. Sterne und Ringe geben Bonus-Meter.' }),
+        i ? null : h('p.glabel', { text: 'Welt' }),
+        i ? null : h('div.pdworlds', null, ...WORLDS.map((w) => h('button.pdworld' + (w.id === world ? '.on' : ''), { title: w.desc, on: { click: () => { world = w.id; store.set('gPlaneWorld', world); offer = [...powersFor(world)].sort(() => Math.random() - 0.5).slice(0, 3); if (!offer.includes(pick)) pick = offer[0]; draw(); } } },
+          h('span.pdwsw', { style: { background: w.color } }), h('b', { text: w.name }), h('small', { text: sizeText(w) })))),
         free ? h('label.gswitch.small', null, h('span', null, h('b', { text: 'Power-ups' })), h('input', { type: 'checkbox', checked: power, on: { change: (e) => { power = e.target.checked; store.set('gPower', power); draw(); } } })) : null,
         power ? h('p.glabel', { text: 'Such dir ein Power-up aus' }) : null,
         power ? h('div.pdpicks', null, ...offer.map((id) => h('button.pdpick' + (id === pick ? '.on' : ''), { style: { '--pc': POWERS[id].color }, on: { click: () => { pick = id; draw(); } } },
@@ -827,7 +832,7 @@ async function planeDuel(fx, A, B, o = {}) {
       fx.signal.addEventListener('abort', () => r(false));
     });
     if (!r0) return null;
-    const m = await paperPlane(noteCanvas(p, i), { power, pick: power ? pick : null, duel: { name: p.name, note: i ? `Zu schlagen: ${fmt(dist[0])}` : 'Ein Wurf, so weit wie möglich' } });
+    const m = await paperPlane(noteCanvas(p, i), { power, world, pick: power ? pick : null, duel: { name: p.name, note: i ? `Zu schlagen: ${fmt(dist[0])}` : 'Ein Wurf, so weit wie möglich' } });
     if (m == null || fx.signal.aborted) return null;
     dist.push(Math.round(m * 10) / 10);
   }
