@@ -1,4 +1,4 @@
-// Papierpanzer (v84): Winkel + Kraft, Gelände geht kaputt, Panzer fahren (Sprit pro Zug),
+// Papierpanzer (v85): Winkel + Kraft, Gelände geht kaputt, Panzer fahren (Sprit pro Zug),
 // mehr Waffen, Extras (Reparieren, Schild, Sprit) und Nachschub-Kisten, die man einsammeln kann.
 // Zu zweit an einem iPad oder gegen den Computer.
 import { h, icon } from './ui.js';

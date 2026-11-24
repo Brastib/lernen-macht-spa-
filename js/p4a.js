@@ -1,4 +1,4 @@
-// Papier-Spiele, Paket 4 (Teil 1): Schiffe versenken (auf Karopapier) (Papierpanzer liegt seit v84 in js/tanks.js).
+// Papier-Spiele, Paket 4 (Teil 1): Schiffe versenken (auf Karopapier) (Papierpanzer liegt seit v85 in js/tanks.js).
 // Zu zweit an einem iPad (mit „Gib das iPad weiter“-Karten) oder gegen den Computer.
 import { h, icon } from './ui.js';
 import { FONT, UIFONT, isDark, inkOf, paper, pline, prect, pcirc, hatch, shade, canvasBox, chip, rng, turnCard } from './sketch.js';
