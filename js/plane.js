@@ -1,6 +1,7 @@
 // Papierflieger: Eine Seite wird Schritt für Schritt gefaltet und fliegt danach über den Bildschirm.
 // Alles in einem Canvas, ohne Bibliotheken. Die Seite selbst bleibt unverändert.
 import { h, icon } from './ui.js';
+import { WORLDS, worldDef, sizeText, makeWorld, resetWorld, starRain, worldStep, tickWorld, drawWorld, drawWorldOver, miniBase, drawMini, BONUS } from './planeworld.js';
 
 const SW = 360, SH = Math.round(SW * Math.SQRT2);   // Blatt in A4-Form (logische Einheiten)
 const RES = 2;                                       // Auflösung der Blatt-Bilder
@@ -108,6 +109,7 @@ function mapTri(ctx, img, s, d) {
   ctx.restore();
 }
 
+const fill = (el, ...k) => el.replaceChildren(...k.filter(Boolean));
 const ease = (t) => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
@@ -119,8 +121,16 @@ export const POWERS = {
   glide: { name: 'Gleitflug', icon: 'feather', color: '#25a865', desc: '4 s ohne Höhe zu verlieren' },
   tail: { name: 'Rückenwind', icon: 'wind', color: '#3f6ff0', desc: '3 s Schub von hinten' },
   double: { name: 'Meter ×2', icon: 'x2', color: '#f05a48', desc: '3 s zählt jeder Meter doppelt' },
+  magnet: { name: 'Magnet', icon: 'magnet', color: '#e0457b', desc: '6 s fliegen Sterne zu dir', map: true },
+  shield: { name: 'Schutzhülle', icon: 'shield', color: '#5c6b84', desc: 'Der nächste Aufprall zählt nicht', map: true },
+  rain: { name: 'Sternregen', icon: 'star', color: '#e0a106', desc: 'Legt Sterne vor dir auf die Bahn', map: true },
 };
 export const POWER_IDS = Object.keys(POWERS);
+// Power-ups, die in einer Welt Sinn ergeben (Magnet, Schutzhülle, Sternregen nur auf Karten)
+export const powersFor = (world) => POWER_IDS.filter((id) => !POWERS[id].map || (world && world !== 'free'));
+export { WORLDS, worldDef, sizeText };
+const WORLD_KEY = 'planeWorld';
+const bestKey = (w) => (w && w !== 'free' ? BEST_KEY + '_' + w : BEST_KEY);
 const POWER_KEY = 'planePower';
 
 export async function paperPlane(pageCanvas, opts = {}) {
@@ -128,7 +138,11 @@ export async function paperPlane(pageCanvas, opts = {}) {
   let result = null;
   let powerOn = opts.power != null ? !!opts.power : (() => { try { return localStorage.getItem(POWER_KEY) !== '0'; } catch (e) { return true; } })();
   let carry = opts.pick || null, used = false;          // mitgebrachtes Power-up (einmal einsetzbar)
-  const fxT = { light: 0, glide: 0, tail: 0, double: 0 };
+  const fxT = { light: 0, glide: 0, tail: 0, double: 0, magnet: 0, shield: 0 };
+  let worldId = opts.world || (() => { try { return localStorage.getItem(WORLD_KEY) || 'desk'; } catch (e) { return 'desk'; } })();
+  if (!WORLDS.some((w) => w.id === worldId)) worldId = 'desk';
+  let wd = makeWorld(worldId), mini = wd ? miniBase(wd, 200) : null;
+  let bonus = 0, nStars = 0, nRings = 0, inBin = false, ghost = 0, bumpCd = 0, steer = null, keySteer = 0, wTrail = [];
   let bubbles = [], nextBubble = 0.6, flashes = [];
   const css = getComputedStyle(document.documentElement);
   const accent = css.getPropertyValue('--accent').trim() || '#4f7cff';
@@ -156,6 +170,10 @@ export async function paperPlane(pageCanvas, opts = {}) {
   const closeBtn = h('button.btn.round.planeclose', { 'aria-label': 'Auffalten und schließen', title: 'Auffalten' }, icon('close'));
   const powBtn = h('button.planepow' + (powerOn ? '.on' : ''), { title: 'Power-ups in der Luft an oder aus', hidden: !!duel }, icon('bolt'), h('span', { text: 'Power-ups' }));
   powBtn.addEventListener('click', () => { powerOn = !powerOn; powBtn.classList.toggle('on', powerOn); try { localStorage.setItem(POWER_KEY, powerOn ? '1' : '0'); } catch (e) { /* egal */ } if (!powerOn) clearBubbles(); });
+  const worldBtn = h('button.planepow.planeworldbtn', { title: 'Welt (Karte) wählen', hidden: !!duel }, icon('map'), h('span'));
+  const mapCv = h('canvas.planemapcv');
+  const mapHead = h('div.planemaphead');
+  const mapBox = h('div.planemap', { hidden: true }, mapHead, mapCv);
   const layer = h('div.planebub');
   const useBtn = h('button.planeuse', { hidden: true });
   const drawUse = () => {
@@ -168,8 +186,8 @@ export async function paperPlane(pageCanvas, opts = {}) {
   };
   useBtn.addEventListener('click', () => { if (phase !== 'fly' || used || !carry || plane.z <= 0) return; used = true; usePower(carry); drawUse(); });
   const root = h('div.planefx' + (dark ? '.dark' : ''), { role: 'dialog', 'aria-label': 'Papierflieger' },
-    cv, h('div.planetop', null, h('div.planetitle', null, h('b', { text: duel ? `${duel.name} wirft` : 'Papierflieger' }), h('small', { text: duel ? (duel.note || 'Ein Wurf, so weit wie möglich') : 'Wirf deine Notiz quer über den Bildschirm' })), h('div.planeacts', null, powBtn, closeBtn)),
-    layer, useBtn, hint, stat);
+    cv, h('div.planetop', null, h('div.planetitle', null, h('b', { text: duel ? `${duel.name} wirft` : 'Papierflieger' }), h('small', { text: duel ? (duel.note || 'Ein Wurf, so weit wie möglich') : 'Wirf deine Notiz quer über den Bildschirm' })), h('div.planeacts', null, worldBtn, powBtn, closeBtn)),
+    mapBox, layer, useBtn, hint, stat);
   document.body.append(root);
   requestAnimationFrame(() => root.classList.add('in'));
   const ctx = cv.getContext('2d');
@@ -188,15 +206,60 @@ export async function paperPlane(pageCanvas, opts = {}) {
   const sheetScale = () => Math.min((H * 0.66) / SH, (W * 0.8) / SW);
   const plane = { x: 0, y: 0, z: 0, vx: 0, vy: 0, ang: -Math.PI / 2, span: 0, roll: 0, sc: 1, loop: 0, loopDir: 1 };
   let marks = [], nextMark = 5, ground = { x: 0, y: 0 };
+  const homeGround = () => { ground = wd ? { x: wd.start.x - W / 2, y: wd.start.y - (H / 2 + 10) } : { x: 0, y: 0 }; };
+  homeGround();
+  function sizeMini() {
+    if (!wd) { mapBox.hidden = true; return; }
+    const w = 200, hh = Math.round(w * wd.h / wd.w);
+    mapCv.width = w * 2; mapCv.height = hh * 2; mapCv.style.width = w + 'px'; mapCv.style.height = hh + 'px';
+  }
+  function drawWorldBtn() { worldBtn.querySelector('span').textContent = worldDef(worldId).name; }
+  drawWorldBtn(); sizeMini();
+  root.classList.toggle('world', !!wd);
+  function setWorld(id) {
+    worldId = id; try { localStorage.setItem(WORLD_KEY, id); } catch (e) { /* egal */ }
+    wd = makeWorld(id); mini = wd ? miniBase(wd, 200) : null;
+    try { best = parseFloat(localStorage.getItem(bestKey(worldId))) || 0; } catch (e) { best = 0; }
+    Object.assign(plane, { x: W / 2, y: H / 2 + 10, vx: 0, vy: 0, z: 0.35, ang: -Math.PI / 2, roll: 0 });
+    homeGround(); marks = []; trail = []; wTrail = []; stat.hidden = true;
+    drawWorldBtn(); sizeMini(); mapBox.hidden = !wd;
+    root.classList.toggle('world', !!wd);
+    clearBubbles();
+    if (carry && !powersFor(worldId).includes(carry)) carry = null;
+    phase = 'ready'; drawUse(); setHint(readyHint());
+  }
+  const readyHint = () => wd ? 'Wirf mit Schwung. Halte den Stift neben den Flieger, um zu lenken.' : (powerOn ? 'Wirf den Flieger mit Schwung. Tipp in der Luft auf die Power-up-Kugeln.' : 'Nimm den Flieger mit dem Stift oder Finger und wirf ihn mit Schwung.');
+  // Welt-Auswahl
+  function openWorlds() {
+    if (!['ready', 'land'].includes(phase) || root.querySelector('.planeworlds')) return;
+    const box = h('div.planeworlds');
+    const closeW = () => { box.classList.add('out'); setTimeout(() => box.remove(), 180); };
+    const list = h('div.planewlist');
+    for (const d of WORLDS) {
+      let b0 = 0; try { b0 = parseFloat(localStorage.getItem(bestKey(d.id))) || 0; } catch (e) { /* egal */ }
+      const sw = h('canvas.planewsw');
+      if (d.w) { const w0 = makeWorld(d.id), base = miniBase(w0, 120); sw.width = base.width; sw.height = base.height; sw.getContext('2d').drawImage(base, 0, 0); }
+      else { sw.width = 240; sw.height = 150; const x = sw.getContext('2d'); x.fillStyle = d.color; x.fillRect(0, 0, 240, 150); x.fillStyle = 'rgba(70,100,150,.35)'; for (let yy = 10; yy < 150; yy += 20) for (let xx = 10; xx < 240; xx += 20) { x.beginPath(); x.arc(xx, yy, 2, 0, Math.PI * 2); x.fill(); } }
+      list.append(h('button.planewopt' + (d.id === worldId ? '.on' : ''), { on: { click: () => { closeW(); if (d.id !== worldId) setWorld(d.id); } } },
+        sw,
+        h('span.planewtx', null, h('b', { text: d.name }), h('small', { text: d.desc }), h('em', { text: sizeText(d) + (b0 ? ` · Rekord ${fmtM(b0)}` : '') }))));
+    }
+    box.append(h('div.planewcard', null,
+      h('div.planewhead', null, h('b', { text: 'Welt wählen' }), h('button.btn.round', { 'aria-label': 'Schließen', on: { click: closeW } }, icon('close'))),
+      list));
+    box.addEventListener('pointerdown', (e) => { if (e.target === box) closeW(); });
+    root.append(box);
+  }
+  worldBtn.addEventListener('click', openWorlds);
   let trail = [], dist = 0, flyT = 0, held = null, hist = [], thrown = 0;
-  let best = 0; try { best = parseFloat(localStorage.getItem(BEST_KEY)) || 0; } catch (e) { /* egal */ }
+  let best = 0; try { best = parseFloat(localStorage.getItem(bestKey(worldId))) || 0; } catch (e) { /* egal */ }
   const FOLD_MS = reduce ? 260 : 620, OPEN_MS = reduce ? 250 : 650;
 
   function setHint(t) { hint.textContent = t; hint.classList.toggle('gone', !t); }
   const fmtM = (m) => m.toFixed(1).replace('.', ',') + ' m';
   function showStat(m, s, rec) {
     stat.hidden = false;
-    stat.replaceChildren(
+    fill(stat, 
       h('span', null, h('small', { text: 'Flugweite' }), h('b', { text: fmtM(m) })),
       h('span', null, h('small', { text: 'Flugzeit' }), h('b', { text: s.toFixed(1).replace('.', ',') + ' s' })),
       h('span', null, h('small', { text: 'Rekord' }), h('b', { text: fmtM(best) })),
@@ -208,7 +271,9 @@ export async function paperPlane(pageCanvas, opts = {}) {
     const p = plane, P = POWERS[id];
     if (id === 'turbo') { const sp = Math.hypot(p.vx, p.vy) || 1, ns = Math.min(3600, Math.max(sp * 1.7, 900)); p.vx *= ns / sp; p.vy *= ns / sp; }
     else if (id === 'lift') p.z = Math.min(1.25, Math.max(p.z, 0.2) + 0.5);
-    else fxT[id] = { light: 5, glide: 4, tail: 3, double: 3 }[id];
+    else if (id === 'rain') { if (wd) starRain(wd, p.x + ground.x, p.y + ground.y, p.vx, p.vy); }
+    else if (id === 'shield') fxT.shield = 60;
+    else fxT[id] = { light: 5, glide: 4, tail: 3, double: 3, magnet: 6 }[id];
     flashes.push({ x: p.x, y: p.y, t: 0, c: P.color, name: P.name });
     if (navigator.vibrate) try { navigator.vibrate(15); } catch (e) { /* egal */ }
   }
@@ -218,7 +283,7 @@ export async function paperPlane(pageCanvas, opts = {}) {
     if (sp < 120) return;
     const ux = p.vx / sp, uy = p.vy / sp, ahead = 230 + Math.random() * 170, side = (Math.random() < 0.5 ? -1 : 1) * (50 + Math.random() * 110);
     const x = clamp(p.x + ux * ahead - uy * side, 50, W - 50), y = clamp(p.y + uy * ahead + ux * side, 130, H - 70);
-    const id = POWER_IDS[(Math.random() * POWER_IDS.length) | 0], P = POWERS[id];
+    const ids = powersFor(worldId), id = ids[(Math.random() * ids.length) | 0], P = POWERS[id];
     const el = h('button.planebubble', { 'aria-label': P.name, style: { '--pc': P.color } }, icon(P.icon));
     const b = { x, y, id, t: 0, el };
     el.addEventListener('pointerdown', (e) => { e.stopPropagation(); e.preventDefault(); if (phase !== 'fly' || b.got) return; b.got = true; usePower(id); el.classList.add('got'); setTimeout(() => el.remove(), 260); bubbles = bubbles.filter((q) => q !== b); });
@@ -226,7 +291,7 @@ export async function paperPlane(pageCanvas, opts = {}) {
     bubbles.push(b);
   }
   function stepPower(dt) {
-    for (const k in fxT) if (fxT[k] > 0) fxT[k] = Math.max(0, fxT[k] - dt);
+    for (const k in fxT) if (fxT[k] > 0 && k !== 'shield') fxT[k] = Math.max(0, fxT[k] - dt);
     if (phase === 'fly' && powerOn && plane.z > 0 && flyT > 0.35) {
       nextBubble -= dt;
       if (nextBubble <= 0 && bubbles.length < 2) { spawnBubble(); nextBubble = 1.1 + Math.random() * 0.9; }
@@ -247,7 +312,7 @@ export async function paperPlane(pageCanvas, opts = {}) {
       ctx.globalAlpha = Math.max(0, 1 - k);
       ctx.strokeStyle = f.c; ctx.lineWidth = 3;
       ctx.beginPath(); ctx.arc(plane.x, plane.y, 20 + k * 70, 0, Math.PI * 2); ctx.stroke();
-      ctx.fillStyle = f.c; ctx.fillText(f.name + '!', plane.x, plane.y - 46 - k * 24);
+      ctx.fillStyle = f.c; ctx.fillText(f.plain ? f.name : f.name + '!', plane.x, plane.y - 46 - k * 24);
     }
     ctx.restore();
     flashes = flashes.filter((f) => f.t < 0.9);
@@ -339,8 +404,16 @@ export async function paperPlane(pageCanvas, opts = {}) {
     if (phase === 'fly') {
       flyT += dt;
       let sp = Math.hypot(p.vx, p.vy);
-      // ruhiger Gleitflug: geradeaus, keine Drehung
+      // ruhiger Gleitflug; lenken, solange der Stift neben dem Flieger liegt (oder Pfeiltasten)
       p.roll *= 1 - Math.min(1, dt * 5);
+      if ((steer || keySteer) && p.z > 0 && sp > 60) {
+        let d = keySteer * 2;
+        if (steer) { d = Math.atan2(steer.y - p.y, steer.x - p.x) - Math.atan2(p.vy, p.vx); d = Math.atan2(Math.sin(d), Math.cos(d)); }
+        const tr = clamp(d, -2.1 * dt, 2.1 * dt), c = Math.cos(tr), s = Math.sin(tr);
+        [p.vx, p.vy] = [p.vx * c - p.vy * s, p.vx * s + p.vy * c];
+        p.vx *= 1 - 0.06 * dt; p.vy *= 1 - 0.06 * dt;
+        p.roll = clamp(p.roll * 0.8 + (tr / dt) * 0.12, -0.6, 0.6);
+      }
       const drag = p.z > 0 ? (fxT.light > 0 ? 0.05 : 0.17) : 2.4;
       if (fxT.tail > 0 && p.z > 0 && sp > 20) { p.vx += p.vx / sp * 700 * dt; p.vy += p.vy / sp * 700 * dt; }
       p.vx *= 1 - drag * dt; p.vy *= 1 - drag * dt;
@@ -349,6 +422,8 @@ export async function paperPlane(pageCanvas, opts = {}) {
       if (p.z <= 0) { p.z = 0; p.roll *= 0.9; }
       const ox = p.x, oy = p.y;
       p.x += p.vx * dt; p.y += p.vy * dt;
+      if (wd) worldPhys(dt, ox, oy);
+      if (phase !== 'fly') return;
       dist += Math.hypot(p.x - ox, p.y - oy) * (fxT.double > 0 ? 2 : 1);
       // 5-Meter-Marken auf dem Boden
       while (dist >= nextMark * PX_PER_M) { marks.push({ x: p.x, y: p.y, m: nextMark }); nextMark += 5; }
@@ -358,6 +433,29 @@ export async function paperPlane(pageCanvas, opts = {}) {
       trail.push([p.x, p.y]); if (trail.length > 46) trail.shift();
       if (p.z === 0 && sp < 14) land();
     } else if (trail.length) trail.shift();
+    // nach der Landung: Flieger sanft in die Mitte holen, damit die Ergebnis-Karte ihn nicht verdeckt
+    if (phase === 'land' && !held) { const k = Math.min(1, dt * 3); shift((p.x - W / 2) * k, (p.y - H * 0.4) * k); }
+  }
+
+  // Welt: Hindernisse, Wind, Sterne, Ringe, Papierkorb
+  function pop(text, c) { flashes.push({ x: plane.x, y: plane.y, t: 0, c, name: text, plain: true }); }
+  function worldPhys(dt, ox, oy) {
+    const p = plane;
+    ghost = Math.max(0, ghost - dt); bumpCd = Math.max(0, bumpCd - dt);
+    const w = { x: p.x + ground.x, y: p.y + ground.y, vx: p.vx, vy: p.vy, z: p.z };
+    worldStep(wd, w, { x: ox + ground.x, y: oy + ground.y }, dt, { magnet: fxT.magnet > 0, ghost: ghost > 0 }, {
+      star: () => { nStars++; bonus += BONUS.star; },
+      ring: () => { nRings++; bonus += BONUS.ring; pop(`Ring +${BONUS.ring} m`, '#2fbf71'); },
+      bin: () => { if (!inBin) { inBin = true; bonus += BONUS.bin; pop(`Treffer! +${BONUS.bin} m`, '#2fbf71'); } },
+      bump: () => {
+        if (fxT.shield > 0) { fxT.shield = 0; ghost = 0.7; pop('Schutzhülle', POWERS.shield.color); return 'shield'; }
+        if (!bumpCd) { pop('Bumm', '#f05a48'); bumpCd = 0.4; if (navigator.vibrate) try { navigator.vibrate(25); } catch (e) { /* egal */ } }
+      },
+      wall: () => { if (!bumpCd) { pop('Rand', '#f05a48'); bumpCd = 0.4; } },
+      zone: (z) => { const n = { lift: 'Aufwind', gust: 'Windböe', storm: 'Gewitter', cloud: 'Wolke' }[z.k]; if (n) pop(n, { lift: '#e0a106', gust: '#3f6ff0', storm: '#5c6b84', cloud: '#8aa0b8' }[z.k]); },
+    });
+    p.x = w.x - ground.x; p.y = w.y - ground.y; p.vx = w.vx; p.vy = w.vy; p.z = w.z;
+    if (inBin) { p.vx *= 0.2; p.vy *= 0.2; p.z = 0; land(); }
   }
 
   // Kamera folgt dem Flieger: statt Abprallen wandert der Boden mit
@@ -367,7 +465,10 @@ export async function paperPlane(pageCanvas, opts = {}) {
     if (p.x > W - mx) sx = p.x - (W - mx); else if (p.x < mx) sx = p.x - mx;
     if (p.y > H - my) sy = p.y - (H - my); else if (p.y < top + my) sy = p.y - (top + my);
     const k = Math.min(1, dt * 7);
-    sx *= k; sy *= k;
+    shift(sx * k, sy * k);
+  }
+  function shift(sx, sy) {
+    const p = plane;
     if (!sx && !sy) return;
     p.x -= sx; p.y -= sy; ground.x += sx; ground.y += sy;
     for (const t of trail) { t[0] -= sx; t[1] -= sy; }
@@ -375,10 +476,16 @@ export async function paperPlane(pageCanvas, opts = {}) {
     for (const b of bubbles) { b.x -= sx; b.y -= sy; }
   }
   function drawGround() {
+    if (wd) { drawWorld(ctx, wd, ground.x, ground.y, W, H, dark); drawMarks(); return; }
     const sp = 34, ox = -((ground.x % sp) + sp) % sp, oy = -((ground.y % sp) + sp) % sp;
     ctx.save();
     ctx.fillStyle = dark ? 'rgba(170,190,230,.16)' : 'rgba(70,100,150,.2)';
     for (let y = oy; y < H; y += sp) for (let x = ox; x < W; x += sp) { ctx.beginPath(); ctx.arc(x, y, 1.1, 0, Math.PI * 2); ctx.fill(); }
+    ctx.restore();
+    drawMarks();
+  }
+  function drawMarks() {
+    ctx.save();
     ctx.font = '600 12px -apple-system, system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     for (const m of marks) {
       if (m.x < -60 || m.x > W + 60 || m.y < -40 || m.y > H + 40) continue;
@@ -394,19 +501,33 @@ export async function paperPlane(pageCanvas, opts = {}) {
   function land() {
     phase = 'land';
     clearBubbles(); drawUse();
-    const m = dist / PX_PER_M;
+    steer = null;
+    const flown = dist / PX_PER_M, m = flown + bonus;
+    const bonusSpan = () => h('span', null, h('small', { text: 'Bonus' }), h('b', { text: '+' + fmtM(bonus) }));
     if (duel) {
       result = m;
       stat.hidden = false;
-      stat.replaceChildren(
+      fill(stat, 
         h('span', null, h('small', { text: duel.name }), h('b', { text: fmtM(m) })),
-        h('span', null, h('small', { text: 'Flugzeit' }), h('b', { text: flyT.toFixed(1).replace('.', ',') + ' s' })),
+        wd ? bonusSpan() : h('span', null, h('small', { text: 'Flugzeit' }), h('b', { text: flyT.toFixed(1).replace('.', ',') + ' s' })),
         h('button.btn.primary.planenext', { text: 'Weiter', on: { click: () => startClose() } }));
       setHint('');
       return;
     }
     const rec = m > best + 0.05;
-    if (rec) { best = m; try { localStorage.setItem(BEST_KEY, String(best)); } catch (e) { /* egal */ } }
+    if (rec) { best = m; try { localStorage.setItem(bestKey(worldId), String(best)); } catch (e) { /* egal */ } }
+    if (wd) {
+      stat.hidden = false;
+      fill(stat, 
+        h('span', null, h('small', { text: 'Weite' }), h('b', { text: fmtM(flown) })),
+        bonusSpan(),
+        h('span', null, h('small', { text: 'Gesamt' }), h('b', { text: fmtM(m) })),
+        h('span', null, h('small', { text: 'Rekord' }), h('b', { text: fmtM(best) })),
+        rec ? h('em.planerec', { text: 'Neuer Rekord!' }) : null,
+        h('button.btn.planenext', { text: 'Zum Start', on: { click: () => { stat.hidden = true; setWorld(worldId); } } }));
+      setHint(inBin ? 'Im Papierkorb gelandet! Heb den Flieger auf und wirf nochmal.' : 'Heb den Flieger auf und wirf nochmal.');
+      return;
+    }
     showStat(m, flyT, rec);
     setHint('Heb den Flieger auf und wirf nochmal.');
   }
@@ -415,6 +536,10 @@ export async function paperPlane(pageCanvas, opts = {}) {
   const near = (x, y) => Math.hypot(x - plane.x, y - plane.y) < 90;
   cv.addEventListener('pointerdown', (e) => {
     if (!['ready', 'fly', 'land'].includes(phase)) return;
+    if (phase === 'fly' && (duel || !near(e.offsetX, e.offsetY))) {
+      if (!steer) { cv.setPointerCapture(e.pointerId); steer = { id: e.pointerId, x: e.offsetX, y: e.offsetY }; }
+      return;
+    }
     if (duel && phase !== 'ready') return;
     if (!near(e.offsetX, e.offsetY)) return;
     cv.setPointerCapture(e.pointerId);
@@ -424,6 +549,7 @@ export async function paperPlane(pageCanvas, opts = {}) {
     root.classList.add('holding');
   });
   cv.addEventListener('pointermove', (e) => {
+    if (steer && e.pointerId === steer.id) { steer.x = e.offsetX; steer.y = e.offsetY; return; }
     if (!held || e.pointerId !== held.id) return;
     const nx = e.offsetX + held.dx, ny = e.offsetY + held.dy;
     const mx = nx - plane.x, my = ny - plane.y;
@@ -439,6 +565,7 @@ export async function paperPlane(pageCanvas, opts = {}) {
     while (hist.length > 2 && now - hist[0][0] > 90) hist.shift();
   });
   const release = (e) => {
+    if (steer && e.pointerId === steer.id) { steer = null; return; }
     if (!held || e.pointerId !== held.id) return;
     held = null; root.classList.remove('holding');
     const now = performance.now();
@@ -455,6 +582,7 @@ export async function paperPlane(pageCanvas, opts = {}) {
     setHint('');
     phase = 'fly';
     for (const k in fxT) fxT[k] = 0;
+    bonus = 0; nStars = 0; nRings = 0; inBin = false; ghost = 0; steer = null; resetWorld(wd); wTrail = [];
     clearBubbles(); nextBubble = 0.6;
     if (!duel) used = false;
     drawUse();
@@ -470,6 +598,7 @@ export async function paperPlane(pageCanvas, opts = {}) {
     held = null;
     stat.hidden = true; setHint('');
     if (phase === 'fold') { finish(); return; }
+    mapBox.hidden = true; root.querySelector('.planeworlds')?.remove();
     home = { x: plane.x, y: plane.y, ang: plane.ang, z: plane.z };
     phase = 'home'; pt = 0;
   }
@@ -477,12 +606,36 @@ export async function paperPlane(pageCanvas, opts = {}) {
     root.classList.remove('in');
     window.removeEventListener('resize', resize);
     document.removeEventListener('keydown', onKey);
+    document.removeEventListener('keyup', onKeyUp);
     setTimeout(() => { root.remove(); done && done(result); }, 260);
     cancelAnimationFrame(raf);
   }
   closeBtn.addEventListener('click', startClose);
-  const onKey = (e) => { if (e.key === 'Escape') startClose(); };
+  const onKey = (e) => {
+    if (e.key === 'Escape') startClose();
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { keySteer = e.key === 'ArrowLeft' ? -1 : 1; e.preventDefault(); }
+  };
+  const onKeyUp = (e) => { if ((e.key === 'ArrowLeft' && keySteer < 0) || (e.key === 'ArrowRight' && keySteer > 0)) keySteer = 0; };
   document.addEventListener('keydown', onKey);
+  document.addEventListener('keyup', onKeyUp);
+
+  // Übersichtskarte und Anzeige oben links
+  let hudKey = '', miniN = -1;
+  function drawHud() {
+    if (!wd || mapBox.hidden) return;
+    const wx = plane.x + ground.x, wy = plane.y + ground.y;
+    if (phase === 'fly') { const l = wTrail[wTrail.length - 1]; if (!l || Math.hypot(l[0] - wx, l[1] - wy) > 120) wTrail.push([wx, wy]); }
+    if (++miniN % 4 === 0) drawMini(mapCv, mini, wd, wx, wy, ground.x, ground.y, W, H, wTrail);
+    const m = phase === 'fly' || phase === 'land' ? dist / PX_PER_M + bonus : 0;
+    const key = `${m.toFixed(1)}|${nStars}|${nRings}|${fxT.shield > 0}`;
+    if (key === hudKey) return;
+    hudKey = key;
+    fill(mapHead, 
+      h('b', { text: fmtM(m) }),
+      h('span.planemapst', null, icon('star'), h('span', { text: String(nStars) })),
+      h('span.planemapst', null, icon('target'), h('span', { text: String(nRings) })),
+      fxT.shield > 0 ? h('span.planemapst.sh', null, icon('shield')) : null);
+  }
 
   // ---------- Hauptschleife ----------
   let last = performance.now(), raf = 0;
@@ -490,6 +643,7 @@ export async function paperPlane(pageCanvas, opts = {}) {
     const dt = Math.min(0.04, (now - last) / 1000); last = now;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, W, H);
+    if (wd) tickWorld(wd, dt);
     drawGround();
     const cx = W / 2, cy = H / 2 + 10, ss = sheetScale();
     const planeAt = { x: cx, y: cy - SH * ss / 2 + L / 2 * 1.0, ang: -Math.PI / 2 };
@@ -505,7 +659,7 @@ export async function paperPlane(pageCanvas, opts = {}) {
       drawSheet(1 - clamp(pt * 2.2, 0, 1), ss + (L / SH - ss) * e * 0.9);
       Object.assign(plane, { x: cx, y: cy + (planeAt.y - cy) * 0 , ang: -Math.PI / 2, span: e, z: e * 0.35 });
       drawPlane(plane.x, plane.y, plane.ang, plane.z, plane.span, 0, 1, clamp(pt * 2, 0, 1));
-      if (pt >= 1) { phase = 'ready'; drawUse(); setHint(powerOn ? 'Wirf den Flieger mit Schwung. Tipp in der Luft auf die Power-up-Kugeln.' : 'Nimm den Flieger mit dem Stift oder Finger und wirf ihn mit Schwung.'); }
+      if (pt >= 1) { phase = 'ready'; drawUse(); mapBox.hidden = !wd; setHint(readyHint()); }
     } else if (phase === 'home') {
       pt = Math.min(1, pt + dt * 1000 / (reduce ? 200 : 520));
       const e = ease(pt);
@@ -532,7 +686,9 @@ export async function paperPlane(pageCanvas, opts = {}) {
         if (plane.loop > 0) len = Math.cos((1 - plane.loop) * Math.PI * 2);
         drawAura();
         drawPlane(plane.x, plane.y, plane.ang, plane.z, 1, plane.roll, len);
+        if (wd) drawWorldOver(ctx, wd, ground.x, ground.y, W, H);
         drawFlashes(dt);
+        drawHud();
         stepPower(dt);
         if (carry && !used && !!useBtn.classList.contains('ready') !== (phase === 'fly' && plane.z > 0)) drawUse();
       }
