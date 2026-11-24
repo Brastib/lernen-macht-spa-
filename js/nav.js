@@ -141,6 +141,14 @@ export function enhanceGames(view, launch) {
     if (el.matches('h2.section, .gsechead')) { sec = h('div.gsec'); secs.push(sec); view.append(sec); }
     (sec || view).append(el);
   }
+  // Spiele nach oben: Turnier (wenn keins läuft) und Quiz rutschen unter die Spiele
+  const head = (s) => s.querySelector('h2.section')?.textContent || '';
+  const lastGame = [...secs].reverse().find((s) => s.querySelector('.ptiles.gtiles > .ptile:not(.hubtile)'));
+  for (const s of [...secs].reverse()) {
+    const t = head(s);
+    if ((t === 'Turnier' && s.querySelector('.ghero')) || t === 'Für eine Arbeit üben') if (lastGame) lastGame.after(s);
+  }
+  secs.sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1));
   const tiles = [];
   for (const s of secs) {
     const ts = [...s.querySelectorAll('.ptiles.gtiles > .ptile:not(.hubtile)')];
@@ -159,7 +167,12 @@ export function enhanceGames(view, launch) {
     const sec = t.closest('.gsec')?.querySelector('h2.section')?.textContent || '';
     const key = t.dataset.gname + '|' + sec;
     store.set('gRecent', [key, ...recentGames().filter((k) => k !== key)].slice(0, 8));
+    markLast();
   }, true);
+  const markLast = () => {
+    const [ln, ls] = (recentGames()[0] || '').split('|');
+    for (const t of tiles) t.classList.toggle('glast', t.dataset.gname === ln && head(t.closest('.gsec')) === ls);
+  };
 
   // 2. Filterleiste
   let cat = store.get('gCat', 'alle');
@@ -190,6 +203,10 @@ export function enhanceGames(view, launch) {
   };
   for (const [k, l] of CATS) chips.append(h('button.gcat', { 'data-cat': k, text: l, on: { click: () => { cat = k; store.set('gCat', k); apply(); } } }));
   input.addEventListener('input', apply);
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { const t = tiles.find((x) => !x.hidden); if (t) { input.blur(); t.click(); } } });
+  const setCompact = (on) => { view.classList.toggle('gcompact', on); sizeBtn.replaceChildren(icon(on ? 'grid' : 'list'), h('span', { text: on ? 'Große Kacheln' : 'Kompakt' })); };
+  const sizeBtn = h('button.btn.gsize', { on: { click: () => { const on = !view.classList.contains('gcompact'); store.set('gCompact', on); setCompact(on); } } });
+  setCompact(store.get('gCompact', true));
 
   // 3. Zuletzt gespielt (Kopien, die das Original antippen)
   const rec = recentGames().map((key) => {
@@ -197,16 +214,17 @@ export function enhanceGames(view, launch) {
     return tiles.find((t) => t.dataset.gname === name && (t.closest('.gsec')?.querySelector('h2.section')?.textContent || '') === sec);
   }).filter(Boolean).slice(0, 4);
   if (rec.length) {
-    recentWrap.append(h('h2.section', { text: 'Zuletzt gespielt' }), h('div.ptiles.grecenttiles', null, ...rec.map((t) => {
-      const c = h('button.ptile', { on: { click: () => t.click() } });
+    recentWrap.append(h('h2.section', { text: 'Zuletzt gespielt' }), h('div.ptiles.grecenttiles', null, ...rec.map((t, i) => {
+      const c = h('button.ptile' + (i === 0 ? '.glast' : ''), { on: { click: () => t.click() } });
       for (const k of t.childNodes) c.append(k.cloneNode(true));
       const where = (t.closest('.gsec')?.querySelector('h2.section')?.textContent || '').replace(/\s*\(.*\)$/, '');
       const sm = c.querySelector('small'); if (sm) sm.textContent = where;
       return c;
     })));
   }
-  view.prepend(h('div.gfilter', null, input, chips), empty, recentWrap);
+  view.prepend(h('div.gfilter', null, h('div.gfindrow', null, input, sizeBtn), chips), empty, recentWrap);
   apply();
+  markLast();
 
   // 4. Direkt starten (aus Suche oder Schnellzugriff)
   if (launch) {
@@ -224,9 +242,9 @@ export function gameHome(go) {
   for (const c of Object.values(GAME_CAT)) counts[c] = (counts[c] || 0) + 1;
   const out = [];
   const rec = recentGames().slice(0, 4);
-  if (rec.length) out.push(h('h2.section', { text: 'Zuletzt gespielt' }), h('div.ptiles', null, ...rec.map((key) => {
+  if (rec.length) out.push(h('h2.section', { text: 'Zuletzt gespielt' }), h('div.ptiles', null, ...rec.map((key, i) => {
     const [name, sec] = key.split('|');
-    return h('button.ptile', { on: { click: () => go({ view: 'games', launch: key }) } },
+    return h('button.ptile' + (i === 0 ? '.glast' : ''), { on: { click: () => go({ view: 'games', launch: key }) } },
       h('span.ptileic', null, icon(CAT_IC[GAME_CAT[name]] || 'game')), h('b', { text: name }), h('small', { text: (sec || '').replace(/\s*\(.*\)$/, '') }));
   })));
   out.push(h('h2.section', { text: 'Kategorien' }), h('div.ptiles', null, ...CATS.filter((c) => c[2]).map(([k, l, ic, sub]) =>

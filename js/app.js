@@ -2,7 +2,7 @@
 import { resumeVplanSetup, vplanCfg } from './vplan.js';
 import { renderMessages, unreadCount } from './messages.js';
 import * as db from './db.js';
-const APP_VERSION = '82';   // gleich wie VERSION in sw.js
+const APP_VERSION = '83';   // gleich wie VERSION in sw.js
 import { openEditor } from './editor.js';
 import { renderPage, PAPERS } from './paper.js';
 import { detectPage, defaultCorners } from './scanner.js';
@@ -23,7 +23,7 @@ import { importPdf, exportPdf } from './pdfio.js';
 import { ocrPages, needsOcr, snippet, needsInk, hasInk, readInk, fuzzyFind } from './ocr.js';
 import { renderCodeList } from './code.js';
 import { renderReminders, dueBanner, startReminderWatch, editReminder } from './reminders.js';
-import { areaBar, homeTab, features, matchFeatures, quickRow, gameHome } from './nav.js';
+import { AREAS, areaBar, homeTab, features, matchFeatures, quickRow, gameHome } from './nav.js';
 
 // ---------- Vorlagen ----------
 const PALETTE = ['#3b6fd8', '#d0493f', '#2f9e8f', '#6c5bd4', '#3f9b4f', '#c0752a', '#2f8fb3', '#b0577a', '#8a6d3b', '#5f6673'];
@@ -66,7 +66,7 @@ function setThumb(img, id) { thumbUrl(id).then((u) => { if (u) img.src = u; }); 
 // ---------- Kopfbereich ----------
 function setHeader({ back, eyebrow, title, meta = '', actions = [] }) {
   $('navBack').hidden = !back;
-  if (back) { $('navBackLabel').textContent = back.label; $('navBack').onclick = back.go; }
+  if (back) { $('navBackLabel').textContent = back.label === 'Bibliothek' ? (AREAS.find((a) => a[0] === homeTab())?.[1] || back.label) : back.label; $('navBack').onclick = back.go; }
   $('navEyebrow').textContent = eyebrow || '';
   $('navEyebrow').hidden = !eyebrow;
   $('navTitle').textContent = title;
@@ -82,7 +82,19 @@ const iconBtn = (ic, label, onClick) =>
   h('button.btn.round', { 'aria-label': label, title: label, on: { click: onClick } }, icon(ic));
 
 let lastView = null;   // Startseite nur beim Hinkommen einblenden, nicht bei jedem Abhaken
+// Zurück dahin, wo man herkam: Bereich, Scrollstelle und angetippte Kachel merken
+const homeSpot = { scroll: {}, key: null, tab: null };
+let shownView = null;
+const spotKey = (el) => (el.querySelector('b, .sname, .qname, span')?.textContent || el.textContent || '').trim().slice(0, 60);
+$('view').addEventListener('click', (e) => {
+  if (shownView !== 'library') return;
+  const b = e.target.closest('button');
+  if (!b || b.closest('.areabar')) return;
+  homeSpot.key = spotKey(b); homeSpot.tab = homeTab();
+}, true);
 async function render() {
+  if (shownView === 'library' && nav.view !== 'library') homeSpot.scroll[homeTab()] = window.scrollY;
+  shownView = nav.view;
   if (nav.view !== 'library') lastView = nav.view;
   setSelecting(false);
   window.scrollTo(0, 0);
@@ -136,6 +148,7 @@ async function renderLibrary() {
   const view = $('view');
   view.textContent = '';
   const tab = homeTab();
+  const cameBack = lastView !== 'library' && lastTab === tab;
   view.classList.toggle('enter', lastView !== 'library' || lastTab !== tab);
   lastView = 'library'; lastTab = tab;
   const sphOn = !!((await vplanCfg()) || {}).url, unread = sphOn ? await unreadCount() : 0;
@@ -218,6 +231,12 @@ async function renderLibrary() {
   }
 
   view.append(h('p.appversion', { text: 'Version ' + APP_VERSION }));
+  if (cameBack && homeSpot.tab === tab) {
+    const y = homeSpot.scroll[tab] || 0;
+    requestAnimationFrame(() => window.scrollTo(0, y));
+    const hit = homeSpot.key && [...view.querySelectorAll('button')].find((b) => !b.closest('.areabar') && spotKey(b) === homeSpot.key);
+    if (hit) { hit.classList.remove('cameback'); void hit.offsetWidth; hit.classList.add('cameback'); }
+  }
 }
 
 let lastTab = null;
