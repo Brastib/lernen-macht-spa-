@@ -568,6 +568,10 @@ function paperField(d, w, h) {
     const chroma = Math.max(Math.abs(R[q] / l - tr), Math.abs(G[q] / l - tg), Math.abs(B[q] / l - tb));
     valid[q] = (Lb[q] > env[q] * 0.7 && chroma < 0.13 && Lb[q] > 40) ? 1 : 0;
   }
+  // Tipp-Ex, Klebeband, Lichtreflexe: deutlich heller als das Papier ringsum -> kein Papier.
+  // (Sonst färbt ihr Ton das Papier daneben ein, z. B. blaue Ränder um Tipp-Ex.)
+  const med = localMedian(Lb, valid, gw, gh, 4);
+  for (let q = 0; q < n; q++) if (valid[q] && med[q] > 0 && Lb[q] > med[q] * 1.035 + 2) valid[q] = 0;
   // Lücken füllen (normierte Faltung, wachsender Radius)
   const fill = (V) => {
     const out = new Float32Array(n), done = new Uint8Array(n);
@@ -580,9 +584,22 @@ function paperField(d, w, h) {
       for (let q = 0; q < n; q++) if (!done[q] && m[q] > 0.02) { out[q] = a[q] / m[q]; done[q] = 1; left--; }
     }
     for (let q = 0; q < n; q++) if (!done[q]) out[q] = V[q];
-    return boxBlurF(boxBlurF(out, gw, gh, 2), gw, gh, 2);
+    return boxBlurF(out, gw, gh, 1);
   };
   return { S, gw, gh, R: fill(R), G: fill(G), B: fill(B) };
+}
+
+// Median der gültigen Nachbarblöcke (Fenster (2r+1)²)
+function localMedian(src, valid, w, h, r) {
+  const out = new Float32Array(w * h), buf = [];
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    buf.length = 0;
+    for (let yy = Math.max(0, y - r); yy <= Math.min(h - 1, y + r); yy++) for (let xx = Math.max(0, x - r); xx <= Math.min(w - 1, x + r); xx++) { const q = yy * w + xx; if (valid[q]) buf.push(src[q]); }
+    if (buf.length < 5) { out[y * w + x] = 0; continue; }
+    buf.sort((a, b) => a - b);
+    out[y * w + x] = buf[buf.length >> 1];
+  }
+  return out;
 }
 
 function maxFilter(src, w, h, r) {
@@ -640,13 +657,49 @@ function normalizeTone(d, w, h, bg, mode) {
       const chroma = (Math.max(nr, ng, nb) - Math.min(nr, ng, nb)) / Math.max(0.05, Math.max(nr, ng, nb));
       const m = Math.min(1, Math.max(0, (chroma - 0.12) / 0.2));   // 0 = grau/Schrift, 1 = deutlich farbig
       const lo = L(l) * (1 - m) + LC(l) * m;
-      const sat = 1.1;
+      // Fast weiß: Farbe ganz weglassen (kein Farbstich auf Papier oder Tipp-Ex), schwacher Stich auf hellem Grund ebenfalls
+      const pale = lo >= 250 ? 0 : (lo > 200 && chroma < 0.18 ? (lo > 235 ? 0 : 0.5) : 1);
+      const sat = 1.1 * pale;
       for (let ch = 0; ch < 3; ch++) {
         const v = N[k + ch];
         const rel = 1 + (v / li - 1) * sat;        // Farbanteil relativ zur Helligkeit
         d[i + ch] = Math.max(0, Math.min(255, lo * rel));
       }
     }
+  }
+  despeckle(d, w, h);
+}
+
+// Fussel entfernen: kleine, blasse Pünktchen und schwache graue Schlieren auf dem Papier werden weiß.
+// Schrift (dunkel), i-Punkte und farbige Markierungen bleiben.
+export function despeckle(d, w, h) {
+  const n = w * h, mask = new Uint8Array(n), lum = new Uint8Array(n), col = new Uint8Array(n);
+  for (let p = 0, i = 0; p < n; p++, i += 4) {
+    const r = d[i], g = d[i + 1], b = d[i + 2], l = (0.299 * r + 0.587 * g + 0.114 * b) | 0;
+    lum[p] = l; col[p] = Math.max(r, g, b) - Math.min(r, g, b) > 75 ? 1 : 0;   // Textmarker sind kräftig, blasse Farbschleier nicht
+    mask[p] = l < 238 ? 1 : 0;
+  }
+  const small = Math.max(6, Math.round((w * h) / 1.3e5));   // ~16 px bei A4 mit 150 dpi
+  const stack = new Int32Array(n), comp = [];
+  const seen = new Uint8Array(n);
+  for (let s0 = 0; s0 < n; s0++) {
+    if (!mask[s0] || seen[s0]) continue;
+    let sp = 0; stack[sp++] = s0; seen[s0] = 1; comp.length = 0;
+    let minL = 255, colored = 0;
+    while (sp) {
+      const p = stack[--sp]; comp.push(p);
+      if (lum[p] < minL) minL = lum[p];
+      colored += col[p];
+      const x = p % w;
+      if (x > 0 && mask[p - 1] && !seen[p - 1]) { seen[p - 1] = 1; stack[sp++] = p - 1; }
+      if (x < w - 1 && mask[p + 1] && !seen[p + 1]) { seen[p + 1] = 1; stack[sp++] = p + 1; }
+      if (p >= w && mask[p - w] && !seen[p - w]) { seen[p - w] = 1; stack[sp++] = p - w; }
+      if (p < n - w && mask[p + w] && !seen[p + w]) { seen[p + w] = 1; stack[sp++] = p + w; }
+    }
+    if (colored > comp.length * 0.3) continue;                  // farbig markiert: behalten
+    const tiny = comp.length <= small && minL > 110;            // kleiner, nicht richtig schwarzer Punkt
+    const faint = minL > 175;                                   // nur blasser Grauschleier, egal wie groß
+    if (tiny || faint) for (const p of comp) { const i = p * 4; d[i] = d[i + 1] = d[i + 2] = 255; }
   }
 }
 
