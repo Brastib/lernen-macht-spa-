@@ -2734,3 +2734,108 @@ div.acopt { cursor: default; }
 .planefx.world .planetitle { padding: 8px 14px; margin: -8px 0 0 -8px; border-radius: 16px; background: rgba(255,255,255,.82); box-shadow: 0 6px 20px rgba(20,40,80,.12); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
 .planefx.world.dark .planetitle { background: rgba(30,38,54,.86); box-shadow: 0 6px 20px rgba(0,0,0,.35); }
 .planefx.world .planemap { top: calc(env(safe-area-inset-top) + 96px); }
+
+/* ---------- Noten-Rechner (v80) ---------- */
+.nghero { display: flex; flex-direction: column; gap: 16px; padding: 20px 22px; margin-bottom: 16px; border-radius: 22px; background: var(--surface); box-shadow: 0 0 0 1px var(--line), var(--shadow); }
+.ngherotop { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.ngbig { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.ngbig small, .ngstat small, .ngtile small { font-size: 12.5px; font-weight: 600; letter-spacing: .02em; color: var(--muted); }
+.ngbig b { font: 700 52px/1 var(--font-display); font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+.ngbig span { font-size: 14px; color: var(--muted); }
+.ngstats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.ngstat { display: flex; flex-direction: column; gap: 3px; min-width: 0; padding: 12px 14px; border-radius: 14px; background: var(--surface-2); }
+.ngstat b { font-size: 15px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ngstat.bad b { color: var(--danger); }
+.ngstat.good b { color: #2f9e6a; }
+.ngbig b.good, .ngavg.good, .ngtile b.good { color: #2f9e6a; }
+.ngbig b.mid, .ngavg.mid, .ngtile b.mid { color: #c08a1e; }
+.ngbig b.bad, .ngavg.bad, .ngtile b.bad { color: var(--danger); }
+.ngrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; margin-bottom: 12px; }
+.ngcard { display: flex; flex-direction: column; gap: 12px; min-width: 0; padding: 14px 16px 12px; border-radius: 18px; background: var(--surface); box-shadow: 0 0 0 1px var(--line), inset 0 3px 0 var(--c, var(--accent)); }
+.ngcardhead { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 12px; text-align: left; min-height: 44px; }
+.ngname { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ngname b { font-size: 17px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ngname small { font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ngavg { font: 700 28px/1 var(--font-display); font-variant-numeric: tabular-nums; color: var(--muted); min-width: 64px; text-align: right; }
+.ngspark { width: 84px; height: 30px; flex: none; }
+.ngline { fill: none; stroke: var(--c, var(--accent)); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; opacity: .85; }
+.ngdot.good, .ngpt.good { fill: #2f9e6a; } .ngdot.mid, .ngpt.mid { fill: #d39b2a; } .ngdot.bad, .ngpt.bad { fill: var(--danger); }
+.ngchips { display: flex; flex-wrap: wrap; gap: 6px; }
+.ngchip { display: inline-flex; align-items: center; justify-content: center; min-width: 42px; height: 38px; padding: 0 10px; border-radius: 10px; font-weight: 600; font-variant-numeric: tabular-nums; background: var(--surface-2); flex: none; }
+.ngchip .ic { width: 18px; height: 18px; }
+.ngchip.good { background: color-mix(in srgb, #2f9e6a 16%, var(--surface)); }
+.ngchip.mid { background: color-mix(in srgb, #d39b2a 18%, var(--surface)); }
+.ngchip.bad { background: color-mix(in srgb, var(--danger) 15%, var(--surface)); }
+.ngchip.oral { outline: 1.5px dashed var(--muted); outline-offset: -4px; }
+.ngchip.praesi { box-shadow: inset 0 -3px 0 var(--accent); }
+.ngchip.add { color: var(--muted); box-shadow: inset 0 0 0 1px var(--line); background: transparent; }
+.ngcardfoot { display: flex; align-items: center; gap: 10px; min-width: 0; padding-top: 10px; border-top: 1px solid var(--line); }
+.ngcardfoot small { font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.ngcardfoot .ngnext { color: var(--accent); font-weight: 600; }
+.ngmore { margin-left: auto; display: inline-flex; align-items: center; gap: 2px; min-height: 36px; padding: 0 4px 0 10px; border-radius: 999px; font-size: 13.5px; font-weight: 600; color: var(--accent); flex: none; }
+.ngmore .ic { width: 18px; height: 18px; }
+.ngsubj { display: flex; flex-direction: column; gap: 16px; }
+.ngtiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.ngtile { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 16px 18px; border-radius: 18px; background: var(--surface); box-shadow: 0 0 0 1px var(--line); }
+.ngtile:first-child { box-shadow: 0 0 0 1px var(--line), inset 0 3px 0 var(--c, var(--accent)); }
+.ngtile b { font: 700 36px/1.05 var(--font-display); font-variant-numeric: tabular-nums; color: var(--muted); }
+.ngtile span { font-size: 13px; color: var(--muted); }
+.ngpanel { display: flex; flex-direction: column; gap: 12px; padding: 16px 18px; border-radius: 18px; background: var(--surface); box-shadow: 0 0 0 1px var(--line); min-width: 0; }
+.ngpanel .section { margin: 0; }
+.ngpanelhead { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.nglegend { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted); flex-wrap: wrap; }
+.ngkey { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-left: 6px; }
+.ngkey.pt { background: var(--muted); }
+.ngkey.oral { background: transparent; box-shadow: inset 0 0 0 2px var(--muted); }
+.ngkey.run { width: 16px; height: 0; border-radius: 0; border-top: 2px dashed var(--c, var(--accent)); }
+.ngchart { width: 100%; height: auto; display: block; }
+.nggrid { stroke: var(--line); stroke-width: 1; }
+.ngtick { font: 500 12px var(--font); fill: var(--muted); }
+.ngrun { fill: none; stroke: var(--c, var(--accent)); stroke-width: 2.5; stroke-dasharray: 6 5; stroke-linejoin: round; }
+.ngpt { stroke: var(--surface); stroke-width: 2.5; }
+.ngpt.oral { fill: var(--surface) !important; stroke-width: 3; }
+.ngpt.oral.good { stroke: #2f9e6a; } .ngpt.oral.mid { stroke: #d39b2a; } .ngpt.oral.bad { stroke: var(--danger); }
+.ngcalcrow { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.ngcl { margin: 0; min-width: 120px; font-size: 13.5px; font-weight: 600; color: var(--muted); }
+.ngcalc .seg { max-width: 100%; flex-wrap: wrap; border-radius: 18px; }
+.ngnextbtn { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 12px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: 13.5px; font-weight: 600; max-width: 100%; }
+.ngnextbtn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ngnextbtn .ic { width: 18px; height: 18px; }
+.ngverdict { display: flex; flex-direction: column; gap: 4px; padding: 14px 16px; border-radius: 14px; background: var(--surface-2); }
+.ngverdict b { font: 700 20px/1.2 var(--font-display); }
+.ngverdict span { font-size: 14px; color: var(--muted); }
+.ngverdict.need { background: color-mix(in srgb, #d39b2a 14%, var(--surface)); }
+.ngverdict.safe { background: color-mix(in srgb, #2f9e6a 14%, var(--surface)); }
+.ngverdict.no { background: color-mix(in srgb, var(--danger) 12%, var(--surface)); }
+.ngwhatif { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 6px; }
+.ngwi { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 2px; border-radius: 10px; background: var(--surface-2); opacity: .55; min-width: 0; }
+.ngwi b { font-size: 15px; font-variant-numeric: tabular-nums; }
+.ngwi small { font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.ngwi.ok { opacity: 1; background: color-mix(in srgb, #2f9e6a 14%, var(--surface)); }
+.ngwi.min { box-shadow: inset 0 0 0 2px #2f9e6a; }
+.nglist { display: flex; flex-direction: column; border-radius: 16px; background: var(--surface); box-shadow: 0 0 0 1px var(--line); overflow: hidden; }
+.ngrow { display: flex; align-items: center; gap: 14px; min-height: 60px; padding: 10px 14px; text-align: left; border-top: 1px solid var(--line); }
+.ngrow:first-child { border-top: 0; }
+.ngrow > .ic { color: var(--muted); width: 18px; height: 18px; }
+.ngrowtext { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.ngrowtext b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ngrowtext small { font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ngwval { display: block; font-size: 17px; margin-bottom: 8px; }
+.ngwbar { --w: 50%; display: flex; height: 10px; border-radius: 999px; overflow: hidden; margin-bottom: 10px; background: var(--surface-2); }
+.ngwbar .ngws { width: var(--w); background: var(--accent); }
+.ngwbar .ngwm { flex: 1; background: color-mix(in srgb, var(--accent) 30%, var(--surface-2)); }
+.ngrange { width: 100%; min-height: 44px; accent-color: var(--accent); }
+.ngquick { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 4px; }
+@media (max-width: 760px) {
+  .ngstats, .ngtiles { grid-template-columns: 1fr; }
+  .ngwhatif { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .ngcl { min-width: 0; width: 100%; }
+}
+.ngmore .ic, .ngrow > .ic { transform: rotate(-90deg); }
+.ngchart { max-width: 100%; }
+@media (max-width: 760px) {
+  .ngtiles { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .ngtile { padding: 12px; }
+  .ngtile b { font-size: 24px; }
+  .ngtile span { font-size: 11.5px; }
+}

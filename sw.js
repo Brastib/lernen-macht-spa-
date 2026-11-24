@@ -1,6 +1,6 @@
 // Offline-Speicher für die App selbst (nicht für deine Scans, die liegen in IndexedDB).
 // Bei jeder neuen Version VERSION erhöhen.
-const VERSION = 'v79';
+const VERSION = 'v80';
 const CACHE = 'lernapp-' + VERSION;
 const FILES = [
   './',
@@ -27,6 +27,7 @@ const FILES = [
   './js/game.js',
   './js/play.js',
   './js/school.js',
+  './js/grades.js',
   './js/vplan.js',
   './js/sphsync.js',
   './js/messages.js',
