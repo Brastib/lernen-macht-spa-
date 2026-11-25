@@ -431,9 +431,30 @@ export function battle(fx, cfg) {
       if (t.hp <= 0) kill(t, o, lead === t);
       return dmg;
     }
+    // Panzer-Explosion: erst Funken und Stichflamme, dann großer Feuerball, Turm fliegt weg, Wrack brennt nach
+    function tankBlast(t) {
+      const cx = t.x, cy = t.y - 14 * t.scale, sc = t.scale;
+      t.burn = 7;
+      pop(cx, t.y - 70 * sc, 'Zerstört!', '#e0483e');
+      booms.push({ x: cx, y: cy, r: 34 * sc, t: 0 });
+      for (let k = 0; k < 18; k++) parts.push({ x: cx, y: cy, vx: (R() - 0.5) * 520, vy: -R() * 420, t: 0, life: 0.4, kind: 'spark', c: k % 2 ? '#ffd166' : '#ff7a1a', r: 2 });
+      shake = Math.max(shake, 6);
+      fxLater(() => {
+        booms.push({ x: cx, y: cy - 6, r: 115 * sc, t: 0, big: true });
+        flash = Math.max(flash, 0.35); shake = Math.max(shake, 18);
+        for (let k = 0; k < 42; k++) { const a = -Math.PI * R(), sp = 160 + R() * 560; parts.push({ x: cx, y: cy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, t: 0, life: 0.8 + R() * 1.1, kind: 'ember', r: 1.5 + R() * 2.5 }); }
+        for (let k = 0; k < 16; k++) parts.push({ x: cx, y: cy, vx: (R() - 0.5) * 460, vy: -180 - R() * 420, t: 0, life: 1.8, kind: 'chunk', r: 3 + R() * 4, rot: R() * 6, c: k % 3 ? t.p.color : '#555' });
+        parts.push({ x: cx, y: cy - 10, vx: (R() - 0.5) * 220, vy: -560, t: 0, life: 2.4, kind: 'chunk', r: 9 * sc, rot: 0, c: t.p.color });   // Turm
+        for (let k = 0; k < 14; k++) parts.push({ x: cx + (R() - 0.5) * 60 * sc, y: cy - R() * 50 * sc, vx: wind * 14 + (R() - 0.5) * 50, vy: -25 - R() * 45, t: 0, life: 2.6 + R() * 1.6, kind: 'smoke', r: 14 + R() * 16 });
+        for (let k = 0; k < 20; k++) parts.push({ x: cx + (R() - 0.5) * 24, y: cy, vx: (R() - 0.5) * 60, vy: -260 - R() * 280, t: 0, life: 0.6, kind: 'spark', c: k % 2 ? '#ff7a1a' : '#ffe27a', r: 3 });
+        scorches.push({ x: cx, y: t.y, r: 70 * sc }); if (scorches.length > 40) scorches.shift();
+      }, 320);
+      fxLater(() => booms.push({ x: cx, y: cy - 44 * sc, r: 62 * sc, t: 0, big: true }), 420);
+      fxLater(() => { booms.push({ x: cx + (R() - 0.5) * 40, y: cy - 20, r: 45 * sc, t: 0 }); shake = Math.max(shake, 7); }, 760);
+    }
     function kill(t, o, wasLead) {
       t.dead = true; t.hp = 0; t.deaths++; t.poison = 0; t.deathTurn = turnsDone; deathOrder.push(t);
-      if (t.liq) { t.lost = 0; t.hurt = 0; } else { booms.push({ x: t.x, y: t.y - 14, r: 60 * t.scale, t: 0, big: true }); smoke(t.x, t.y - 14, 14); shake = Math.max(shake, 10); for (let k = 0; k < 10; k++) parts.push({ x: t.x, y: t.y - 16, vx: (R() - 0.5) * 300, vy: -150 - R() * 300, t: 0, life: 1.4, kind: 'chunk', r: 3 + R() * 3, rot: R() * 6, c: t.p.color }); }
+      if (t.liq) { t.lost = 0; t.hurt = 0; } else tankBlast(t);
       if (o && isFoe(o, t)) { o.kills++; if (scoreMode) addScore(o, 50 * (wasLead ? 2 : 1)); feed.push({ txt: `${o.p.name} erwischt ${t.p.name}`, c: o.p.color, t: 0 }); }
       else if (o === t) feed.push({ txt: `${t.p.name} hat sich selbst erwischt`, c: t.p.color, t: 0 });
       else feed.push({ txt: `${t.p.name} ist raus`, c: t.p.color, t: 0 });
@@ -1061,10 +1082,10 @@ export function battle(fx, cfg) {
       x.restore(); x.restore();
       if (t.shield > 0 && !t.dead) { x.save(); x.strokeStyle = t.p.color; x.globalAlpha = 0.5 + Math.sin(tm / 200) * 0.15; x.lineWidth = 3; x.setLineDash([7, 6]); x.beginPath(); x.arc(t.x, t.y - 12 * t.scale, 44 * t.scale, Math.PI * 1.02, Math.PI * 1.98); x.stroke(); x.setLineDash([]); x.fillStyle = t.p.color; x.globalAlpha = 0.07; x.fill(); x.restore(); }
       if (t.poison > 0 && !t.dead) { x.fillStyle = '#3d3dbd'; for (let k = 0; k < 3; k++) { x.globalAlpha = 0.5; x.beginPath(); x.arc(t.x - 14 + k * 14, t.y - 34 - ((tm / 15 + k * 20) % 30), 3, 0, Math.PI * 2); x.fill(); } x.globalAlpha = 1; }
-      if (t.dead && !t.liq && R() < 0.12) parts.push({ x: t.x + (R() - 0.5) * 20, y: t.y - 18, vx: wind * 10, vy: -30, t: 0, life: 1.6, kind: 'smoke', r: 6 + R() * 6 });
+      if (t.dead && !t.liq) { if (t.burn > 0) { t.burn -= 1 / 60; if (R() < 0.5) parts.push({ x: t.x + (R() - 0.5) * 26, y: t.y - 16, vx: wind * 6 + (R() - 0.5) * 30, vy: -60 - R() * 70, t: 0, life: 0.5 + R() * 0.4, kind: 'ember', r: 1.5 + R() * 2 }); } if (R() < (t.burn > 0 ? 0.3 : 0.12)) parts.push({ x: t.x + (R() - 0.5) * 20, y: t.y - 18, vx: wind * 10, vy: -30, t: 0, life: 1.6, kind: 'smoke', r: 6 + R() * 6 }); }
     }
     function drawTag(t, tm) {
-      if (t.dead && t.liq && t.sinkK > 0.6) return;
+      if (t.dead && ((t.liq && t.sinkK > 0.6) || t.burn > 5.6)) return;
       if (wx === 'fog' && t !== cur() && Math.abs(t.x - cur().x) > 420) return;
       const y0 = t.tagY;
       x.font = `700 15px ${FONT}`; x.textAlign = 'center'; x.textBaseline = 'middle';
