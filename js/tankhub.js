@@ -176,7 +176,7 @@ export function tankHub(openFx, players, me) {
     body.append(h('h3.tksec', { text: 'Tabelle' }), tableEl(rows, L));
     if (L.hist.length) body.append(h('h3.tksec', { text: 'Rangverlauf' }), chartEl(L));
     if (L.log.length) body.append(h('h3.tksec', { text: 'Spieltage' }), h('div.tklog', null, ...L.log.slice().reverse().map((d, k) => h('div.tklogrow', null, h('b', { text: `${L.log.length - k}.` }), h('span', { text: `${MODE[d.mode].name} · ${MAP[d.map] ? MAP[d.map].name : d.map}` }), h('span.tklogwin', null, h('span.gdot', { style: { background: d.winColor } }), h('span', { text: d.winner }))))));
-    body.append(h('button.tkoptreset', { text: 'Liga abbrechen', on: { click: async () => { if (await confirmSheet('Liga abbrechen?', 'Tabelle und Rangverlauf dieser Liga werden gelöscht. Schrauben gibt es nur am Ende einer Liga.', 'Abbrechen')) { saveLiga(null); render(); } } } }));
+    body.append(h('button.tkoptreset', { text: done ? 'Liga löschen' : 'Liga abbrechen', on: { click: async () => { if (await confirmSheet(done ? 'Liga löschen?' : 'Liga abbrechen?', 'Tabelle und Rangverlauf dieser Liga werden gelöscht. Schrauben gibt es nur am Ende einer Liga.', 'Abbrechen')) { saveLiga(null); render(); } } } }));
   }
   const nextDayText = (L) => { const d = L.plan[L.day]; return `Nächster: ${MODE[d.mode].name} auf ${MAP[d.map].name}`; };
   function ligaSetup(body) {
