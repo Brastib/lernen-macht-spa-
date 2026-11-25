@@ -2,7 +2,7 @@
 import { resumeVplanSetup, vplanCfg } from './vplan.js';
 import { renderMessages, unreadCount } from './messages.js';
 import * as db from './db.js';
-const APP_VERSION = '106';   // gleich wie VERSION in sw.js
+const APP_VERSION = '107';   // gleich wie VERSION in sw.js
 // Anzeige: bis 99 wie bisher, ab 100 als 1.0 … 1.99, dann 2.0 … (interne Nummer zählt weiter)
 const SHOW_VERSION = +APP_VERSION >= 100 ? Math.floor(+APP_VERSION / 100) + '.' + (+APP_VERSION % 100) : APP_VERSION;
 import { openEditor } from './editor.js';
@@ -213,7 +213,7 @@ async function renderLibrary() {
     view.append(h('h2.section', { text: 'Planer' }), h('div.ptiles', null,
       tile('', 'grid', 'Stundenplan', 'Fächer, Räume, Zeiten', () => go({ view: 'timetable' })),
       tile('', 'bookmark', 'Arbeiten', exams.length ? plural(exams.filter((x) => x.date >= new Date().toISOString().slice(0, 10)).length, 'geplant', 'geplant') : 'Arbeiten und Präsentationen', () => go({ view: 'exams' })),
-      tile('', 'speak', 'Präsentationen', (() => { const n = exams.filter((x) => /Präsentation|Referat/.test(x.kind || '') && x.date >= new Date().toISOString().slice(0, 10)).length; return n ? `${n} geplant · üben mit Zeit` : 'Stichwortkarten und Probelauf'; })(), () => go({ view: 'talks' })),
+      tile('', 'speak', 'Präsentationen', (() => { const n = exams.filter((x) => /Präsentation|Referat/.test(x.kind || '') && x.date >= new Date().toISOString().slice(0, 10)).length; return n ? `${n} geplant · Karteikarten` : 'Karteikarten zum Ablesen'; })(), () => go({ view: 'talks' })),
       tile('', 'homework', 'Noten', grades.length ? plural(grades.length, 'Note', 'Noten') : 'Schnitt pro Fach', () => go({ view: 'grades' })),
       tile('.rementry', 'clock', 'Erinnerungen', openRems ? `${openRems} offen` : 'Für alles, was du nicht vergessen willst', () => go({ view: 'reminders' })),
       sphOn ? tile('', 'inbox', 'Nachrichten', unread ? `${unread} ungelesen` : 'Schulportal', () => go({ view: 'messages' })) : null));

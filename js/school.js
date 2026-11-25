@@ -565,7 +565,7 @@ function examRow(ex, s, { subjects, after, onGrade, onPlan }) {
       ex.topic ? h('span', { text: ex.topic }) : null,
       ex.order ? h('span.exorder', { text: 'Reihenfolge: ' + ex.order + (ex.est && ex.est.pos ? ` · Platz ${ex.est.pos}${ex.est.tot ? ' von ' + ex.est.tot : ''}` : '') }) : null,
       h('small', { text: `${approxLabel(ex)} · ${ex.approx && ex.approx !== 'est' ? 'ungefähr ' : ''}${countdownText(n)}${ex.approx ? ' · antippen, wenn du das Datum weißt' : ''}` })),
-    n >= 0 && onPlan && /Präsentation|Referat/.test(ex.kind || '') ? h('button.btn.small', { on: { click: () => onPlan(ex, 'talk') } }, icon('speak'), h('span', { text: 'Üben' })) : null,
+    n >= 0 && onPlan && /Präsentation|Referat/.test(ex.kind || '') ? h('button.btn.small', { on: { click: () => onPlan(ex, 'talk') } }, icon('cards'), h('span', { text: 'Karten' })) : null,
     n > 0 && onPlan ? h('button.btn.small.planbtn' + (ex.plan ? '.has' : ''), { style: ex.plan ? { '--p': planPct(ex) + '%' } : {}, on: { click: () => onPlan(ex) } },
       icon('list'), h('span', { text: ex.plan ? `Lernplan ${planPct(ex)} %` : 'Lernplan' })) : null,
     n <= 0 && onGrade ? h('button.btn.small', { text: ex.gradeId ? 'Note ändern' : 'Note eintragen', on: { click: () => onGrade(ex) } }) : null);
