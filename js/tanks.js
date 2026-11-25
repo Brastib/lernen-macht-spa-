@@ -3,7 +3,7 @@
 // Gelände geht kaputt, Upgrades aus der Garage. battle() spielt eine Partie, tanks() ist das schnelle Duell für Turnier/Duelle.
 import { h, icon } from './ui.js';
 import { FONT, isDark, inkOf, prect, pcirc, shade, canvasBox, chip, rng } from './sketch.js';
-import { WEAPONS, W, CLASSIC, EXTRAS, MAPS, MAP, MODE, garage } from './tankdata.js';
+import { WEAPONS, W, CLASSIC, EXTRAS, MAPS, MAP, MODE, garage, findMap } from './tankdata.js';
 
 const GRAV = 420, SPEED = 85, FUEL_PX = 1.7;
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -24,7 +24,7 @@ export function battle(fx, cfg) {
     const mode = MODE[cfg.mode] || MODE.ffa;
     const O = Object.assign({ hp: 100, rounds: 8, wind: 1, crates: 1, fuel: 1, timer: 0, arsenal: 'all', ammo: 1, ff: 0, aim: 1, grav: 0, fall: 1, cpu: 2, ups: 1 }, cfg.opts || {});
     const R = rng((Math.random() * 1e9) | 0);
-    const map = cfg.map === 'random' || !MAP[cfg.map] ? MAPS[(R() * MAPS.length) | 0] : MAP[cfg.map];
+    const map = (cfg.map !== 'random' && findMap(cfg.map)) || MAPS[(R() * MAPS.length) | 0];
     const dark = isDark(), ink = inkOf(dark);
     const night = !!map.night;
     const scoreMode = mode.kind === 'score', solo = mode.kind === 'solo';
@@ -46,6 +46,90 @@ export function battle(fx, cfg) {
     const waterY = map.water ? OFF + THL * map.water : Infinity, lavaY = map.lava ? OFF + THL * map.lava : Infinity;
     let inkY = mode.id === 'ink' ? TH + 10 : Infinity;
     const hazardY = () => Math.min(waterY, lavaY, inkY);
+    // ---------- Pfützen (Regen sammelt sich) + Schneedecke ----------
+    const CS = 4, NC = Math.ceil(TW / CS);
+    const pool = new Float32Array(NC), cg = new Float32Array(NC);   // Wassertiefe je Zelle, Boden je Zelle
+    const snow = new Float32Array(TW);
+    const SNOW_MAX = 22, DROWN = 24;
+    let wetK = 0, snowSmoothT = 0;
+    if (wx === 'snow') for (let i = 0; i < TW; i++) snow[i] = 9;
+    const raining = () => wx === 'rain' || wx === 'thunder';
+    const cellOf = (px) => clamp(Math.floor(px / CS), 0, NC - 1);
+    function cellGround() { for (let c = 0; c < NC; c++) { let s = 0, n = 0; for (let i = c * CS; i < Math.min(TW, c * CS + CS); i++) { s += ground[i]; n++; } cg[c] = s / n; } }
+    cellGround();
+    // Wasseroberfläche an Stelle px (Infinity = trocken)
+    const poolTop = (px) => { const c = cellOf(px); return pool[c] > 0.6 ? cg[c] - pool[c] : Infinity; };
+    const poolDepth = (px) => { const c = cellOf(px); return pool[c] > 0.6 ? Math.max(0, gAt(px) - (cg[c] - pool[c])) : 0; };
+    const snowAt = (px) => snow[clamp(Math.round(px), 0, TW - 1)];
+    const dryAt = (px, m) => gAt(px) < hazardY() - m && poolDepth(px) < 4;
+    function waterStep(dt) {
+      cellGround();
+      const hz = hazardY();
+      if (raining()) { const r = (wx === 'thunder' ? 0.2 : 0.16) * dt; for (let c = 0; c < NC; c++) pool[c] += r; }
+      // Boden saugt etwas auf, bei Sonne verdunstet es langsam
+      const soak = (raining() ? 0.1 : wx === 'snow' ? 0.02 : 0.05) * dt;
+      for (let c = 0; c < NC; c++) pool[c] = Math.max(0, pool[c] - (pool[c] < 3 ? soak : soak * 0.25));
+      // Fließen: Wasser läuft zum Nachbarn mit tieferer Oberfläche
+      for (let pass = 0; pass < 8; pass++) {
+        const fw = pass % 2 === 0;
+        for (let k = 0; k < NC - 1; k++) {
+          const c = fw ? k : NC - 2 - k, a = cg[c] - pool[c], b = cg[c + 1] - pool[c + 1];
+          if (a < b - 0.01 && pool[c] > 0) { const m = Math.min(pool[c], (b - a) * 0.5); pool[c] -= m; pool[c + 1] += m; }
+          else if (b < a - 0.01 && pool[c + 1] > 0) { const m = Math.min(pool[c + 1], (a - b) * 0.5); pool[c + 1] -= m; pool[c] += m; }
+        }
+        pool[0] = 0; pool[NC - 1] = 0;   // läuft am Rand ab
+      }
+      // Meer, Lava, Tinte schlucken das Wasser
+      for (let c = 0; c < NC; c++) if (cg[c] - pool[c] > hz - 2) pool[c] = 0;
+      // zusammenhängende Pfützen glatt ziehen (flache Oberfläche)
+      for (let c = 0; c < NC;) {
+        if (pool[c] < 1) { c++; continue; }
+        let e = c, V = 0, lo = Infinity, hi = -Infinity;
+        while (e < NC && pool[e] >= 1) { V += pool[e]; lo = Math.min(lo, cg[e]); hi = Math.max(hi, cg[e]); e++; }
+        let L0 = lo - V, L1 = hi;
+        for (let it = 0; it < 22; it++) { const L = (L0 + L1) / 2; let v = 0; for (let k = c; k < e; k++) v += Math.max(0, cg[k] - L); if (v > V) L0 = L; else L1 = L; }
+        const L = (L0 + L1) / 2, sea = hz < Infinity && [c - 1, e].some((k) => k >= 0 && k < NC && cg[k] > hz - 2);
+        for (let k = c; k < e; k++) pool[k] = sea ? 0 : Math.max(0, cg[k] - L);   // berührt das Meer: läuft ab
+        c = e;
+      }
+      // Schnee: fällt, rutscht von steilen Hängen, schmilzt sonst (Schmelzwasser läuft in die Pfützen)
+      if (wx === 'snow') {
+        const add = 0.2 * dt;
+        for (let i = 2; i < TW - 2; i++) {
+          if (ground[i] > hz - 4) { snow[i] = 0; continue; }
+          const sl = Math.abs(ground[i + 2] - ground[i - 2]) / 4, cap = SNOW_MAX * clamp(1.6 - sl, 0.15, 1);
+          snow[i] = Math.min(cap, snow[i] + add * (pool[cellOf(i)] > 1 ? 0 : 1));
+        }
+      } else {
+        const m = (raining() ? 0.6 : wx === 'clear' ? 0.12 : 0.05) * dt;
+        for (let i = 0; i < TW; i++) if (snow[i] > 0) { const d = Math.min(snow[i], m); snow[i] -= d; pool[cellOf(i)] += d * 0.35 / CS; }
+      }
+      snowSmoothT += dt;
+      if (snowSmoothT > 0.4) { snowSmoothT = 0; for (let i = 1; i < TW - 1; i++) snow[i] = snow[i] * 0.6 + (snow[i - 1] + snow[i + 1]) * 0.2; }
+      wetK = clamp(wetK + (raining() ? dt / 20 : -dt / 40), 0, 1);
+      // Panzer: Schneehaube, Ertrinken
+      for (const t of T) {
+        if (t.dead) continue;
+        if (wx === 'snow') t.snowCap = Math.min(7, (t.snowCap || 0) + dt * 0.35); else t.snowCap = Math.max(0, (t.snowCap || 0) - dt * 0.5);
+        if (t.hurt > 0.9) t.snowCap = 0;
+        if (t.fallFrom != null) continue;
+        const dep = poolDepth(t.x);
+        if (dep > 8 && !t.wetWarn) { t.wetWarn = true; pop(t.x, t.y - 90, 'Wasser steigt!', '#2f7fd6'); }
+        if (dep < 4) t.wetWarn = false;
+        if (dep > DROWN * t.scale) {
+          for (let k = 0; k < 18; k++) parts.push({ x: t.x + (R() - 0.5) * 40, y: t.y - dep, vx: (R() - 0.5) * 80, vy: -60 - R() * 140, t: 0, life: 0.9, kind: 'drop', c: '#7fb8ff', r: 2.5 });
+          pop(t.x, t.y - 90, 'Untergegangen!', '#2f7fd6');
+          t.shield = 0; dealDamage(t, t.hp + 999, null);
+          if (t.dead) { const f = feed[feed.length - 1]; if (f) f.txt = `${t.p.name} ist untergegangen`; if (t === cur() && phase === 'aim' && !over) { phase = 'settle'; cpuDrive = null; syncCtrl(); later(nextTurn, 1000); } }
+        }
+      }
+    }
+    function wetBlast(cx, cy, r) {
+      for (let c = cellOf(cx - r); c <= cellOf(cx + r); c++) if (Math.abs(c * CS + CS / 2 - cx) < r && cg[c] - pool[c] < cy + r) pool[c] *= 0.45;
+      let puff = 0;
+      for (let i = Math.max(0, Math.floor(cx - r * 1.2)); i < Math.min(TW, Math.ceil(cx + r * 1.2)); i++) { const f = 1 - Math.abs(i - cx) / (r * 1.2); if (snow[i] > 0) { puff += snow[i] * f; snow[i] = Math.max(0, snow[i] - snow[i] * f * 1.4); } }
+      for (let k = 0; k < Math.min(24, puff / 20); k++) parts.push({ x: cx + (R() - 0.5) * r, y: cy - 6, vx: (R() - 0.5) * 300, vy: -R() * 260 - 40, t: 0, life: 1, kind: 'drop', c: '#ffffff', r: 2 + R() * 2.5 });
+    }
     // Hintergrund-Berge (nur Deko)
     const far = [0, 1].map((k) => { const p = R() * 6, a = 40 + R() * 40; return Array.from({ length: 41 }, (_, j) => OFF + THL * (0.42 + k * 0.1) - a * Math.sin(j / 40 * Math.PI * (2 + k) + p) - 20 * Math.sin(j * 1.7 + p)); });
     const stones = Array.from({ length: Math.round(TW / 22) }, () => ({ x: R() * TW, d: 20 + R() * 200, r: 2 + R() * 4 }));
@@ -87,7 +171,7 @@ export function battle(fx, cfg) {
       const order = T.map((_, k) => k).sort(() => R() - 0.5);
       order.forEach((ti, k) => {
         let x0 = TW * (0.06 + 0.88 * (k + 0.5) / N) + (R() - 0.5) * TW / N * 0.3;
-        if (gAt(x0) > hazardY() - 16) { let best = null; for (let s = 0; s < 400; s++) { const xx = 40 + R() * (TW - 80); if (gAt(xx) < hazardY() - 30 && T.every((o) => o.i === ti || !o.x || Math.abs(o.x - xx) > 80)) { if (!best || Math.abs(xx - x0) < Math.abs(best - x0)) best = xx; } } if (best != null) x0 = best; }
+        if (gAt(x0) > hazardY() - 16) { let best = null; for (let s = 0; s < 400; s++) { const xx = 40 + R() * (TW - 80); if (dryAt(xx, 30) && T.every((o) => o.i === ti || !o.x || Math.abs(o.x - xx) > 80)) { if (!best || Math.abs(xx - x0) < Math.abs(best - x0)) best = xx; } } if (best != null) x0 = best; }
         T[ti].x = clamp(x0, 40, TW - 40);
       });
       T.forEach((t) => { flat(t.x, 34 * t.scale); t.y = gAt(t.x); });
@@ -110,12 +194,12 @@ export function battle(fx, cfg) {
     if (!solo) turn = (R() * N) | 0;
     if (mode.coop) turn = T.findIndex((t) => !t.boss);
     let phase = 'aim', raf = 0, last = 0, turnsDone = 0, over = false, msg = '', msgT = 0, shake = 0, flash = 0, settleT = 0, wind = 0, timeLeft = 0;
-    let dirty = false, keyL = 0, keyR = 0, dragX = null, cpuDrive = null, hill = null, deathOrder = [], rainP = [], resultSent = false;
+    let dirty = false, keyL = 0, keyR = 0, dragX = null, cpuDrive = null, hill = null, deathOrder = [], rainP = [], ripples = [], resultSent = false;
     const totalTurns = scoreMode ? O.rounds * N : solo ? 25 : 60 * N;
     const newWind = () => { const v = (R() * 2 - 1) * windK * (wx === 'storm' ? 2.2 : 1); wind = Math.round(v * 10) / 10; };
     newWind();
     if (mode.id === 'hill') moveHill();
-    function moveHill() { let hx = TW / 2; for (let s = 0; s < 40; s++) { hx = 120 + R() * (TW - 240); if (gAt(hx) < hazardY() - 30) break; } hill = { x: hx, w: 150, t: 0 }; }
+    function moveHill() { let hx = TW / 2; for (let s = 0; s < 40; s++) { hx = 120 + R() * (TW - 240); if (dryAt(hx, 30)) break; } hill = { x: hx, w: 150, t: 0 }; }
 
     // ---------- Oberfläche ----------
     const angIn = h('input.tkrange', { type: 'range', min: 0, max: 180, step: 1, 'aria-label': 'Winkel' });
@@ -253,7 +337,7 @@ export function battle(fx, cfg) {
     const tilt = (t) => (t.dead ? 0.18 : clamp(Math.atan2(gAt(t.x + 18 * t.scale) - gAt(t.x - 18 * t.scale), 36 * t.scale), -0.55, 0.55));
     const pivot = (t) => { const a = tilt(t); return [t.x + Math.sin(a) * 16 * t.scale, t.y - Math.cos(a) * 16 * t.scale]; };
     const muzzle = (t, ang = t.ang) => { const a = ang * Math.PI / 180, [px, py] = pivot(t); return [px + Math.cos(a) * 30 * t.scale, py - Math.sin(a) * 30 * t.scale]; };
-    const fuelCost = () => (map.fuelCost || 1) * (wx === 'snow' ? 1.4 : 1);
+    const fuelCost = (t) => (map.fuelCost || 1) * (wx === 'snow' ? 1.2 : 1) * (1 + (t ? snowAt(t.x) : 0) / 30) * (t && poolDepth(t.x) > 3 ? 1.3 : 1);
     function drive(t, dir, dt) {
       if (t.fuel <= 0 || !dir) return false;
       const g0 = gAt(t.x); if (t.y < g0 - 2) return false;
@@ -266,8 +350,8 @@ export function battle(fx, cfg) {
       t.bump = 0;
       if (slope > 0) step *= Math.max(0.5, 1 - slope * 0.3);
       const nx2 = clamp(t.x + step, 26, TW - 26);
-      if (O.fuel < 99) t.fuel = Math.max(0, t.fuel - Math.abs(nx2 - t.x) / FUEL_PX * (1 + Math.max(0, slope) * 0.6) * fuelCost());
-      t.roll += (nx2 - t.x) * 0.3; t.x = nx2; const g = gAt(t.x); if (t.y > g || g - t.y < 6) t.y = g;
+      if (O.fuel < 99) t.fuel = Math.max(0, t.fuel - Math.abs(nx2 - t.x) / FUEL_PX * (1 + Math.max(0, slope) * 0.6) * fuelCost(t));
+      t.roll += (nx2 - t.x) * 0.3; t.snowCap = Math.max(0, (t.snowCap || 0) - Math.abs(nx2 - t.x) * 0.05); t.x = nx2; const g = gAt(t.x); if (t.y > g || g - t.y < 6) t.y = g;
       if (R() < 0.3) parts.push({ x: t.x - dir * 22, y: t.y - 2, vx: -dir * (20 + R() * 30), vy: -20 - R() * 30, t: 0, life: 0.6, kind: 'dust', r: 3 + R() * 3 });
       pickCrates(t); checkMines();
       return true;
@@ -287,7 +371,7 @@ export function battle(fx, cfg) {
     function dropCrate() {
       const pool = arsenal.filter((id) => id !== 'ball');
       const kinds = ['hp', 'hp', 'e:0', 'e:1', 'e:2', 'e:3', 'e:4', ...pool.map((id) => 'w:' + id)];
-      let cx = 0; for (let k = 0; k < 30; k++) { cx = 80 + R() * (TW - 160); if (T.every((t) => Math.abs(t.x - cx) > 70) && gAt(cx) < hazardY() - 20) break; }
+      let cx = 0; for (let k = 0; k < 30; k++) { cx = 80 + R() * (TW - 160); if (T.every((t) => Math.abs(t.x - cx) > 70) && dryAt(cx, 20)) break; }
       crates.push({ x: cx, y: -30, fall: true, kind: kinds[(R() * kinds.length) | 0], sway: R() * 6 });
       msg = 'Nachschub-Kiste!'; msgT = 1.1;
     }
@@ -304,7 +388,13 @@ export function battle(fx, cfg) {
       else if (id === 'chute') { t.chute = true; pop(t.x, t.y - 70, 'Fallschirm bereit', t.p.color); }
       else { t.scope = true; pop(t.x, t.y - 70, 'Zielhilfe an', t.p.color); }
     }
-    const pop = (px, py, text, color) => { pops.push({ x: px, y: py, text, color, t: 0 }); };
+    // Meldungen so setzen, dass sie weder Namensschilder, Schadenszahlen noch andere Meldungen überdecken
+    const pop = (px, py, text, color) => {
+      const w = text.length * 12 + 24;
+      for (const t of T) if (Math.abs(px - t.x) < 70 * t.scale + w / 2) py = Math.min(py, (t.tagY ?? t.y - 58 * t.scale) - 74);
+      for (let k = 0; k < 8; k++) { const hit = pops.find((q) => q.t < 1.4 && Math.abs(q.x - px) < (q.w + w) / 2 && Math.abs((q.y - q.t * 30) - py) < 28); if (!hit) break; py = hit.y - hit.t * 30 - 30; }
+      pops.push({ x: clamp(px, w / 2 + 6, TW - w / 2 - 6), y: Math.max(40, py), text, color, t: 0, w });
+    };
     function sparkle(px, py, color) { for (let k = 0; k < 14; k++) parts.push({ x: px + (R() - 0.5) * 40, y: py + (R() - 0.5) * 20, vx: (R() - 0.5) * 60, vy: -40 - R() * 80, t: 0, life: 0.9, kind: 'spark', c: color, r: 2 + R() * 2 }); }
 
     // ---------- Punkte, Schaden ----------
@@ -343,6 +433,7 @@ export function battle(fx, cfg) {
     function explode(cx, cy, w, o, opt = {}) {
       const r = w.r;
       if (!opt.noCarve && r > 0) carve(cx, cy, r);
+      if (r > 0) wetBlast(cx, cy, r);
       booms.push({ x: cx, y: cy, r, t: 0, c: w.c, ring: w.k === 'ring' });
       debris(cx, cy, Math.round(6 + r / 6)); smoke(cx, cy, Math.round(3 + r / 14));
       for (let k = 0; k < 8; k++) parts.push({ x: cx, y: cy, vx: (R() - 0.5) * 600, vy: (R() - 0.5) * 600, t: 0, life: 0.35, kind: 'spark', c: '#ffcf5a', r: 2 });
@@ -519,6 +610,7 @@ export function battle(fx, cfg) {
       if (w.k === 'timer' && s.age >= w.fuse) { s.dead = true; explode(s.x, Math.min(s.y, gAt(s.x)), w, s.o); return; }
       if (s.x < -80 || s.x > TW + 80 || s.y > TH + 60) { s.dead = true; if (w.k === 'ghost' && s.x > 0 && s.x < TW) explode(s.x, gAt(s.x), w, s.o); return; }
       if (s.y < TH && s.y > hazardY() && !s.splash && s.x > 0 && s.x < TW) { s.splash = true; for (let k = 0; k < 10; k++) parts.push({ x: s.x, y: hazardY(), vx: (R() - 0.5) * 160, vy: -R() * 220, t: 0, life: 0.8, kind: 'drop', c: lavaY < waterY ? '#ff7a1a' : inkY < waterY ? '#3d3dbd' : '#4fa3ff', r: 2.5 }); }
+      if (!s.psplash && s.vy > 0 && s.y > poolTop(s.x) && s.y < gAt(s.x)) { s.psplash = true; const py = poolTop(s.x); for (let k = 0; k < 12; k++) parts.push({ x: s.x, y: py, vx: (R() - 0.5) * 180, vy: -R() * 240, t: 0, life: 0.8, kind: 'drop', c: '#6fb0ff', r: 2.3 }); ripples.push({ x: s.x, y: py, t: 0, big: 1 }); }
       if (solo) { const q = targets.find((q2) => !q2.hit && Math.abs(q2.x - s.x) < 22 && (q2.air ? Math.abs(q2.y - s.y) < 22 : s.y > q2.y - 60 && s.y < q2.y)); if (q) { impact(s); return; } }
       const hitT = hitTank(s);
       if (hitT) { impact(s, hitT); return; }
@@ -568,7 +660,7 @@ export function battle(fx, cfg) {
       const t = cur();
       // Wiedereinstieg in Punkte-Modi
       if (t.dead && scoreMode) {
-        let nx = t.x; for (let s = 0; s < 80; s++) { nx = 60 + R() * (TW - 120); if (gAt(nx) < hazardY() - 30 && T.every((o) => o === t || o.dead || Math.abs(o.x - nx) > 120)) break; }
+        let nx = t.x; for (let s = 0; s < 80; s++) { nx = 60 + R() * (TW - 120); if (dryAt(nx, 30) && T.every((o) => o === t || o.dead || Math.abs(o.x - nx) > 120)) break; }
         t.dead = false; t.hp = t.hpMax; t.x = nx; flat(nx, 30); t.y = gAt(nx); t.fallFrom = null; t.vy = 0;
         pop(t.x, t.y - 70, 'Wieder da!', t.p.color); sparkle(t.x, t.y - 20, t.p.color);
       }
@@ -644,7 +736,7 @@ export function battle(fx, cfg) {
       else if (t.ex[1] && !t.usedEx && R() < 0.3) applyExtra(t, 1);
       syncCtrl();
       let goal = null;
-      if (t.y > hazardY() - 10) { let best = null; for (let xx = Math.max(30, t.x - reach); xx < Math.min(TW - 30, t.x + reach); xx += 8) if (!best || gAt(xx) < gAt(best)) best = xx; goal = best; }
+      if (t.y > hazardY() - 10 || poolDepth(t.x) > 5) { let best = null; for (let xx = Math.max(30, t.x - reach); xx < Math.min(TW - 30, t.x + reach); xx += 8) if (!best || (dryAt(xx, 10) && !dryAt(best, 10)) || (dryAt(xx, 10) === dryAt(best, 10) && gAt(xx) < gAt(best))) best = xx; goal = best; }
       else if (hill && Math.abs(t.x - hill.x) > hill.w / 2 - 10 && Math.abs(t.x - hill.x) < reach + 60) goal = hill.x + (R() - 0.5) * 40;
       else {
         const box = crates.filter((c) => !c.fall && Math.abs(c.x - t.x) < reach).sort((a, b) => Math.abs(a.x - t.x) - Math.abs(b.x - t.x))[0];
@@ -707,12 +799,16 @@ export function battle(fx, cfg) {
         x.fillStyle = '#ffd84d'; x.beginPath(); x.arc(sx, sy, 36, 0, Math.PI * 2); x.fill(); x.strokeStyle = '#e0a106'; x.lineWidth = 2.5; x.stroke();
         x.beginPath(); for (let k = 0; k < 12; k++) { const a = k / 12 * Math.PI * 2 + tm / 6000; x.moveTo(sx + Math.cos(a) * 46, sy + Math.sin(a) * 46); x.lineTo(sx + Math.cos(a) * 60, sy + Math.sin(a) * 60); } x.stroke();
       }
+      if (!(dark || night) && (wx === 'clear' || wx === 'snow')) { const g2 = x.createRadialGradient(sx, sy, 30, sx, sy, 260); g2.addColorStop(0, 'rgba(255,226,140,.35)'); g2.addColorStop(1, 'rgba(255,226,140,0)'); x.fillStyle = g2; x.fillRect(sx - 260, sy - 260, 520, 520); }
       // ferne Berge
       far.forEach((pts, k) => {
         x.fillStyle = dark || night ? `rgba(255,255,255,${0.04 + k * 0.03})` : shade(map.hill, k ? 0.25 : 0.5);
         x.globalAlpha = dark || night ? 1 : 0.7; x.beginPath(); x.moveTo(0, TH);
         pts.forEach((y, j) => x.lineTo(j / 40 * TW, y)); x.lineTo(TW, TH); x.closePath(); x.fill(); x.globalAlpha = 1;
       });
+      // Dunst über dem Horizont
+      { const hy = OFF + THL * 0.45, g3 = x.createLinearGradient(0, hy - 120, 0, hy + 80); const hc = dark || night ? '20,24,36' : wx === 'snow' || wx === 'fog' ? '240,244,250' : '255,252,240'; g3.addColorStop(0, `rgba(${hc},0)`); g3.addColorStop(0.6, `rgba(${hc},.4)`); g3.addColorStop(1, `rgba(${hc},0)`); x.fillStyle = g3; x.fillRect(-40, hy - 120, TW + 80, 200); }
+      if (raining() || wx === 'storm') { x.fillStyle = dark ? 'rgba(10,14,24,.25)' : wx === 'storm' ? 'rgba(160,120,60,.12)' : 'rgba(70,82,104,.15)'; x.fillRect(-40, -40, TW + 80, TH + 80); }
       // Wolken
       const cloudCol = wx === 'rain' || wx === 'thunder' || wx === 'storm' ? (dark ? 'rgba(90,96,112,.9)' : 'rgba(150,158,172,.85)') : (dark || night ? 'rgba(255,255,255,.12)' : 'rgba(255,255,255,.92)');
       for (const c of clouds) {
@@ -740,6 +836,11 @@ export function battle(fx, cfg) {
       // Schraffur
       x.strokeStyle = dark ? 'rgba(255,255,255,.05)' : 'rgba(80,50,20,.09)'; x.lineWidth = 1.2; x.beginPath();
       for (let d = -TH; d < TW; d += 11) { x.moveTo(d, TH); x.lineTo(d + TH, 0); } x.stroke();
+      // Tiefe: weicher Schatten unter der Oberfläche
+      x.lineJoin = 'round';
+      [[18, 18, 0.07], [38, 26, 0.04]].forEach(([dy, lw, a]) => { x.strokeStyle = `rgba(40,20,0,${dark ? a * 1.6 : a})`; x.lineWidth = lw; x.beginPath(); for (let i = 0; i < TW; i += 4) (i ? x.lineTo(i, ground[i] + dy) : x.moveTo(i, ground[i] + dy)); x.stroke(); });
+      // nasser Boden bei Regen
+      if (wetK > 0.01) { x.fillStyle = `rgba(20,35,60,${0.2 * wetK})`; x.fillRect(-40, 0, TW + 80, TH + 40); }
       x.restore();
       // Oberfläche
       const topC = dark && map.top === '#ffffff' ? '#cfd8e6' : dark ? shade(map.top, -0.1) : map.top;
@@ -749,6 +850,54 @@ export function battle(fx, cfg) {
       // Grashalme
       if (['meadow', 'twin', 'steps'].includes(map.id)) { x.strokeStyle = topC; x.lineWidth = 1.6; x.beginPath(); for (let i = 4; i < TW; i += 13) { const g = ground[i]; x.moveTo(i, g + 2); x.lineTo(i - 2, g - 6 - (i * 7 % 5)); x.moveTo(i + 3, g + 2); x.lineTo(i + 5, g - 5 - (i * 3 % 4)); } x.stroke(); }
       x.strokeStyle = ink; x.lineWidth = 2.4; x.beginPath(); for (let i = 0; i < TW; i += 3) (i ? x.lineTo(i, ground[i]) : x.moveTo(i, ground[i])); x.stroke();
+      if (wetK > 0.05) { x.strokeStyle = `rgba(200,230,255,${0.55 * wetK})`; x.lineWidth = 1.4; x.beginPath(); for (let i = 0; i < TW; i += 3) (i ? x.lineTo(i, ground[i] + 1.5) : x.moveTo(i, ground[i] + 1.5)); x.stroke(); }
+    }
+    function drawSnow(tm) {
+      let any = false; for (let i = 0; i < TW; i += 6) if (snow[i] > 0.6) { any = true; break; }
+      if (!any) return;
+      let top = TH; for (let i = 0; i < TW; i += 8) top = Math.min(top, ground[i] - snow[i]);
+      const gr = x.createLinearGradient(0, top, 0, top + 120);
+      gr.addColorStop(0, dark ? '#e9eef7' : '#ffffff'); gr.addColorStop(1, dark ? '#b9c6da' : '#e4edf8');
+      x.beginPath(); x.moveTo(0, ground[0] + 3);
+      for (let i = 0; i < TW; i += 2) x.lineTo(i, ground[i] - snow[i] + (snow[i] > 0.6 ? 0 : 0.6));
+      x.lineTo(TW, ground[TW - 1] - snow[TW - 1]);
+      for (let i = TW - 1; i >= 0; i -= 2) x.lineTo(i, ground[i] + 3);
+      x.closePath(); x.fillStyle = gr; x.fill();
+      // blauer Schatten unten, Tinten-Kante oben
+      x.lineCap = 'round'; x.lineJoin = 'round';
+      x.strokeStyle = dark ? 'rgba(120,150,200,.35)' : 'rgba(140,175,220,.45)'; x.lineWidth = 3; x.beginPath(); let on = false;
+      for (let i = 0; i < TW; i += 3) { if (snow[i] > 2) { const y = ground[i] - 1; on ? x.lineTo(i, y) : x.moveTo(i, y); on = true; } else on = false; } x.stroke();
+      x.strokeStyle = ink; x.globalAlpha = 0.55; x.lineWidth = 2; x.beginPath(); on = false;
+      for (let i = 0; i < TW; i += 3) { if (snow[i] > 0.8) { const y = ground[i] - snow[i]; on ? x.lineTo(i, y) : x.moveTo(i, y); on = true; } else on = false; } x.stroke(); x.globalAlpha = 1;
+      // Glitzern
+      x.fillStyle = '#ffffff';
+      for (let k = 0; k < 26; k++) { const i = (k * 131 + 17) % TW; if (snow[i] < 3) continue; const a = Math.sin(tm / 380 + k * 2.1); if (a < 0.6) continue; const y = ground[i] - snow[i] + 3, s = (a - 0.6) * 9; x.globalAlpha = 0.9; x.fillRect(i - s / 2, y - 0.6, s, 1.2); x.fillRect(i - 0.6, y - s / 2, 1.2, s); }
+      x.globalAlpha = 1;
+    }
+    function drawPools(tm) {
+      for (let c = 0; c < NC;) {
+        if (pool[c] < 0.6) { c++; continue; }
+        let e = c; while (e < NC && pool[e] >= 0.6) e++;
+        const x0 = Math.max(0, c * CS - 2), x1 = Math.min(TW - 1, e * CS + 2);
+        const top = (i) => { const k = clamp(Math.floor(i / CS), c, e - 1); return cg[k] - pool[k]; };
+        const wave = (i) => (pool[clamp(Math.floor(i / CS), c, e - 1)] > 3 ? Math.sin(i / 16 + tm / 420) * 0.9 : 0);
+        let ymin = Infinity, ymax = 0;
+        x.beginPath();
+        for (let i = x0; i <= x1; i += 2) { const y = Math.min(top(i) + wave(i), ground[i]); ymin = Math.min(ymin, y); ymax = Math.max(ymax, ground[i]); i === x0 ? x.moveTo(i, y) : x.lineTo(i, y); }
+        for (let i = x1; i >= x0; i -= 2) x.lineTo(i, ground[i] + 2);
+        x.closePath();
+        const gr = x.createLinearGradient(0, ymin, 0, Math.max(ymin + 10, ymax));
+        gr.addColorStop(0, dark ? 'rgba(70,140,230,.62)' : 'rgba(110,185,250,.6)'); gr.addColorStop(1, dark ? 'rgba(20,60,140,.85)' : 'rgba(30,100,200,.8)');
+        x.fillStyle = gr; x.fill();
+        // Oberfläche + Glanz
+        x.lineCap = 'round'; x.strokeStyle = dark ? '#a9d3ff' : '#dff0ff'; x.lineWidth = 2.2; x.beginPath(); let on = false;
+        for (let i = x0; i <= x1; i += 2) { const y = top(i) + wave(i); if (y < ground[i] - 0.5) { on ? x.lineTo(i, y) : x.moveTo(i, y); on = true; } else on = false; } x.stroke();
+        x.strokeStyle = 'rgba(255,255,255,.7)'; x.lineWidth = 1.6; x.beginPath();
+        for (let i = x0 + 10; i < x1 - 20; i += 46) { const y = top(i) + 3 + (i % 3); if (y < ground[i] - 3) { const l = 8 + (i % 7) * 2, o = Math.sin(tm / 900 + i) * 4; x.moveTo(i + o, y); x.lineTo(i + o + l, y); } } x.stroke();
+        c = e;
+      }
+      for (const q of ripples) { const k = q.t / (q.big ? 1.1 : 0.6), rr = (q.big ? 26 : 9) * (0.3 + k); x.strokeStyle = dark ? 'rgba(200,225,255,.7)' : 'rgba(255,255,255,.85)'; x.globalAlpha = 1 - k; x.lineWidth = q.big ? 2 : 1.2; x.beginPath(); x.ellipse(q.x, q.y, rr, rr * 0.28, 0, 0, Math.PI * 2); x.stroke(); }
+      x.globalAlpha = 1;
     }
     function drawHazard(tm) {
       const layers = [];
@@ -773,6 +922,7 @@ export function battle(fx, cfg) {
       x.fillStyle = 'rgba(0,0,0,.18)'; x.beginPath(); x.ellipse(0, 4, 32, 5, 0, 0, Math.PI * 2); x.fill();
       x.rotate(tilt(t));
       paintTank(x, { color: t.dead ? '#6b6b6b' : t.p.color, body: t.body, pat: t.dead ? 'hatch' : t.pat, ang: t.ang - tilt(t) * -180 / Math.PI, roll: t.roll, kick: t.kick || 0, wind, tm, dead: t.dead }, dark, ink);
+      if (t.snowCap > 0.6) { const h2 = t.snowCap, tr = t.body === 'dome' ? 15 : t.body === 'heavy' ? 13 : 11, hw = t.body === 'heavy' ? 28 : 25; x.fillStyle = '#ffffff'; x.strokeStyle = 'rgba(120,150,190,.8)'; x.lineWidth = 1.2; x.beginPath(); x.ellipse(0, -13 - tr + 1, tr * 0.8, h2 * 0.55, 0, Math.PI, 0); x.closePath(); x.fill(); x.stroke(); x.beginPath(); x.ellipse(-hw + 9, -13, 7, h2 * 0.4, 0, Math.PI, 0); x.ellipse(hw - 9, -13, 7, h2 * 0.4, 0, Math.PI, 0); x.fill(); }
       x.restore();
       if (t.shield > 0 && !t.dead) { x.save(); x.strokeStyle = t.p.color; x.globalAlpha = 0.5 + Math.sin(tm / 200) * 0.15; x.lineWidth = 3; x.setLineDash([7, 6]); x.beginPath(); x.arc(t.x, t.y - 12 * t.scale, 44 * t.scale, Math.PI * 1.02, Math.PI * 1.98); x.stroke(); x.setLineDash([]); x.fillStyle = t.p.color; x.globalAlpha = 0.07; x.fill(); x.restore(); }
       if (t.poison > 0 && !t.dead) { x.fillStyle = '#3d3dbd'; for (let k = 0; k < 3; k++) { x.globalAlpha = 0.5; x.beginPath(); x.arc(t.x - 14 + k * 14, t.y - 34 - ((tm / 15 + k * 20) % 30), 3, 0, Math.PI * 2); x.fill(); } x.globalAlpha = 1; }
@@ -780,7 +930,7 @@ export function battle(fx, cfg) {
     }
     function drawTag(t, tm) {
       if (wx === 'fog' && t !== cur() && Math.abs(t.x - cur().x) > 420) return;
-      const y0 = t.y - 58 * t.scale - (t === cur() && !over ? 6 : 0);
+      const y0 = t.tagY;
       x.font = `700 15px ${FONT}`; x.textAlign = 'center'; x.textBaseline = 'middle';
       const name = t.p.name.length > 12 ? t.p.name.slice(0, 11) + '…' : t.p.name, w = Math.max(64, x.measureText(name).width + 18);
       x.fillStyle = dark ? 'rgba(27,31,40,.85)' : 'rgba(255,255,255,.85)'; x.strokeStyle = t.p.color; x.lineWidth = 2;
@@ -792,11 +942,28 @@ export function battle(fx, cfg) {
     }
     function drawCrate(c, tm) {
       x.save(); x.translate(c.x, c.y); x.lineCap = 'round'; x.lineJoin = 'round'; x.strokeStyle = ink; x.lineWidth = 2;
-      if (c.fall) { const sw = Math.sin(tm / 400 + c.sway) * 0.12; x.rotate(sw); x.fillStyle = dark ? '#3b4252' : '#fff8e6'; x.beginPath(); x.arc(0, -52, 26, Math.PI, 0); x.closePath(); x.fill(); x.stroke(); x.beginPath(); x.moveTo(-26, -52); x.lineTo(-10, -24); x.moveTo(26, -52); x.lineTo(10, -24); x.moveTo(0, -52); x.lineTo(0, -24); x.stroke(); }
-      const gr = x.createLinearGradient(0, -26, 0, 0); gr.addColorStop(0, dark ? '#7a6440' : '#f0d6a0'); gr.addColorStop(1, dark ? '#5a4a30' : '#d4ad6a');
-      x.fillStyle = gr; prect(x, -14, -26, 28, 26, 7, 0.6); x.fill(); x.stroke();
-      x.strokeStyle = dark ? '#c9a46a' : '#9a6b2f'; x.lineWidth = 1.5; x.beginPath(); x.moveTo(-14, -13); x.lineTo(14, -13); x.moveTo(-6, -26); x.lineTo(-6, 0); x.stroke();
-      x.fillStyle = c.kind === 'hp' ? '#2fbf71' : c.kind.startsWith('w:') ? '#e0483e' : '#4f7cff'; x.beginPath(); x.arc(5, -19, 4.5, 0, Math.PI * 2); x.fill();
+      if (c.fall) {
+        const sw = Math.sin(tm / 400 + c.sway) * 0.12; x.rotate(sw);
+        const cg2 = x.createLinearGradient(-28, 0, 28, 0); cg2.addColorStop(0, dark ? '#3b4252' : '#ffffff'); cg2.addColorStop(1, dark ? '#4b5468' : '#ffe9c2');
+        x.fillStyle = cg2; x.beginPath(); x.arc(0, -54, 28, Math.PI, 0); x.quadraticCurveTo(14, -48, 0, -52); x.quadraticCurveTo(-14, -48, -28, -54); x.closePath(); x.fill(); x.stroke();
+        x.lineWidth = 1.2; x.beginPath(); x.moveTo(-9, -80); x.quadraticCurveTo(-12, -64, -14, -51); x.moveTo(9, -80); x.quadraticCurveTo(12, -64, 14, -51); x.stroke();
+        x.lineWidth = 1.4; x.beginPath(); x.moveTo(-27, -54); x.lineTo(-12, -26); x.moveTo(27, -54); x.lineTo(12, -26); x.moveTo(-1, -52); x.lineTo(0, -26); x.stroke();
+      } else { x.fillStyle = 'rgba(0,0,0,.18)'; x.beginPath(); x.ellipse(0, 1, 18, 3.5, 0, 0, Math.PI * 2); x.fill(); }
+      // Holzkiste mit Brettern und Eckbeschlägen
+      const gr = x.createLinearGradient(0, -28, 0, 0); gr.addColorStop(0, dark ? '#8a7048' : '#f3d9a2'); gr.addColorStop(1, dark ? '#5e4a2e' : '#d3a75f');
+      x.fillStyle = gr; prect(x, -15, -28, 30, 28, 7, 0.5); x.fill();
+      x.strokeStyle = dark ? 'rgba(255,230,180,.25)' : 'rgba(120,70,20,.35)'; x.lineWidth = 1.2; x.beginPath(); x.moveTo(-13, -19); x.lineTo(13, -19); x.moveTo(-13, -10); x.lineTo(13, -10); x.stroke();
+      x.strokeStyle = dark ? '#c9a46a' : '#8a5a22'; x.lineWidth = 2.2; x.beginPath(); x.moveTo(-12, -25); x.lineTo(12, -3); x.stroke();
+      x.fillStyle = dark ? '#aab2c0' : '#7b8494'; [[-15, -28], [11, -28], [-15, -4], [11, -4]].forEach(([qx, qy]) => x.fillRect(qx, qy, 4, 4));
+      x.strokeStyle = ink; x.lineWidth = 2; prect(x, -15, -28, 30, 28, 7, 0.5); x.stroke();
+      // Etikett: Leben = Kreuz, Waffe = Granate, Extra = Stern
+      const kc = c.kind === 'hp' ? '#2fbf71' : c.kind.startsWith('w:') ? '#e0483e' : '#4f7cff';
+      x.fillStyle = dark ? '#1b1f28' : '#ffffff'; x.beginPath(); x.arc(0, -14, 8.5, 0, Math.PI * 2); x.fill(); x.strokeStyle = kc; x.lineWidth = 2; x.stroke();
+      x.fillStyle = kc;
+      if (c.kind === 'hp') { x.fillRect(-1.8, -19, 3.6, 10); x.fillRect(-5, -15.8, 10, 3.6); }
+      else if (c.kind.startsWith('w:')) { x.beginPath(); x.arc(0, -13, 4, 0, Math.PI * 2); x.fill(); x.fillRect(-1.2, -19.5, 2.4, 3.5); }
+      else { x.beginPath(); for (let k = 0; k < 10; k++) { const a = -Math.PI / 2 + k * Math.PI / 5, rr = k % 2 ? 2.4 : 5.6; x.lineTo(Math.cos(a) * rr, -14 + Math.sin(a) * rr); } x.closePath(); x.fill(); }
+      if (!c.fall) { const g = 0.5 + 0.5 * Math.sin(tm / 300 + c.sway); x.globalAlpha = 0.35 * g; x.strokeStyle = kc; x.lineWidth = 3; prect(x, -19, -32, 38, 36, 9, 0.3); x.stroke(); x.globalAlpha = 1; }
       x.restore();
     }
     function drawShell(s, tm) {
@@ -840,7 +1007,13 @@ export function battle(fx, cfg) {
           if (wx === 'snow') { p.y += 50 * p.s * dt; p.x += (wind * 25 + Math.sin(tm / 700 + p.s * 9) * 15) * dt; }
           else if (wx === 'storm') { p.x += (wind * 260 + 200 * Math.sign(wind || 1)) * dt * p.s; p.y += 40 * dt; }
           else { p.y += 620 * p.s * dt; p.x += wind * 70 * dt; }
-          if (p.y > gAt(p.x) || p.y > TH) { if (wx !== 'snow' && wx !== 'storm' && R() < 0.15) parts.push({ x: p.x, y: gAt(p.x), vx: (R() - 0.5) * 40, vy: -40 - R() * 40, t: 0, life: 0.3, kind: 'drop', c: dark ? '#7fb2ff' : '#5b8fd6', r: 1.3 }); p.y = -10 - R() * 60; p.x = R() * (TW + 400) - 200; }
+          const pt = poolTop(p.x), land = Math.min(gAt(p.x) - (wx === 'snow' ? snowAt(p.x) : 0), pt);
+          if (p.y > land || p.y > TH) {
+            if (wx === 'snow') { const i0 = Math.round(p.x); for (let i = i0 - 3; i <= i0 + 3; i++) if (i >= 0 && i < TW && pt === Infinity) snow[i] = Math.min(SNOW_MAX, snow[i] + 0.25 * (1 - Math.abs(i - i0) / 4)); }
+            else if (wx !== 'storm' && pt < Infinity && R() < 0.35) ripples.push({ x: p.x, y: pt, t: 0 });
+            else if (wx !== 'storm' && R() < 0.15) parts.push({ x: p.x, y: land, vx: (R() - 0.5) * 40, vy: -40 - R() * 40, t: 0, life: 0.3, kind: 'drop', c: dark ? '#7fb2ff' : '#5b8fd6', r: 1.3 });
+            p.y = -10 - R() * 60; p.x = R() * (TW + 400) - 200;
+          }
           if (p.x > TW + 220) p.x = -200; if (p.x < -220) p.x = TW + 200;
         }
         if (wx === 'snow') { x.fillStyle = dark ? 'rgba(255,255,255,.85)' : '#ffffff'; x.strokeStyle = 'rgba(120,140,170,.6)'; x.lineWidth = 0.8; for (const p of rainP) { x.beginPath(); x.arc(p.x, p.y, 2 + p.s * 1.5, 0, Math.PI * 2); x.fill(); x.stroke(); } }
@@ -856,7 +1029,7 @@ export function battle(fx, cfg) {
     function drawAim(tm) {
       const t = cur(); if (!human() || over || phase !== 'aim') return;
       if (t.fuel > 0 && O.fuel < 99) {
-        const span = t.fuel * FUEL_PX / fuelCost(); x.strokeStyle = t.p.color; x.globalAlpha = 0.45; x.lineWidth = 4; x.setLineDash([2, 9]);
+        const span = t.fuel * FUEL_PX / fuelCost(t); x.strokeStyle = t.p.color; x.globalAlpha = 0.45; x.lineWidth = 4; x.setLineDash([2, 9]);
         x.beginPath(); for (let i = Math.max(0, Math.round(t.x - span)); i <= Math.min(TW - 1, Math.round(t.x + span)); i += 4) (i <= t.x - span + 4 ? x.moveTo(i, ground[i] + 14) : x.lineTo(i, ground[i] + 14)); x.stroke(); x.setLineDash([]); x.globalAlpha = 1;
       }
       const a = t.ang * Math.PI / 180, [mx, my] = muzzle(t), L = 30 + t.pow * 1.1;
@@ -914,6 +1087,8 @@ export function battle(fx, cfg) {
       }
       flames = flames.filter((f) => f.life > 0);
       checkMines();
+      if (!over) waterStep(dt);
+      ripples.forEach((q) => { q.t += dt; }); ripples = ripples.filter((q) => q.t < (q.big ? 1.1 : 0.6));
       for (const c of crates) { if (c.fall) { c.y += 70 * dt; const g = gAt(c.x); if (c.y >= g) { c.y = g; c.fall = false; } } else c.y = gAt(c.x); }
       if (phase === 'aim' && !over) T.forEach((t) => { if (t.y >= gAt(t.x) - 1) pickCrates(t); });
       booms.forEach((b) => { b.t += dt; }); booms = booms.filter((b) => b.t < (b.big ? 0.9 : 0.6));
@@ -936,12 +1111,25 @@ export function battle(fx, cfg) {
       drawSky(tm);
       if (hill) { const hy = gAt(hill.x); x.fillStyle = 'rgba(242,182,50,.16)'; x.fillRect(hill.x - hill.w / 2, 0, hill.w, TH); x.strokeStyle = '#e0a106'; x.lineWidth = 2; x.setLineDash([8, 8]); x.beginPath(); x.moveTo(hill.x - hill.w / 2, 0); x.lineTo(hill.x - hill.w / 2, TH); x.moveTo(hill.x + hill.w / 2, 0); x.lineTo(hill.x + hill.w / 2, TH); x.stroke(); x.setLineDash([]); drawCrown(x, hill.x, hy - 110 + Math.sin(hill.t * 2) * 6, 1.2); }
       drawGround();
+      drawSnow(tm);
       for (const f of flames) { const a = Math.min(1, f.life); x.fillStyle = `rgba(255,${120 + Math.round(Math.sin(f.t * 20) * 40)},30,${0.85 * a})`; x.beginPath(); x.moveTo(f.x - 6, f.y); x.quadraticCurveTo(f.x - 7, f.y - 12, f.x, f.y - 20 - Math.sin(f.t * 15) * 5); x.quadraticCurveTo(f.x + 7, f.y - 12, f.x + 6, f.y); x.closePath(); x.fill(); }
-      for (const m of mines) { x.fillStyle = ink; x.beginPath(); x.arc(m.x, m.y - 4, 7, Math.PI, 0); x.fill(); x.fillStyle = m.armed && Math.sin(tm / 200) > 0 ? '#e0483e' : '#8a8f98'; x.beginPath(); x.arc(m.x, m.y - 11, 2.5, 0, Math.PI * 2); x.fill(); }
+      for (const m of mines) {
+        x.save(); x.translate(m.x, m.y); x.lineCap = 'round';
+        x.fillStyle = 'rgba(0,0,0,.2)'; x.beginPath(); x.ellipse(0, 1, 13, 3, 0, 0, Math.PI * 2); x.fill();
+        x.strokeStyle = ink; x.lineWidth = 2.4; x.beginPath(); for (let k = 0; k < 5; k++) { const a = Math.PI * (1.08 + k * 0.21); x.moveTo(Math.cos(a) * 9, -3 + Math.sin(a) * 9); x.lineTo(Math.cos(a) * 14, -3 + Math.sin(a) * 14); } x.stroke();
+        const mg = x.createLinearGradient(0, -12, 0, 0); mg.addColorStop(0, dark ? '#7a808c' : '#6b717c'); mg.addColorStop(1, dark ? '#3a3f4b' : '#2e323a');
+        x.fillStyle = mg; x.beginPath(); x.arc(0, -2, 10, Math.PI, 0); x.lineTo(11, 0); x.lineTo(-11, 0); x.closePath(); x.fill(); x.lineWidth = 1.6; x.stroke();
+        x.fillStyle = 'rgba(255,255,255,.25)'; x.beginPath(); x.ellipse(-4, -7, 3, 1.6, -0.5, 0, Math.PI * 2); x.fill();
+        const on = m.armed && Math.sin(tm / 200) > 0;
+        if (on) { x.fillStyle = 'rgba(255,80,60,.35)'; x.beginPath(); x.arc(0, -13, 7, 0, Math.PI * 2); x.fill(); }
+        x.fillStyle = on ? '#ff4d3d' : m.armed ? '#a33' : '#8a8f98'; x.beginPath(); x.arc(0, -13, 2.8, 0, Math.PI * 2); x.fill(); x.lineWidth = 1; x.stroke();
+        x.restore();
+      }
       if (solo) for (const q of targets) if (!q.hit) drawTarget(q, tm);
       crates.forEach((c) => drawCrate(c, tm));
       drawAim(tm);
       T.forEach((t) => drawTank(t, tm));
+      drawPools(tm);
       drawHazard(tm);
       shells.forEach((s) => drawShell(s, tm));
       for (const b of beams) { const a = 1 - b.t / 0.6; x.strokeStyle = b.c; x.globalAlpha = a * 0.35; x.lineWidth = 12; x.beginPath(); x.moveTo(b.x0, b.y0); x.lineTo(b.x1, b.y1); x.stroke(); x.globalAlpha = a; x.lineWidth = 3; x.strokeStyle = '#fff'; x.stroke(); x.globalAlpha = 1; }
@@ -949,9 +1137,11 @@ export function battle(fx, cfg) {
       booms.forEach(drawBoom);
       drawParts();
       drawWeather(tm, dt);
+      // Namensschilder: liegen zwei Panzer dicht beieinander, wird ein Schild nach oben geschoben
+      { const placed = []; T.slice().sort((a, b) => (a === cur() ? -1 : b === cur() ? 1 : a.x - b.x)).forEach((t) => { let y0 = t.y - 58 * t.scale - (t === cur() && !over ? 6 : 0); for (let k = 0; k < 8; k++) { const hit = placed.find((q) => Math.abs(q.x - t.x) < 96 && Math.abs(q.y - y0) < 34); if (!hit) break; y0 = hit.y - 36; } t.tagY = y0; placed.push({ x: t.x, y: y0 }); }); }
       T.forEach((t) => drawTag(t, tm));
       x.textAlign = 'center'; x.textBaseline = 'alphabetic';
-      T.forEach((t) => { if (t.hurt > 0 && t.lost) { x.globalAlpha = t.hurt; x.font = `800 28px ${FONT}`; x.lineWidth = 4; x.strokeStyle = dark ? '#1b1f28' : '#fff'; x.strokeText(`-${t.lost}`, t.x, t.y - 90 * t.scale - (1 - t.hurt) * 30); x.fillStyle = '#e0483e'; x.fillText(`-${t.lost}`, t.x, t.y - 90 * t.scale - (1 - t.hurt) * 30); x.globalAlpha = 1; } });
+      T.forEach((t) => { if (t.hurt > 0 && t.lost) { x.globalAlpha = t.hurt; x.font = `800 28px ${FONT}`; x.lineWidth = 4; x.strokeStyle = dark ? '#1b1f28' : '#fff'; const dy = (t.tagY ?? t.y - 58 * t.scale) - 30 - (t === cur() && phase === 'aim' ? 16 : 0) - (1 - t.hurt) * 24; x.strokeText(`-${t.lost}`, t.x, dy); x.fillStyle = '#e0483e'; x.fillText(`-${t.lost}`, t.x, dy); x.globalAlpha = 1; } });
       pops.forEach((q) => { x.globalAlpha = Math.min(1, (1.6 - q.t) * 2); x.font = `800 22px ${FONT}`; x.lineWidth = 4; x.strokeStyle = dark ? '#1b1f28' : '#fbfaf5'; x.strokeText(q.text, q.x, q.y - q.t * 30); x.fillStyle = q.color; x.fillText(q.text, q.x, q.y - q.t * 30); x.globalAlpha = 1; });
       x.restore();
       x.strokeStyle = ink; x.lineWidth = 2; x.strokeRect(0, 0, TW, TH);
@@ -985,7 +1175,7 @@ export function battle(fx, cfg) {
     timeLeft = O.timer;
     syncCtrl();
     if (!human()) later(cpuTurn, 1300);
-    if (typeof window !== 'undefined') window.__tk = { T, get crates() { return crates; }, dropCrate, get phase() { return phase; }, ground, shoot, get turn() { return turn; }, set wind(v) { wind = v; }, finish, map, mode, get wx() { return wx; }, explode: (px, py, id) => explode(px, py, W[id], cur()), nextTurn, targets };
+    if (typeof window !== 'undefined') window.__tk = { T, get crates() { return crates; }, dropCrate, get phase() { return phase; }, ground, shoot, get turn() { return turn; }, set wind(v) { wind = v; }, finish, map, mode, get wx() { return wx; }, pool, snow, cg, CS, poolDepth, explode: (px, py, id) => explode(px, py, W[id], cur()), nextTurn, targets };
     raf = requestAnimationFrame(frame);
   });
 }
