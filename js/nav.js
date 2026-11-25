@@ -39,6 +39,7 @@ export function features(a) {
     { id: 'quiz', area: 'Lernen', name: 'Quiz allein', ic: 'cards', kw: 'ueben arbeit test fragen', run: () => import('./quiz.js').then((m) => m.quizSolo()) },
     { id: 'timetable', area: 'Planer', name: 'Stundenplan', ic: 'grid', kw: 'stunden raum zeiten vertretung', run: () => a.go({ view: 'timetable' }) },
     { id: 'exams', area: 'Planer', name: 'Arbeiten', ic: 'bookmark', kw: 'klassenarbeit praesentation test termin', run: () => a.go({ view: 'exams' }) },
+    { id: 'talks', area: 'Planer', name: 'Präsentations-Trainer', ic: 'speak', kw: 'praesentation referat vortrag ueben stichworte karteikarten probelauf zeit timer', run: () => a.go({ view: 'talks' }) },
     { id: 'grades', area: 'Planer', name: 'Noten', ic: 'homework', kw: 'schnitt zeugnis notenrechner', run: () => a.go({ view: 'grades' }) },
     { id: 'reminders', area: 'Planer', name: 'Erinnerungen', ic: 'clock', kw: 'wecker termin nicht vergessen', run: () => a.go({ view: 'reminders' }) },
     a.sphOn ? { id: 'messages', area: 'Planer', name: 'Nachrichten', ic: 'inbox', kw: 'schulportal post', run: () => a.go({ view: 'messages' }) } : null,
