@@ -3,8 +3,9 @@
 import { h, icon, toast, confirmSheet, menu } from './ui.js';
 import { isDark, inkOf, rng } from './sketch.js';
 import { battle, paintTank, glyph } from './tanks.js';
+import { editMap } from './tankedit.js';
 import { recordDuel, recordCpu, recordScore } from './profiles.js';
-import { WEAPONS, EXTRAS, MAPS, MAP, MODES, MODE, WEATHER, OPTS, UPGRADES, UPCOST, BODIES, PATTERNS, COIN_PER_BOLT, garage, saveGarage, ladder, recordLadder, clearLadder, LIGA_PTS, liga, saveLiga, BOT_NAMES, COLORS, store } from './tankdata.js';
+import { WEAPONS, EXTRAS, MAPS, MAP, MODES, MODE, WEATHER, OPTS, UPGRADES, UPCOST, BODIES, PATTERNS, COIN_PER_BOLT, garage, saveGarage, ladder, recordLadder, clearLadder, LIGA_PTS, liga, saveLiga, BOT_NAMES, COLORS, store, findMap, loadMyMaps, saveMyMaps, myMapObj } from './tankdata.js';
 
 const TEAM_NAMES = ['Blau', 'Rot', 'Grün', 'Gelb'];
 const TEAM_COL = ['#4f7cff', '#ff6b5a', '#2fbf71', '#f2b632'];
@@ -36,32 +37,34 @@ export function tankHub(openFx, players, me) {
   }
 
   // ---------- Spielen ----------
+  // Spiel einrichten Schritt für Schritt: Spieler → Spielart → Modus → Karte → Wetter → Regeln → Start
+  const STEPS = [['players', 'Spieler'], ['kind', 'Spielart'], ['mode', 'Modus'], ['map', 'Karte'], ['weather', 'Wetter'], ['rules', 'Regeln'], ['start', 'Start']];
+  let step = store.get('tkStep', 0);
+  function go(d, abs) { step = Math.max(0, Math.min(STEPS.length - 1, abs != null ? abs : step + d)); store.set('tkStep', step); render(); fx.stage.scrollTop = 0; }
+  const mapName = () => (lob.map === 'random' || !findMap(lob.map) ? 'Zufallskarte' : findMap(lob.map).name);
+  const kindName = () => (lob.ranked === false ? 'Freundschaftsspiel' : 'Rangspiel');
   function playTab(body) {
     const mode = MODE[lob.mode] || MODE.ffa;
-    // Modi
-    body.append(h('h3.tksec', { text: 'Modus' }), h('div.tkmodes', null, ...MODES.map((m) => h('button.tkmode' + (m.id === lob.mode ? '.on' : ''), { on: { click: () => { lob.mode = m.id; fixRoster(); saveLob(); render(); } } },
-      h('span.tkmodeic', null, icon(m.ic)), h('span.tkmodetx', null, h('b', { text: m.name }), h('small', { text: m.d })), m.own ? h('em.tknew', { text: 'Neu' }) : null))));
-    // Karten
-    body.append(h('h3.tksec', { text: 'Karte' }), h('div.tkmaps', null,
-      mapCard({ id: 'random', name: 'Zufall', d: 'Jedes Mal eine andere Karte' }),
-      ...MAPS.map(mapCard)));
-    // Wetter
-    body.append(h('h3.tksec', { text: 'Wetter' }), h('div.tkchips', null, ...WEATHER.map((w) => h('button.tkchip' + (w.id === lob.weather ? '.on' : ''), { title: w.d, on: { click: () => { lob.weather = w.id; saveLob(); render(); } } }, h('b', { text: w.name }), h('small', { text: w.d })))));
-    // Spieler
     const solo = mode.kind === 'solo';
-    body.append(h('h3.tksec', { text: solo ? 'Spieler' : `Spieler (${lob.roster.length} von 8)` }));
+    const problem = rosterProblem(mode);
+    body.append(h('div.tksteps', null, ...STEPS.map(([id, name], k) => h('button.tkstep' + (k === step ? '.on' : k < step ? '.done' : ''), { on: { click: () => go(0, k) } }, h('i', { text: String(k + 1) }), h('span', { text: name })))));
+    const id = STEPS[step][0];
+    const head = (t, d) => body.append(h('div.tkstephead', null, h('h2', { text: t }), d ? h('p', { text: d }) : null));
+    if (id === 'players') {
+      head('Wer spielt mit?', 'Spieler aus den Profilen und Computer-Gegner. Bis zu 8 Panzer.');
+    // Spieler
+    body.append(h('h3.tksec', { text: solo ? 'Spieler (Zielscheiben spielt man allein)' : `Spieler (${lob.roster.length} von 8)` }));
     const list = h('div.tkroster');
     lob.roster.forEach((r, k) => {
       const typeBtn = h('button.tkrtype', { on: { click: (e) => menu(e.currentTarget, [
         { label: 'Mensch', icon: 'game', onClick: () => { r.cpu = 0; saveLob(); render(); } },
         ...[1, 2, 3, 4].map((lv) => ({ label: `Computer: ${['', 'Leicht', 'Mittel', 'Schwer', 'Profi'][lv]}`, icon: 'bolt', onClick: () => { r.cpu = lv; saveLob(); render(); } })),
       ]) } }, h('span', { text: r.cpu ? `Computer · ${['', 'Leicht', 'Mittel', 'Schwer', 'Profi'][r.cpu]}` : 'Mensch' }), icon('chev-down'));
-      const teamSeg = mode.teams ? h('div.tkteams', null, ...TEAM_NAMES.map((tn, ti) => h('button' + ((r.team ?? 0) === ti ? '.on' : ''), { style: { '--tc': TEAM_COL[ti] }, 'aria-label': `Team ${tn}`, title: `Team ${tn}`, on: { click: () => { r.team = ti; saveLob(); render(); } } }, h('i'), h('span', { text: tn })))) : null;
       const g = garage(r.name);
       list.append(h('div.tkrrow', null,
         h('span.gdot', { style: { background: r.color } }), h('b.tkrname', { text: r.name }),
         !r.cpu && Object.values(g.up).some(Boolean) ? h('span.tkuptag', { title: 'Hat Upgrades aus der Garage' }, icon('arup'), h('span', { text: String(Object.values(g.up).reduce((a, b) => a + b, 0)) })) : null,
-        solo ? null : typeBtn, teamSeg,
+        solo ? null : typeBtn,
         lob.roster.length > (solo ? 1 : 2) || (mode.coop && lob.roster.length > 1) ? h('button.icbtn.tkrdel', { 'aria-label': `${r.name} entfernen`, on: { click: () => { lob.roster.splice(k, 1); saveLob(); render(); } } }, icon('close')) : null));
     });
     if (mode.coop) list.append(h('div.tkrrow.boss', null, h('span.gdot', { style: { background: '#e0a106' } }), h('b.tkrname', { text: 'Riesenpanzer' }), h('span.tkrnote', { text: 'Computer, viel Leben, doppelte Munition' })));
@@ -72,8 +75,46 @@ export function tankHub(openFx, players, me) {
         h('button.btn', { disabled: !free.length, on: { click: (e) => menu(e.currentTarget, free.map((p) => ({ label: p.name, icon: 'game', onClick: () => { lob.roster.push({ id: p.id, name: p.name, color: p.color, cpu: 0, team: nextTeam() }); saveLob(); render(); } }))) } }, icon('plus'), h('span', { text: free.length ? 'Spieler dazu' : 'Alle Spieler sind drin' })),
         h('button.btn', { on: { click: () => { const used = lob.roster.map((r) => r.name); const nm = BOT_NAMES.find((n) => !used.includes(n)) || `Bot ${lob.roster.length}`; const col = COLORS.find((c) => !lob.roster.some((r) => r.color === c)) || '#8a8f98'; lob.roster.push({ name: nm, color: col, cpu: lob.opts.cpu || 2, team: nextTeam() }); saveLob(); render(); } } }, icon('plus'), h('span', { text: 'Computer dazu' }))));
     }
+    } else if (id === 'kind') {
+      head('Was für ein Spiel?', 'Ein Rangspiel zählt für die Rangliste und die Spieler-Statistik.');
+      const card = (on, ic, t, d, fn) => h('button.tkmode.tkkind' + (on ? '.on' : ''), { on: { click: fn } }, h('span.tkmodeic', null, icon(ic)), h('span.tkmodetx', null, h('b', { text: t }), h('small', { text: d })));
+      body.append(h('div.tkmodes', null,
+        card(lob.ranked !== false, 'trophy', 'Rangspiel', 'Zählt für Rangliste und Statistik', () => { lob.ranked = true; saveLob(); go(+1); }),
+        card(lob.ranked === false, 'heart', 'Freundschaftsspiel', 'Nur zum Spaß, zählt nicht', () => { lob.ranked = false; saveLob(); go(+1); }),
+        card(false, 'list', 'Liga starten', 'Mehrere Spieltage mit Tabelle, Auf- und Abstieg, Schrauben für die Garage', () => { tab = 'liga'; store.set('tkHubTab', 'liga'); render(); })));
+    } else if (id === 'mode') {
+      head('Welcher Modus?', null);
+    // Modi
+    body.append(h('div.tkmodes', null, ...MODES.map((m) => h('button.tkmode' + (m.id === lob.mode ? '.on' : ''), { on: { click: () => { lob.mode = m.id; fixRoster(); saveLob(); go(+1); } } },
+      h('span.tkmodeic', null, icon(m.ic)), h('span.tkmodetx', null, h('b', { text: m.name }), h('small', { text: m.d })), m.own ? h('em.tknew', { text: 'Neu' }) : null))));
+    } else if (id === 'map') {
+      head('Welche Karte?', 'Fertige Karten oder eine eigene malen.');
+    // Karten
+    body.append(h('h3.tksec', { text: 'Fertige Karten' }), h('div.tkmaps', null,
+      mapCard({ id: 'random', name: 'Zufall', d: 'Jedes Mal eine andere Karte' }),
+      ...MAPS.map(mapCard)));
+    // Eigene Karten
+    const mine = loadMyMaps();
+    body.append(h('h3.tksec', { text: mine.length ? `Eigene Karten (${mine.length})` : 'Eigene Karten' }), h('div.tkmaps', null,
+      h('button.tkmap.tknewmap', { on: { click: () => openEditor(null) } }, h('span.tknewmapic', null, icon('pen')), h('b', { text: 'Neue Karte malen' }), h('small', { text: 'Mit Stift oder Finger' })),
+      ...mine.map((dm) => mapCard(myMapObj(dm)))));
+    const sel = mine.find((dm) => dm.id === lob.map);
+    if (sel) body.append(h('div.tkmymapbar', null, h('span', { text: `„${sel.name}“` }),
+      h('button.tkoptreset', { on: { click: () => openEditor(sel) } }, icon('pen'), h('span', { text: 'Bearbeiten' })),
+      h('button.tkoptreset', { on: { click: async () => { if (await confirmSheet('Karte löschen?', `„${sel.name}“ wird gelöscht.`, 'Löschen')) { saveMyMaps(loadMyMaps().filter((q) => q.id !== sel.id)); lob.map = 'random'; saveLob(); render(); } } } }, icon('trash'), h('span', { text: 'Löschen' }))));
+    } else if (id === 'weather') {
+      head('Welches Wetter?', 'Bei Regen sammelt sich Wasser in Mulden, Schnee bleibt liegen.');
+    // Wetter
+    body.append(h('div.tkchips', null, ...WEATHER.map((w) => h('button.tkchip' + (w.id === lob.weather ? '.on' : ''), { title: w.d, on: { click: () => { lob.weather = w.id; saveLob(); go(+1); } } }, h('b', { text: w.name }), h('small', { text: w.d })))));
+    } else if (id === 'rules') {
+      head('Regeln', 'Alles hat gute Standardwerte. Ändern ist freiwillig.');
+      if (mode.teams) {
+        body.append(h('h3.tksec', { text: 'Teams' }));
+        body.append(h('div.tkroster', null, ...lob.roster.map((r) => h('div.tkrrow', null, h('span.gdot', { style: { background: r.color } }), h('b.tkrname', { text: r.name }),
+          h('div.tkteams', null, ...TEAM_NAMES.map((tn, ti) => h('button' + ((r.team ?? 0) === ti ? '.on' : ''), { style: { '--tc': TEAM_COL[ti] }, 'aria-label': `Team ${tn}`, title: `Team ${tn}`, on: { click: () => { r.team = ti; saveLob(); render(); } } }, h('i'), h('span', { text: tn }))))))));
+        body.append(h('h3.tksec', { text: 'Optionen' }));
+      }
     // Optionen
-    body.append(h('h3.tksec', { text: 'Optionen' }));
     const opt = h('div.tkopts');
     OPTS.forEach((o) => {
       if (o.id === 'rounds' && mode.kind !== 'score') return;
@@ -82,10 +123,24 @@ export function tankHub(openFx, players, me) {
       opt.append(h('div.tkoptrow', null, h('span.tkoptlab', { text: o.name }), h('div.tkoptvals', null, ...o.vals.map(([v, l]) => h('button' + (lob.opts[o.id] === v ? '.on' : ''), { text: l, on: { click: () => { lob.opts[o.id] = v; saveLob(); render(); } } })))));
     });
     body.append(opt, h('button.tkoptreset', { text: 'Optionen zurücksetzen', on: { click: () => { lob.opts = defOpts(); saveLob(); render(); } } }));
-    // Start
-    const problem = rosterProblem(mode);
-    body.append(h('div.tkstartbar', null, problem ? h('small.tkwarn', { text: problem }) : h('small', { text: `${mode.name} · ${lob.map === 'random' ? 'Zufallskarte' : MAP[lob.map].name} · ${WEATHER.find((w) => w.id === lob.weather).name}` }),
-      h('button.btn.primary.tkgo', { disabled: !!problem, on: { click: () => startMatch() } }, icon('play'), h('span', { text: 'Los geht’s' }))));
+    } else {
+      head('Alles bereit?', 'Tipp auf eine Zeile, um sie zu ändern.');
+      const row = (k, lab, val) => h('button.tksumrow', { on: { click: () => go(0, k) } }, h('small', { text: lab }), h('b', { text: val }), icon('right'));
+      body.append(h('div.tksum', null,
+        row(0, 'Spieler', lob.roster.map((r) => r.name).join(', ') + (mode.coop ? ' + Riesenpanzer' : '')),
+        row(1, 'Spielart', kindName()),
+        row(2, 'Modus', mode.name),
+        row(3, 'Karte', mapName()),
+        row(4, 'Wetter', WEATHER.find((w) => w.id === lob.weather).name),
+        row(5, 'Regeln', OPTS.filter((o) => o.id !== 'cpu' && lob.opts[o.id] !== o.def).length ? `${OPTS.filter((o) => o.id !== 'cpu' && lob.opts[o.id] !== o.def).length} geändert` : 'Standard')));
+    }
+    // Leiste unten
+    const last = step === STEPS.length - 1;
+    body.append(h('div.tkstartbar', null,
+      step > 0 ? h('button.btn.tkback', { on: { click: () => go(-1) } }, icon('left'), h('span', { text: 'Zurück' })) : null,
+      problem ? h('small.tkwarn', { text: problem }) : h('small', { text: `${kindName()} · ${mode.name} · ${mapName()} · ${WEATHER.find((w) => w.id === lob.weather).name}` }),
+      last ? null : h('button.btn.tknext', { on: { click: () => go(+1) } }, h('span', { text: 'Weiter' }), icon('right')),
+      h('button.btn.primary.tkgo', { disabled: !!problem, on: { click: () => startMatch() } }, icon('play'), h('span', { text: last ? 'Los geht’s' : 'Start' }))));
   }
   function nextTeam() { const m = MODE[lob.mode]; if (!m.teams) return 0; const c = [0, 0]; lob.roster.forEach((r) => { if (r.team < 2) c[r.team || 0]++; }); return c[0] <= c[1] ? 0 : 1; }
   function fixRoster() {
@@ -107,6 +162,13 @@ export function tankHub(openFx, players, me) {
     drawMapPreview(cv, m);
     return h('button.tkmap' + (m.id === lob.map ? '.on' : ''), { on: { click: () => { lob.map = m.id; saveLob(); render(); } } }, cv, h('b', { text: m.name }), h('small', { text: m.d }));
   }
+  async function openEditor(dm) {
+    const scroll = fx.stage.scrollTop;
+    const id = await editMap(fx, dm);
+    if (fx.signal.aborted) return;
+    if (id) { lob.map = id; saveLob(); }
+    render(); if (!id) fx.stage.scrollTop = scroll;
+  }
   function buildCfg(mode, mapId, weather, roster, opts) {
     const players = roster.map((r) => ({ name: r.name, color: r.color, cpu: r.cpu || 0, team: r.team ?? 0 }));
     if (mode.coop) players.push({ name: 'Riesenpanzer', color: '#e0a106', cpu: Math.min(4, (opts.cpu || 2) + 1), boss: true, team: 1 });
@@ -119,7 +181,7 @@ export function tankHub(openFx, players, me) {
       const res = await battle(fx, buildCfg(mode, lob.map, lob.weather, lob.roster, lob.opts));
       if (!res || fx.signal.aborted) return;
       if (res.solo) { const old = store.get('tkTargetBest', 0), rec = res.solo.all && (!old || res.solo.shots < old); if (rec) store.set('tkTargetBest', res.solo.shots); res.rec = rec; res.old = old; if (res.solo.all) try { recordScore('tanksTargets', lob.roster[0], res.solo.shots, true); } catch (e) { /* egal */ } }
-      else { recordLadder(res.ranking); recordProfiles(res); }
+      else if (lob.ranked !== false) { recordLadder(res.ranking); recordProfiles(res); }
       const next = await resultCard(res, mode);
       if (next !== 'again') { render(); return; }
     }
@@ -175,10 +237,10 @@ export function tankHub(openFx, players, me) {
     if (done) body.append(h('div.tkchamp', null, h('span.tkchampic', null, icon('trophy')), h('div', null, h('b', { text: `${rows[0].name} ist Liga-Meister!` }), h('small', { text: L.rewardText || '' }))));
     body.append(h('h3.tksec', { text: 'Tabelle' }), tableEl(rows, L));
     if (L.hist.length) body.append(h('h3.tksec', { text: 'Rangverlauf' }), chartEl(L));
-    if (L.log.length) body.append(h('h3.tksec', { text: 'Spieltage' }), h('div.tklog', null, ...L.log.slice().reverse().map((d, k) => h('div.tklogrow', null, h('b', { text: `${L.log.length - k}.` }), h('span', { text: `${MODE[d.mode].name} · ${MAP[d.map] ? MAP[d.map].name : d.map}` }), h('span.tklogwin', null, h('span.gdot', { style: { background: d.winColor } }), h('span', { text: d.winner }))))));
+    if (L.log.length) body.append(h('h3.tksec', { text: 'Spieltage' }), h('div.tklog', null, ...L.log.slice().reverse().map((d, k) => h('div.tklogrow', null, h('b', { text: `${L.log.length - k}.` }), h('span', { text: `${MODE[d.mode].name} · ${findMap(d.map) ? findMap(d.map).name : d.map}` }), h('span.tklogwin', null, h('span.gdot', { style: { background: d.winColor } }), h('span', { text: d.winner }))))));
     body.append(h('button.tkoptreset', { text: done ? 'Liga löschen' : 'Liga abbrechen', on: { click: async () => { if (await confirmSheet(done ? 'Liga löschen?' : 'Liga abbrechen?', 'Tabelle und Rangverlauf dieser Liga werden gelöscht. Schrauben gibt es nur am Ende einer Liga.', 'Abbrechen')) { saveLiga(null); render(); } } } }));
   }
-  const nextDayText = (L) => { const d = L.plan[L.day]; return `Nächster: ${MODE[d.mode].name} auf ${MAP[d.map].name}`; };
+  const nextDayText = (L) => { const d = L.plan[L.day]; return `Nächster: ${MODE[d.mode].name} auf ${(findMap(d.map) || { name: 'Zufall' }).name}`; };
   function ligaSetup(body) {
     const st = store.get('tkLigaSetup', { pick: ps.slice(0, 2).map((p) => p.name), bots: ps.length < 2 ? 3 : 2, days: 6, mix: 'mix', cpu: 2 });
     const save = () => store.set('tkLigaSetup', st);

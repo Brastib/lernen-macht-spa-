@@ -90,8 +90,8 @@ export const MAP = Object.fromEntries(MAPS.map((m) => [m.id, m]));
 // ---------- Wetter ----------
 export const WEATHER = [
   { id: 'clear', name: 'Klar', d: 'Normaler Wind' },
-  { id: 'rain', name: 'Regen', d: 'Feuer brennt kürzer, Wind dreht öfter' },
-  { id: 'snow', name: 'Schnee', d: 'Fahren kostet mehr Sprit' },
+  { id: 'rain', name: 'Regen', d: 'Wasser sammelt sich in Mulden. Wer untergeht, ist raus' },
+  { id: 'snow', name: 'Schnee', d: 'Schnee bleibt liegen, Fahren im Schnee kostet mehr Sprit' },
   { id: 'storm', name: 'Sturm', d: 'Sehr starker Wind' },
   { id: 'fog', name: 'Nebel', d: 'Weit weg sieht man schlecht, keine Zielhilfe' },
   { id: 'thunder', name: 'Gewitter', d: 'Regen und ab und zu ein echter Blitz' },
@@ -212,3 +212,27 @@ export const saveLiga = (l) => store.set('tkLiga', l);
 export const BOT_NAMES = ['Kiesel', 'Radiergummi', 'Spitzer', 'Tintenklecks', 'Lineal', 'Zirkel', 'Büroklammer', 'Textmarker', 'Heftzwecke', 'Klebestreifen'];
 export const COLORS = ['#4f7cff', '#ff6b5a', '#2fbf71', '#f2b632', '#a46bff', '#ff7ac8', '#21b8c9', '#8a8f98'];
 export { store };
+
+// ---------- Eigene Karten (selbst gemalt) ----------
+// Gespeichert in tkMyMaps: [{ id, name, theme, liquid: 'none'|'low'|'high'|'lava', weather, h: [301 Höhen im 1200×696-Raum, alle 4 px] }]
+export const MAP_THEMES = [
+  { id: 'meadow', name: 'Wiese' }, { id: 'glacier', name: 'Schnee' }, { id: 'dunes', name: 'Wüste' }, { id: 'canyon', name: 'Schlucht' },
+  { id: 'volcano', name: 'Vulkan' }, { id: 'moon', name: 'Mond' }, { id: 'city', name: 'Stadt' }, { id: 'twin', name: 'Abend' },
+];
+export const LIQUIDS = [{ id: 'none', name: 'Kein Wasser' }, { id: 'low', name: 'Wenig Wasser', water: 0.88 }, { id: 'high', name: 'Viel Wasser', water: 0.76 }, { id: 'lava', name: 'Lava', lava: 0.88 }];
+export const MYMAP_N = 301;
+export const flatHeights = () => Array.from({ length: MYMAP_N }, (_, k) => 470 - 40 * Math.sin(k / 300 * Math.PI * 2));
+export const loadMyMaps = () => { const a = store.get('tkMyMaps', []); return Array.isArray(a) ? a.filter((m) => m && Array.isArray(m.h) && m.h.length === MYMAP_N) : []; };
+export const saveMyMaps = (a) => store.set('tkMyMaps', a);
+export function myMapObj(d) {
+  const base = MAP[d.theme] || MAP.meadow, liq = LIQUIDS.find((l) => l.id === d.liquid) || LIQUIDS[0];
+  const hs = d.h.map(Number);
+  return {
+    id: d.id, name: d.name || 'Eigene Karte', d: 'Selbst gemalt', own: true,
+    sky: base.sky, skyD: base.skyD, top: base.top, soil: base.soil, hill: base.hill, night: base.night, grav: base.grav, wind: base.wind, fuelCost: base.fuelCost,
+    weather: d.weather || base.weather || 'clear', water: liq.water, lava: liq.lava,
+    gen: (R, TW, TH) => (i) => { const f = Math.max(0, Math.min(1, i / TW)) * (MYMAP_N - 1), a = Math.floor(f), b = Math.min(MYMAP_N - 1, a + 1), t = f - a; return (hs[a] * (1 - t) + hs[b] * t) * TH / 696; },
+  };
+}
+// Karte nach id finden (feste oder eigene)
+export function findMap(id) { if (MAP[id]) return MAP[id]; const d = loadMyMaps().find((m) => m.id === id); return d ? myMapObj(d) : null; }
