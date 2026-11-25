@@ -209,7 +209,37 @@ export function fillHit(st, x, y) {
   return false;
 }
 
-export function drawStroke(ctx, st, s, from = 3, tail = true) {
+// Marker wie ein echter Textmarker: Alle Marker-Striche kommen erst deckend auf eine eigene Ebene
+// (Überlappungen werden NICHT dunkler), dann wird die Ebene einmal durchsichtig aufs Blatt gelegt.
+let mkLayer = null;
+export function drawMarkerLayer(ctx, list, s) {
+  if (!list || !list.length) return;
+  const c = ctx.canvas;
+  if (!mkLayer) mkLayer = document.createElement('canvas');
+  if (mkLayer.width !== c.width || mkLayer.height !== c.height) { mkLayer.width = c.width; mkLayer.height = c.height; }
+  const m = mkLayer.getContext('2d');
+  m.setTransform(1, 0, 0, 1, 0, 0); m.clearRect(0, 0, mkLayer.width, mkLayer.height);
+  m.setTransform(ctx.getTransform());
+  m.globalCompositeOperation = 'darken';   // zwei Farben übereinander: die dunklere bleibt, nichts addiert sich
+  for (const st of list) drawStroke(m, st, s, 3, true, true);
+  m.globalCompositeOperation = 'source-over';
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalAlpha = 0.38;
+  ctx.globalCompositeOperation = 'multiply';   // Schrift darunter bleibt schwarz
+  ctx.drawImage(mkLayer, 0, 0);
+  ctx.restore();
+}
+// Viele Striche zeichnen: Füllungen, dann alle Marker als eine Ebene, dann Stift/Text.
+export function drawStrokes(ctx, list, s, { noMarkers = false } = {}) {
+  const mk = [];
+  for (const st of list) if (st.tool === 'fill') drawStroke(ctx, st, s);
+  for (const st of list) if (st.tool === 'marker') mk.push(st);
+  if (!noMarkers) drawMarkerLayer(ctx, mk, s);
+  for (const st of list) if (st.tool !== 'fill' && st.tool !== 'marker') drawStroke(ctx, st, s);
+}
+
+export function drawStroke(ctx, st, s, from = 3, tail = true, opaque = false) {
   // from/tail: für schnelles Live-Zeichnen nur neue Stücke (nur Stift)
   if (st.tool === 'text') { if (from <= 3) drawText(ctx, st, s); return; }
   if (st.tool === 'axes') { if (from <= 3) drawAxes(ctx, st, s); return; }
@@ -223,7 +253,7 @@ export function drawStroke(ctx, st, s, from = 3, tail = true) {
   ctx.fillStyle = st.color;
   if (st.tool === 'marker') {
     // Marker: gleich breit, durchsichtig, als ein Pfad (keine dunklen Überlappungen)
-    ctx.globalAlpha = 0.35;
+    ctx.globalAlpha = opaque ? 1 : 0.35;
     ctx.lineCap = 'butt';
     ctx.lineWidth = st.size * s;
     ctx.beginPath();
@@ -233,7 +263,7 @@ export function drawStroke(ctx, st, s, from = 3, tail = true) {
     ctx.stroke();
   } else {
     // Stift: Breite folgt dem Druck des Pencils, weiche Kurven durch die Mittelpunkte
-    const wOf = (pr) => Math.max(0.35, st.size * (0.35 + 0.9 * pr)) * s;
+    const wOf = (pr) => Math.max(0.18, st.size * (0.35 + 0.9 * pr)) * s;
     if (p.length === 3) {
       if (from <= 3) { ctx.beginPath(); ctx.arc(p[0] * s, p[1] * s, wOf(p[2]) / 2, 0, Math.PI * 2); ctx.fill(); }
     } else {
@@ -265,7 +295,7 @@ export function renderPage(page, bg, strokes, widthPx) {
   const ctx = c.getContext('2d');
   if (bg) ctx.drawImage(bg, 0, 0, c.width, c.height);
   else drawPaper(ctx, page.paper || 'blank', PAGE_W, h, s);
-  for (const st of strokes || []) drawStroke(ctx, st, s);
+  drawStrokes(ctx, strokes || [], s);
   return c;
 }
 

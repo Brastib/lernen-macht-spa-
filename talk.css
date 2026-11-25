@@ -188,3 +188,4 @@ html.tkrunning, html.tkrunning body { overflow: hidden; }
 .tknexthint { flex: 1; min-width: 0; text-align: center; color: var(--muted); font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tkbigcard { touch-action: pan-y; }
 .tkbigcard ul { font-size: clamp(22px, 3.2vw, 32px); }
+.tkpadbtn.tksize i { width: var(--d); height: var(--d); border-radius: 50%; background: currentColor; display: block; }

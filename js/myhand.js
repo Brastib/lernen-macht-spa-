@@ -5,6 +5,7 @@
 // Grenzen: Druckschrift mit kleinen Lücken klappt gut. Verbundene Schreibschrift lässt sich schlecht in Buchstaben zerlegen.
 import * as db from './db.js';
 import { h, icon, toast, sheet, confirmSheet } from './ui.js';
+import { isPalm, pointsOf, smoothPath } from './pen.js';
 
 export const SETS = {
   klein: { label: 'a–z', chars: 'abcdefghijklmnopqrstuvwxyz' },
@@ -169,12 +170,14 @@ function writePad(onDone) {
     x.setLineDash([]); x.strokeStyle = 'rgba(80,90,130,.55)'; x.lineWidth = 1.5;
     x.beginPath(); x.moveTo(12, g.base); x.lineTo(W() - 12, g.base); x.stroke();
     x.strokeStyle = getComputedStyle(c).color || '#1d2433'; x.lineWidth = 3.2; x.lineCap = 'round'; x.lineJoin = 'round';
-    for (const s of [...strokes, cur].filter(Boolean)) { x.beginPath(); for (let i = 0; i + 1 < s.length; i += 2) (i ? x.lineTo : x.moveTo).call(x, s[i], s[i + 1]); if (s.length === 2) x.lineTo(s[0] + 0.1, s[1]); x.stroke(); }
+    for (const s of [...strokes, cur].filter(Boolean)) { const P = []; for (let i = 0; i + 1 < s.length; i += 2) P.push([s[i], s[i + 1]]); smoothPath(x, P); x.stroke(); }
   }
   const pos = (e) => { const r = c.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
-  c.addEventListener('pointerdown', (e) => { e.preventDefault(); clearTimeout(timer); c.setPointerCapture(e.pointerId); cur = pos(e); draw(); });
-  c.addEventListener('pointermove', (e) => { if (!cur) return; e.preventDefault(); const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [e]; for (const ev of evs) cur.push(...pos(ev)); draw(); });
-  const up = () => { if (!cur) return; strokes.push(cur); cur = null; draw(); clearTimeout(timer); timer = setTimeout(() => { if (strokes.length) onDone(api.sample()); }, 1100); };
+  let raf = 0;
+  c.addEventListener('pointerdown', (e) => { if (isPalm(e) || cur) return; e.preventDefault(); clearTimeout(timer); c.setPointerCapture(e.pointerId); pid = e.pointerId; cur = pos(e); draw(); });
+  c.addEventListener('pointermove', (e) => { if (!cur || e.pointerId !== pid) return; e.preventDefault(); for (const ev of pointsOf(e)) cur.push(...pos(ev)); if (!raf) raf = requestAnimationFrame(() => { raf = 0; draw(); }); });
+  let pid = null;
+  const up = (e) => { if (!cur || (e && e.pointerId !== pid)) return; pid = null; strokes.push(cur); cur = null; draw(); clearTimeout(timer); timer = setTimeout(() => { if (strokes.length) onDone(api.sample()); }, 1100); };
   c.addEventListener('pointerup', up); c.addEventListener('pointercancel', up);
   c.style.touchAction = 'none';
   const api = {
