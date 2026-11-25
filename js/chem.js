@@ -124,7 +124,7 @@ export function elSheet(e) {
 }
 
 // ================= Übersicht: Abschnitte =================
-const SECTIONS = [['pse', 'Periodensystem'], ['bind', 'Bindungen'], ['org', 'Organik'], ['acid', 'Säuren & Basen'], ['metal', 'Metalle'], ['mol', 'Molmasse'], ['lab', 'Labor']];
+const SECTIONS = [['pse', 'Periodensystem'], ['bind', 'Bindungen'], ['org', 'Organik'], ['alk', 'Alkane benennen'], ['acid', 'Säuren & Basen'], ['metal', 'Metalle'], ['mol', 'Molmasse'], ['lab', 'Labor']];
 export function chemWidget(root) {
   let cur = 'pse';
   try { cur = localStorage.getItem('chemSec') || 'pse'; } catch (e) { /* egal */ }
@@ -136,7 +136,7 @@ export function chemWidget(root) {
     try { localStorage.setItem('chemSec', k); } catch (e) { /* egal */ }
     tabs.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.k === k));
     body.textContent = '';
-    ({ pse: pseWidget, bind: bondsView, org: organicView, acid: acidView, metal: metalView, mol: molView, lab: (r) => import('./lab.js').then((m) => m.labView(r)) })[k](body);
+    ({ pse: pseWidget, bind: bondsView, org: organicView, acid: acidView, metal: metalView, mol: molView, alk: (r) => import('./alkane.js').then((m) => m.alkaneView(r)), lab: (r) => import('./lab.js').then((m) => m.labView(r)) })[k](body);
   };
   for (const [k, l] of SECTIONS) tabs.append(h('button', { 'data-k': k, text: l, on: { click: () => show(k) } }));
   root.append(h('div.chemtabswrap', null, tabs), body);

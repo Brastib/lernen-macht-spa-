@@ -3571,3 +3571,64 @@ body:has(#editor.lupeon:not([hidden])) .toast { bottom: calc(clamp(200px, 29vh, 
 .tkarm.epic { box-shadow: 0 0 0 2px #7b4fd6; background: color-mix(in srgb, #b48cff 9%, var(--surface)); }
 .tkarm.op .tkcrate { color: #e0a106; }
 .tkarm.epic .tkcrate { color: #7b4fd6; }
+
+/* ---------- Chemie: Alkane benennen ---------- */
+.alkintro .chemsub { margin-bottom: 12px; }
+.alkform { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; min-width: 0; }
+.alkform .field { flex: 1 1 240px; min-width: 0; }
+.alkform .btn { flex: none; }
+.alkpanel { display: flex; flex-direction: column; gap: 12px; }
+.alktools { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; justify-content: space-between; }
+.alktools2 { display: flex; gap: 6px; align-items: center; }
+.alkh.on { background: var(--accent-soft); color: var(--accent); }
+.alkboardwrap { border-radius: 14px; background: var(--surface-3); box-shadow: inset 0 0 0 1px var(--line); overflow: hidden; }
+.alkboard, .alkmini { display: block; width: 100%; height: auto; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.alkboard { cursor: crosshair; }
+.alkboard.del { cursor: not-allowed; }
+.alkboardwrap.alkfig { display: block; width: 100%; box-sizing: border-box; padding: 8px; margin: 10px 0 14px; }
+.alkboardwrap .alkmini { max-width: 100%; margin: 0 auto; }
+.alkboard .adot { fill: var(--line-strong); }
+.alkboard .ahint { fill: var(--muted); font: 500 17px var(--font); text-anchor: middle; }
+.alkboard .abond, .alkmini .abond { stroke: var(--ink-2); stroke-width: 3; stroke-linecap: round; }
+.alkboard .abond.main, .alkmini .abond.main { stroke: var(--accent); stroke-width: 4; }
+.aatom rect { fill: var(--surface); stroke: var(--line-strong); stroke-width: 1.5; }
+.aatom text { fill: var(--ink); font: 600 17px var(--font); text-anchor: middle; }
+.aatom.main rect { stroke: var(--accent); stroke-width: 2; }
+.aatom.main text { fill: var(--accent); }
+.aatom.side rect { fill: var(--surface-2); }
+.aatom.active rect { stroke: var(--ink); stroke-width: 2.5; }
+.anum circle { fill: var(--accent); }
+.anum text { fill: var(--on-accent); font: 700 12px var(--font); text-anchor: middle; }
+.alkhead { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 8px 16px; padding-bottom: 14px; margin-bottom: 14px; border-bottom: 1px solid var(--line); }
+.alkname { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.alkname small { color: var(--muted); font-size: 13px; }
+.alkname b { font: 650 26px/1.2 var(--font-display); overflow-wrap: anywhere; }
+.alkname b.err { color: #c0392b; }
+.alkname b.calm { color: var(--muted); font-weight: 500; }
+.alkmeta { display: flex; flex-wrap: wrap; gap: 6px; }
+.alkmeta span { padding: 4px 10px; border-radius: 999px; background: var(--surface-2); font-size: 14px; white-space: nowrap; }
+.alksteps { display: flex; flex-direction: column; gap: 10px; }
+.alkstep { display: flex; gap: 12px; align-items: flex-start; min-width: 0; }
+.alkstepn { flex: none; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: var(--surface-2); font-weight: 700; font-size: 14px; }
+.alkstept { min-width: 0; flex: 1; }
+.alkstept h4 { margin: 3px 0 4px; font-size: 15.5px; font-weight: 600; }
+.alkstept p { margin: 0 0 4px; font-size: 14.5px; line-height: 1.5; color: var(--ink-2); overflow-wrap: anywhere; }
+.alkstept ul { margin: 4px 0 0; padding-left: 18px; font-size: 14.5px; line-height: 1.55; color: var(--ink-2); }
+.alkfinal { margin-top: 8px; padding: 10px 14px; border-radius: 12px; background: var(--accent-soft); }
+.alkfinal b { font: 650 20px/1.3 var(--font-display); color: var(--accent); overflow-wrap: anywhere; }
+.alkerr { margin: 6px 0; color: #c0392b; font-size: 15px; line-height: 1.45; }
+.alkok { margin: 6px 0; color: #2f9e6a; font-size: 15px; font-weight: 600; }
+.alkqhead { display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; }
+.alkqhead .seg { max-width: 100%; flex-wrap: wrap; border-radius: 18px; }
+.alkstat { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 12px; color: var(--muted); font-size: 14px; }
+.alkstat b { color: var(--ink); }
+.alkquiz { display: flex; flex-direction: column; gap: 16px; }
+.alkopts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 10px; }
+@media (max-width: 700px) { .alkopts { grid-template-columns: 1fr; } }
+.alkopt { min-height: 52px; padding: 8px 14px; border-radius: 12px; background: var(--surface-2); font-size: 16.5px; font-weight: 550; text-align: left; overflow-wrap: anywhere; box-shadow: inset 0 0 0 1px var(--line); }
+.alkopt:disabled { opacity: 1; }
+.alkopt.right { background: color-mix(in srgb, #2f9e6a 16%, var(--surface)); box-shadow: inset 0 0 0 2px #2f9e6a; }
+.alkopt.wrong { background: color-mix(in srgb, #c0392b 12%, var(--surface)); box-shadow: inset 0 0 0 2px #c0392b; }
+.alkafter:not(:empty) { margin-top: 10px; }
+.alkrow { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+.alktarget { color: var(--accent); overflow-wrap: anywhere; }
