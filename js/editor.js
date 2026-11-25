@@ -220,6 +220,7 @@ for (const i of [0, 1]) {
 }
 
 // Auswahl: erst Buch/Heft/Mappe, dann die Seite (mit Vorschaubildern)
+export const pickPageSheet = (o = {}) => pickPage(o);
 async function pickPage({ title, exclude, current, startBook }) {
   const [subjects, books] = await Promise.all([db.listSubjects(), db.listAllBooks()]);
   const subj = new Map(subjects.map((s) => [s.id, s]));
@@ -1188,6 +1189,7 @@ $('edMath').addEventListener('click', (e) => {
     { label: 'Funktionsplotter …', icon: 'graph', onClick: plotterFlow },
     { label: 'Taschenrechner', icon: 'calc', onClick: () => import('./kit.js').then((m) => m.calcSheet()) },
     ...(page && page.kind !== 'blank' ? [{ label: (gapMode ? '✓ ' : '') + 'Lücken ausfüllen', icon: 'text', onClick: () => (gapMode ? exitGapMode() : enterGapMode()) }] : []),
+    ...(page && page.kind !== 'blank' ? [{ label: 'Vokabeln herausholen …', icon: 'cards', onClick: async () => { finishStroke(); commitText(); await flushSave(); const m = await import('./vocabscan.js'); m.vocabFlow(page); } }] : []),
     ...(page && page.kind !== 'blank' ? [{ label: 'Lernkarten aus Markiertem', icon: 'cards', onClick: async () => { finishStroke(); commitText(); await flushSave(); const m = await import('./markcards.js'); m.cardsFromMarks({ page, strokes, pageW: PAGE_W }); } }] : []),
     ...(page ? [{ label: 'Neue Aufgaben wie dieses Blatt (KI) …', icon: 'page', onClick: async () => { finishStroke(); commitText(); await flushSave(); const tb = strokes.filter((x) => x.tool === 'text').map((x) => x.text).join('\n'); const m = await import('./morework.js'); m.moreTasksFlow([{ ...page, textBoxes: tb, strokes: strokes.length }], { title: (await db.getBook(page.bookId).catch(() => null))?.title || '' }); } }] : []),
     ...(page ? [{ label: 'Seite abschreiben (Handschrift lesen, KI) …', icon: 'eye', onClick: async () => { finishStroke(); commitText(); await flushSave(); const m = await import('./morework.js'); m.transcribeFlow({ ...page, strokes: strokes.length }); } }] : []),

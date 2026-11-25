@@ -3,7 +3,7 @@
 // zur Mitte hin geglättet. Gespeichert wird nebenbei, ohne Fotos-Galerie.
 import * as db from './db.js';
 import { h, icon, toast, kb, sheet } from './ui.js';
-import { detectPage, warp, processScan, compress, makeThumb } from './scanner.js';
+import { detectPage, warp, processScan, compress, makeThumb, deskew } from './scanner.js';
 
 const AW = 160;                 // Breite der kleinen Analyse-Kopie
 const SHARP_W = 480;            // Breite für den Schärfe-Test (Bildmitte)
@@ -361,11 +361,16 @@ async function processItem(item) {
     for (const p of parts) {
       if (item.gone) break;
       await new Promise((r2) => setTimeout(r2, 0));
-      const flat = processScan(p, item.mode);
+      const straight = deskew(p);
+      // farbige Kästen merken, solange die Farben noch da sind (für „Vokabeln herausholen“)
+      let vxBoxes = null;
+      try { vxBoxes = (await import('./vocabscan.js')).detectBoxes(straight); } catch (e) { /* egal */ }
+      const flat = processScan(straight, item.mode, { straighten: false });
       const { blob, width, height } = await compress(flat);
       const thumb = await makeThumb(flat);
       if (item.gone) break;
       const page = await db.addPage({ bookId, image: blob, thumb, width, height });
+      if (vxBoxes) await db.updatePage(page.id, { vxBoxes });
       item.pageIds.push(page.id);
       if (S) showThumb(thumb);
       console.log('[serie] Seite', { kb: kb(blob.size), width, height, found: r.found });

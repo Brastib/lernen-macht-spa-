@@ -119,6 +119,12 @@ export async function importListFlow(deck, after) {
   after();
 }
 
+// Vokabeln aus einer gescannten Seite holen (js/vocabscan.js)
+async function vocabFromScan(deck, after) {
+  const m = await import('./vocabscan.js');
+  m.startVocab({ deck, onDone: (id) => { if (id) after(); } });
+}
+
 async function editCardFlow(card, after) {
   const res = await sheet('Karte bearbeiten', (body, close) => {
     const f = h('input.field', { type: 'text', id: 'ecFront', value: card.front, autocomplete: 'off', autocapitalize: 'off' });
@@ -154,6 +160,7 @@ export async function renderDeck(deck, ctx) {
       const l = await pickLang(deck.lang);
       if (l != null) { deck.lang = l; await db.putItems('decks', deck); again(); }
     } },
+    { label: 'Vokabeln aus Scan …', icon: 'camera', onClick: () => vocabFromScan(deck, again) },
     { label: 'Liste einfügen', icon: 'import', onClick: () => importListFlow(deck, again) },
     { label: 'Ans Lernen erinnern …', icon: 'clock', onClick: async () => {
       const subjects = await db.listSubjects();
@@ -187,8 +194,9 @@ export async function renderDeck(deck, ctx) {
     view.append(h('section.empty', null,
       h('div.emptycards', { 'aria-hidden': 'true' }, h('span'), h('span')),
       h('h2', { text: 'Noch keine Karten' }),
-      h('p', { text: 'Tipp Vokabeln einzeln ein oder füge eine ganze Liste auf einmal ein, zum Beispiel aus dem Buch abgeschrieben.' }),
+      h('p', { text: 'Scann die Vokabelseite und markier mit dem Pencil, welche Vokabeln dran sind. Oder tipp sie ein bzw. füg eine Liste ein.' }),
       h('div.emptyactions', null,
+        ctx.btn('Aus Scan', 'camera', () => vocabFromScan(deck, again)),
         ctx.btn('Liste einfügen', 'import', () => importListFlow(deck, again)),
         ctx.btn('Karte hinzufügen', 'plus', () => addCardsFlow(deck, again), '.primary'))));
     return;

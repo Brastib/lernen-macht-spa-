@@ -1,7 +1,7 @@
 // Scannen: Foto holen, Ecken anpassen, gerade ziehen, verkleinern, speichern.
 import * as db from './db.js';
 import { $, busy, toast, kb } from './ui.js';
-import { loadPhoto, rotateCanvas, detectPage, warp, compress, makeThumb, processScan } from './scanner.js';
+import { loadPhoto, rotateCanvas, detectPage, warp, compress, makeThumb, processScan, deskew } from './scanner.js';
 
 const SVGNS = 'http://www.w3.org/2000/svg';
 
@@ -11,7 +11,10 @@ let targetBook = db.INBOX_BOOK;
 let onSaved = () => {};
 
 // Scannen in ein bestimmtes Buch starten. Muss direkt aus einem Tipp kommen (iPad-Regel).
+let once = null;          // einmalig nach dem Speichern (z. B. Vokabeln herausholen)
+export function scanOnce(bookId, fn, source = 'camera') { startScan(bookId, source); once = fn; }
 export function startScan(bookId, source = 'camera') {
+  once = null;
   targetBook = bookId || db.INBOX_BOOK;
   $(source === 'camera' ? 'fileCamera' : 'filePhotos').click();
 }
@@ -198,14 +201,20 @@ function processAndSave(canvas, cs, m) {
   chain = chain.then(async () => {
     try {
       const t0 = performance.now();
-      const flat = processScan(warp(canvas, cs), m);
+      const raw = deskew(warp(canvas, cs));
+      // Farbige Kästen (z. B. blaue Info-Kästen) merken, solange die Farben noch da sind – für „Vokabeln herausholen“
+      let vxBoxes = null;
+      try { const v = await import('./vocabscan.js'); vxBoxes = v.detectBoxes(raw); } catch (e) { /* egal */ }
+      const flat = processScan(raw, m, { straighten: false });
       const { blob, width, height } = await compress(flat);
       const thumb = await makeThumb(flat);
-      await db.addPage({ bookId: target, image: blob, thumb, width, height });
+      const saved = await db.addPage({ bookId: target, image: blob, thumb, width, height });
+      if (vxBoxes) { await db.updatePage(saved.id, { vxBoxes }); saved.vxBoxes = vxBoxes; }
       const ms = Math.round(performance.now() - t0);
       toast(`Seite gespeichert · ${kb(blob.size)}`);
       console.log('[scan] gespeichert', { bytes: blob.size, width, height, ms });
       await onSaved(target);
+      if (once) { const f = once; once = null; f(saved); }
     } catch (err) {
       console.error(err);
       toast('Speichern fehlgeschlagen: ' + err.message, 5000);
