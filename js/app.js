@@ -2,7 +2,7 @@
 import { resumeVplanSetup, vplanCfg } from './vplan.js';
 import { renderMessages, unreadCount } from './messages.js';
 import * as db from './db.js';
-const APP_VERSION = '102';   // gleich wie VERSION in sw.js
+const APP_VERSION = '103';   // gleich wie VERSION in sw.js
 // Anzeige: bis 99 wie bisher, ab 100 als 1.0 … 1.99, dann 2.0 … (interne Nummer zählt weiter)
 const SHOW_VERSION = +APP_VERSION >= 100 ? Math.floor(+APP_VERSION / 100) + '.' + (+APP_VERSION % 100) : APP_VERSION;
 import { openEditor } from './editor.js';
