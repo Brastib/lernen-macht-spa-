@@ -106,6 +106,15 @@ export async function getImage(id) {
   return reqP(db.transaction('images').objectStore('images').get(id));
 }
 
+// Beliebiger Blob im Bilder-Speicher (z. B. letzte Tonaufnahme vom Präsentations-Trainer, Schlüssel 'talkrec-…')
+export async function putBlob(key, blob) {
+  const db = await openDB();
+  const tx = db.transaction('images', 'readwrite');
+  tx.objectStore('images').put(blob, key);
+  await done(tx);
+}
+export const getBlob = getImage;
+
 export async function deletePage(id) {
   const db = await openDB();
   const tx = db.transaction(['pages', 'images', 'thumbs', 'ink'], 'readwrite');
