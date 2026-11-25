@@ -3567,3 +3567,7 @@ body:has(#editor.lupeon:not([hidden])) .toast { bottom: calc(clamp(200px, 29vh, 
 .tkstartbar .btn { flex: none; }
 .tkback span, .tknext span { white-space: nowrap; }
 @media (max-width: 560px) { .tkback span { display: none; } .tkstartbar small { display: none; } .tkstartbar { justify-content: space-between; } }
+.tkarm.op { box-shadow: 0 0 0 2px #e0a106; background: color-mix(in srgb, #ffd84d 9%, var(--surface)); }
+.tkarm.epic { box-shadow: 0 0 0 2px #7b4fd6; background: color-mix(in srgb, #b48cff 9%, var(--surface)); }
+.tkarm.op .tkcrate { color: #e0a106; }
+.tkarm.epic .tkcrate { color: #7b4fd6; }
