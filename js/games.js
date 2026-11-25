@@ -1,6 +1,7 @@
 // Games: Spieler, Duelle (Tic-Tac-Toe, Windflug, Papierflieger) und Turnier „jeder gegen jeden“.
 import { $, h, icon, sheet, menu, toast, confirmSheet } from './ui.js';
 import { enhanceGames } from './nav.js';
+import { listProfiles, pickPlayers, pickerGrid, editProfile, profileSheet, avatar, totals, recordDuel, recordCpu, recordScore, clearStats, registerGames, statsOf } from './profiles.js';
 
 const COLORS = ['#4f7cff', '#ff6b5a', '#2fbf71', '#f2b632', '#a46bff', '#ff7ac8', '#21b8c9', '#8a8f98'];
 const store = {
@@ -53,20 +54,10 @@ export const GAMES = {
 };
 const MIX = ['ttt', 'wind', 'stack', 'four', 'pong', 'run', 'react', 'snake', 'plane', 'boxes', 'hockey', 'wall', 'trail', 'double', 'blocks', 'brick', 'golf', 'tanks', 'paint', 'ships', 'pool', 'kick', 'bombs', 'race', 'sumo', 'archery', 'space', 'tower', 'dame', 'muehle', 'flipper', 'hang', 'parkour', 'erasers', 'kart', 'inkpath', 'memo', 'bin', 'pick', 'arena'];
 
-const players = () => store.get('gPlayers', []);
-const names = () => store.get('gNames', []);
-function savePlayers(list) {
-  store.set('gPlayers', list);
-  const all = [...list.map((p) => p.name), ...names()].filter((n, i, a) => a.findIndex((m) => m.toLowerCase() === n.toLowerCase()) === i);
-  store.set('gNames', all.slice(0, 24));
-}
-function addStat(A, B, res) {
-  const st = store.get('gStats', {});
-  const row = (n) => (st[n] = st[n] || { w: 0, d: 0, l: 0 });
-  if (res.w == null) { row(A.name).d++; row(B.name).d++; }
-  else { row((res.w ? B : A).name).w++; row((res.w ? A : B).name).l++; }
-  store.set('gStats', st);
-}
+// Spieler kommen aus den festen Profilen (js/profiles.js)
+const players = () => listProfiles();
+const addStat = (key, A, B, res) => recordDuel(key, A, B, res);
+const openHubFor = (p) => { const fx = openFx(`Skin-Hub: ${p.name}`, 'Skins und eigene Karten'); import('./hub.js').then((m) => m.openHub(fx, p, { skinEditor, windSkin: skinOf })); };
 
 // ---------- eigene Skins (Windflug) ----------
 const skins = () => store.get('gSkins', {});
@@ -104,13 +95,25 @@ export async function renderGames(ctx) {
     eyebrow: 'Pause', title: 'Games',
     meta: tour && !tour.done ? `Turnier läuft · ${tour.matches.filter((m) => m.res).length} von ${tour.matches.length} Duellen` : 'Turnier und Duelle zu zweit',
     actions: [ctx.iconBtn('more', 'Mehr', (e) => menu(e.currentTarget, [
-      { label: 'Spieler bearbeiten', icon: 'edit', onClick: async () => { if (await editPlayers()) again(); } },
+      { label: 'Neues Profil', icon: 'plus', onClick: async () => { if (await editProfile()) again(); } },
       tour ? { label: 'Turnier beenden', icon: 'trash', onClick: async () => { if (await confirmSheet('Turnier beenden?', 'Tabelle und Ergebnisse dieses Turniers werden gelöscht.', 'Beenden')) { store.set('gTour', null); again(); } } } : null,
-      { label: 'Bestenliste leeren', icon: 'trash', onClick: async () => { if (await confirmSheet('Bestenliste leeren?', 'Alle Siege, Unentschieden und Niederlagen werden auf null gesetzt.', 'Leeren')) { store.set('gStats', {}); again(); } } },
+      { label: 'Bestenliste leeren', icon: 'trash', onClick: async () => { if (await confirmSheet('Bestenliste leeren?', 'Alle Siege, Unentschieden, Niederlagen und Profil-Rekorde werden auf null gesetzt.', 'Leeren')) { clearStats(); store.set('gStats', {}); again(); } } },
     ].filter(Boolean)))],
   });
   const view = $('view');
   view.textContent = '';
+
+  // Spielerprofile: feste Spieler, die man in jedem Spiel auswählt
+  {
+    const ps = players();
+    view.append(h('h2.section', { text: 'Spieler' }));
+    view.append(h('div.pfrow', null, ...ps.map((p) => {
+      const t = totals(p.id);
+      return h('button.pfcard', { style: { '--pc': p.color }, on: { click: async () => { const r = await profileSheet(p.id, { onHub: openHubFor }); if (r !== 'hub') again(); } } },
+        avatar(p), h('b', { text: p.name }), h('small', { text: t.n ? `${t.w} ${t.w === 1 ? 'Sieg' : 'Siege'} · ${t.n} ${t.n === 1 ? 'Duell' : 'Duelle'}` : 'Noch keine Duelle' }));
+    }), h('button.pfcard.add', { on: { click: async () => { if (await editProfile()) again(); } } }, h('span.pfav.plus', null, icon('plus')), h('b', { text: 'Neues Profil' }), h('small', { text: ps.length ? 'Noch jemand spielt mit' : 'Name, Farbe, Bild' }))));
+    if (!ps.length) view.append(h('p.calm', { text: 'Leg für jeden, der mitspielt, ein Profil an. Vor jedem Spiel tippst du dann nur noch an, wer spielt.' }));
+  }
 
   // Turnier
   view.append(h('h2.section', { text: 'Turnier' }));
@@ -187,21 +190,19 @@ export async function renderGames(ctx) {
   // Skin-Hub: pro Spieler Skins und eigene Karten
   {
     const hp = players();
-    view.append(h('div.gsechead', null, h('h2.section', { text: 'Skin-Hub' }), h('button.btn.gedit', { text: 'Spieler hinzufügen', on: { click: async () => { if (await editPlayers()) again(); } } })));
-    if (!hp.length) view.append(h('p.calm', { text: 'Trag erst Spieler ein. Dann bekommt jeder hier eigene Skins, Strecken und Bahnen.' }));
-    else view.append(h('div.ptiles.gtiles.hubtiles', null, ...hp.map((p) => h('button.ptile.hubtile', { style: { '--pc': p.color }, on: { click: () => { const fx = openFx(`Skin-Hub: ${p.name}`, 'Skins und eigene Karten'); import('./hub.js').then((m) => m.openHub(fx, p, { skinEditor, windSkin: skinOf })); } } },
-      h('span.ptileic.hubav', { style: { background: p.color } }, h('b', { text: p.name.slice(0, 1).toUpperCase() })), h('b', { text: p.name }), h('small', { text: 'Skins, Strecken, Bahnen' })))));
+    view.append(h('h2.section', { text: 'Skin-Hub' }));
+    if (!hp.length) view.append(h('p.calm', { text: 'Leg oben erst Profile an. Dann bekommt jeder hier eigene Skins, Strecken und Bahnen.' }));
+    else view.append(h('div.ptiles.gtiles.hubtiles', null, ...hp.map((p) => h('button.ptile.hubtile', { style: { '--pc': p.color }, on: { click: () => openHubFor(p) } },
+      avatar(p, 'hubav'), h('b', { text: p.name }), h('small', { text: 'Skins, Strecken, Bahnen' })))));
   }
 
-  // Spieler und Bestenliste
+  // Bestenliste aller Profile
   const ps = players();
-  const st = store.get('gStats', {});
-  view.append(h('div.gsechead', null, h('h2.section', { text: 'Spieler' }), h('button.btn.gedit', { text: ps.length ? 'Bearbeiten' : 'Spieler eintragen', on: { click: async () => { if (await editPlayers()) again(); } } })));
-  if (!ps.length) view.append(h('p.calm', { text: 'Noch keine Spieler. Trag ein, wer mitspielt. Die Namen bleiben gespeichert.' }));
-  else {
-    const rows = ps.map((p) => ({ p, s: st[p.name] || { w: 0, d: 0, l: 0 } })).sort((a, b) => b.s.w - a.s.w || b.s.d - a.s.d || a.s.l - b.s.l);
+  if (ps.length) {
+    view.append(h('h2.section', { text: 'Bestenliste' }));
+    const rows = ps.map((p) => ({ p, s: totals(p.id) })).sort((a, b) => b.s.w - a.s.w || b.s.d - a.s.d || a.s.l - b.s.l);
     view.append(h('div.glist', null, ...rows.map(({ p, s }, i) => h('div.grow', null,
-      h('span.grank', { text: String(i + 1) }), dot(p), h('b.gname', { text: p.name }),
+      h('span.grank', { text: String(i + 1) }), avatar(p, 'small'), h('b.gname', { text: p.name }),
       h('span.gnums', null, num(s.w, 'Siege'), num(s.d, 'Unent.'), num(s.l, 'Nied.')),
       h('button.gskinbtn', { title: 'Skin für Windflug malen', 'aria-label': `Skin für ${p.name} malen`, on: { click: async () => { if (await skinEditor(p)) again(); } } },
         skinOf(p.name) ? h('img', { src: skinOf(p.name), alt: '' }) : icon('pen'), h('span', { text: 'Skin' }))))));
@@ -212,53 +213,31 @@ export async function renderGames(ctx) {
 const dot = (p) => h('span.gdot', { style: { background: p.color } });
 const num = (n, l) => h('span.gnum', null, h('b', { text: String(n) }), h('small', { text: l }));
 
-// ---------- Spieler eintragen ----------
-function playerSheet(title, { withGame = false, okLabel = 'Sichern' } = {}) {
+// ---------- Turnier: Profile und Spiel wählen ----------
+function playerSheet(title, { okLabel = 'Turnier starten' } = {}) {
   return sheet(title, (body, close) => {
-    const saved = players();
-    let count = Math.max(2, Math.min(8, saved.length || 2));
     let game = 'ttt', power = store.get('gPower', true);
-    const vals = saved.map((p) => p.name);
-    const list = h('div.gnames');
-    const dl = h('datalist', { id: 'gnamelist' }, ...names().map((n) => h('option', { value: n })));
-    const cnt = h('b.gcount', { text: String(count) });
-    const draw = () => {
-      cnt.textContent = String(count);
-      list.replaceChildren(...Array.from({ length: count }, (_, i) => h('label.gnamerow', null,
-        h('span.gdot', { style: { background: COLORS[i] } }),
-        h('input', { type: 'text', value: vals[i] || '', placeholder: `Spieler ${i + 1}`, list: 'gnamelist', maxlength: 18, autocomplete: 'off', on: { input: (e) => { vals[i] = e.target.value; } } }))));
-    };
-    body.append(
-      h('div.gstep', null, h('span', { text: 'Wie viele spielen?' }), h('div.gstepper', null,
-        h('button.btn.round', { 'aria-label': 'Weniger', text: '−', on: { click: () => { if (count > 2) { count--; draw(); } } } }), cnt,
-        h('button.btn.round', { 'aria-label': 'Mehr', text: '+', on: { click: () => { if (count < 8) { count++; draw(); } } } }))),
-      list, dl);
-    if (withGame) {
-      const seg = h('div.gseg.gseg6');
+    const ok = h('button.btn.primary', { text: okLabel, on: { click: () => {
+      if (grid.count() < 2) { toast('Mindestens 2 Spieler antippen.'); return; }
+      grid.remember();
+      store.set('gPower', power);
+      close({ players: grid.result(), game, power });
+    } } });
+    const lab = h('p.glabel');
+    const grid = pickerGrid({ min: 2, max: 8, key: 'tour', onChange: (n) => { lab.textContent = `Wer spielt mit? ${n} von 2 bis 8 gewählt`; ok.disabled = n < 2; } });
+    const seg = h('div.gseg.gseg6');
       const opts = [['ttt', 'Tic-Tac-Toe'], ['wind', 'Windflug'], ['plane', 'Flieger'], ['arena', 'Strichkampf'], ['stack', 'Hochstapler'], ['run', 'Kritzelsprint'], ['react', 'Reaktion'], ['four', 'Vier in Reihe'], ['boxes', 'Kästchen'], ['pong', 'Tischtennis'], ['hockey', 'Lufthockey'], ['snake', 'Schlangen'], ['trail', 'Leuchtspur'], ['double', 'Verdoppler'], ['blocks', 'Klötzchen'], ['brick', 'Blockknacker'], ['golf', 'Kritzelgolf'], ['tanks', 'Panzer'], ['paint', 'Malraten'], ['ships', 'Schiffe'], ['pool', 'Billard'], ['kick', 'Kritzelkick'], ['bombs', 'Bomben'], ['race', 'Rennen'], ['sumo', 'Kissenschlacht'], ['archery', 'Windbogen'], ['space', 'Sternenduell'], ['tower', 'Burgwache'], ['dame', 'Dame'], ['muehle', 'Mühle'], ['flipper', 'Flipper'], ['hang', 'Galgenmännchen'], ['parkour', 'Parkour'], ['erasers', 'Radierer'], ['kart', 'Kritzel-Kart'], ['inkpath', 'Tintenbahn'], ['memo', 'Pärchenjagd'], ['bin', 'Korbwurf'], ['pick', 'Stiftezupfen'], ['chess', 'Schach'], ['wall', 'Mauerlauf'], ['quiz', 'Quiz'], ['mix', 'Gemischt']];
-      const drawSeg = () => seg.replaceChildren(...opts.map(([k, l]) => h('button' + (k === game ? '.on' : ''), { text: l, on: { click: () => { game = k; drawSeg(); } } })));
-      drawSeg();
-      const pw = h('label.gswitch', null, h('span', null, h('b', { text: 'Power-ups beim Papierflieger' }), h('small', { text: 'Vor jedem Wurf eins aus drei wählen, dazu Kugeln in der Luft' })),
-        h('input', { type: 'checkbox', checked: power, on: { change: (e) => { power = e.target.checked; } } }));
-      body.append(h('p.glabel', { text: 'Welches Spiel?' }), seg, pw);
-    }
-    body.append(h('div.dlgactions', null,
-      h('button.btn', { text: 'Abbrechen', on: { click: () => close(null) } }),
-      h('button.btn.primary', { text: okLabel, on: { click: () => {
-        const list2 = vals.slice(0, count).map((v, i) => ({ name: (v || '').trim() || `Spieler ${i + 1}`, color: COLORS[i] }));
-        const dup = list2.find((p, i) => list2.findIndex((q) => q.name.toLowerCase() === p.name.toLowerCase()) !== i);
-        if (dup) { toast(`„${dup.name}“ kommt doppelt vor.`); return; }
-        savePlayers(list2);
-        if (withGame) store.set('gPower', power);
-        close({ players: list2, game, power });
-      } } })));
-    draw();
-  });
+    const drawSeg = () => seg.replaceChildren(...opts.map(([k, l]) => h('button' + (k === game ? '.on' : ''), { text: l, on: { click: () => { game = k; drawSeg(); } } })));
+    drawSeg();
+    const pw = h('label.gswitch', null, h('span', null, h('b', { text: 'Power-ups beim Papierflieger' }), h('small', { text: 'Vor jedem Wurf eins aus drei wählen, dazu Kugeln in der Luft' })),
+      h('input', { type: 'checkbox', checked: power, on: { change: (e) => { power = e.target.checked; } } }));
+    body.append(lab, grid.el, h('p.glabel', { text: 'Welches Spiel?' }), seg, pw,
+      h('div.dlgactions', null, h('button.btn', { text: 'Abbrechen', on: { click: () => close(null) } }), ok));
+  }, { wide: true });
 }
-const editPlayers = () => playerSheet('Wer spielt mit?');
 
 async function newTournament() {
-  const r = await playerSheet('Neues Turnier', { withGame: true, okLabel: 'Turnier starten' });
+  const r = await playerSheet('Neues Turnier');
   if (!r) return false;
   const n = r.players.length;
   const pairs = roundRobin(n);
@@ -343,28 +322,8 @@ function tourPanel(t, again) {
 
 // ---------- freies Duell ----------
 async function freeDuel(key, after) {
-  let ps = players();
-  if (ps.length < 2) { const r = await editPlayers(); if (!r) return; ps = r.players; }
-  let pick;
-  if (ps.length === 2) pick = ps;
-  else {
-    pick = await sheet(`${GAMES[key].name}: Wer spielt?`, (body, close) => {
-      const sel = [];
-      const grid = h('div.gpick');
-      const go = h('button.btn.primary', { text: 'Los geht’s', disabled: true, on: { click: () => close(sel.map((i) => ps[i])) } });
-      const draw = () => {
-        grid.replaceChildren(...ps.map((p, i) => h('button.gchip' + (sel.includes(i) ? '.on' : ''), { on: { click: () => {
-          const k = sel.indexOf(i);
-          if (k >= 0) sel.splice(k, 1); else { if (sel.length === 2) sel.shift(); sel.push(i); }
-          draw();
-        } } }, dot(p), p.name)));
-        go.disabled = sel.length !== 2;
-      };
-      body.append(h('p.glabel', { text: 'Tippe zwei Namen an.' }), grid, h('div.dlgactions', null, h('button.btn', { text: 'Abbrechen', on: { click: () => close(null) } }), go));
-      draw();
-    });
-    if (!pick) return;
-  }
+  const pick = await pickPlayers({ title: `${GAMES[key].name}: Wer spielt?`, min: 2, max: 2, key: 'duel' });
+  if (!pick || pick.length !== 2) return;
   await runDuel(key, pick[0], pick[1], { tour: false });
   after();
 }
@@ -376,7 +335,13 @@ document.addEventListener('keydown', noteKbd);
 function kbdLock(kbd) { return kbd && !kbdSeen() ? h('span.kbbadge', { title: 'Braucht eine Tastatur' }, icon('lock')) : null; }
 
 // ---------- Allein spielen ----------
-const me = () => players()[0] || { name: 'Du', color: COLORS[0] };
+// Wer spielt allein? Bei nur einem Profil direkt los, sonst kurz antippen.
+async function me(title) {
+  const ps = players();
+  if (ps.length === 1) return { id: ps[0].id, name: ps[0].name, color: ps[0].color, av: ps[0].av || '' };
+  const r = await pickPlayers({ title: `${title}: Wer spielt?`, min: 1, max: 1, key: 'solo' });
+  return r && r[0];
+}
 const CPU = { name: 'Computer', color: '#8a8f98' };
 // Rekord-Spiele: Windflug und Papierflieger allein
 const SOLO = {
@@ -403,20 +368,23 @@ const SOLO = {
   plane: { title: 'Papierflieger', get key() { const w = store.get('gPlaneWorld', 'desk'); return w === 'free' ? 'gPlaneBest' : 'gPlaneBest_' + w; }, run: (fx, p) => planeDuel(fx, p, null), fmt: (x) => x.toFixed(1).replace('.', ',') + ' m' },
 };
 async function soloScore(k) {
-  const g = SOLO[k], p = me();
-  const fx = openFx(g.title, 'Allein · neuer Rekord?');
+  const g = SOLO[k], p = await me(g.title);
+  if (!p) return;
+  const fx = openFx(g.title, `${p.name} · allein`);
   for (;;) {
     fx.stage.replaceChildren();
     const r = await g.run(fx, p);
     if (!r || fx.signal.aborted) return;
     const old = store.get(g.key, 0), rec = g.low ? r.score > 0 && (!old || r.score < old) : r.score > old;
     if (rec) store.set(g.key, r.score);
+    const mine = recordScore(k, p, r.score, g.low);   // Rekord pro Profil
+    const pre = !p.guest && mine ? (mine.rec && mine.old != null && !rec ? `Neuer Rekord für ${p.name}! ` : !mine.rec && mine.old != null ? `Bester von ${p.name}: ${g.fmt(mine.old)}. ` : '') : '';
     const again = await new Promise((res) => {
       fx.stage.querySelectorAll('.gres').forEach((el) => el.remove());
       fx.stage.append(h('div.gres', null, h('div.grescard', null,
         h('span.gresic', { style: { color: rec ? '#e0a106' : p.color } }, icon(rec ? 'trophy' : (GAMES[k] ? GAMES[k].icon : k))),
         h('b', { text: g.fmt(r.score) }),
-        h('small', { text: rec ? (old ? `Neuer Rekord! Vorher ${g.fmt(old)}.` : 'Dein erster Rekord.') : old ? `Rekord: ${g.fmt(old)}` : 'Noch kein Rekord. Versuch es nochmal!' }),
+        h('small', { text: pre + (rec ? (old ? `Neuer Rekord! Vorher ${g.fmt(old)}.` : 'Dein erster Rekord.') : old ? `Rekord von allen: ${g.fmt(old)}` : 'Noch kein Rekord. Versuch es nochmal!') }),
         h('div.gresbtns', null, h('button.btn', { text: 'Fertig', on: { click: () => res(false) } }), h('button.btn.primary', { text: 'Nochmal', on: { click: () => res(true) } })))));
     });
     if (!again) { fx.close(); return; }
@@ -424,8 +392,9 @@ async function soloScore(k) {
 }
 // Gegen den Computer (Tic-Tac-Toe, Strichkampf, Mauerlauf)
 async function vsCpu(k) {
-  const g = GAMES[k], p = me();
-  const fx = openFx(g.name, 'gegen den Computer');
+  const g = GAMES[k], p = await me(g.name);
+  if (!p) return;
+  const fx = openFx(g.name, `${p.name} gegen den Computer`);
   if (k === 'arena') {   // Computer bekommt jedes Mal eine zufällige fertige Waffe, man kann sie in der Vorbereitung ändern
     const { PRESET_IDS } = await import('./weapons.js');
     try { const all = JSON.parse(localStorage.getItem('gFighters') || '{}'); const c = all.computer || {}; c.weap = { preset: PRESET_IDS[(Math.random() * PRESET_IDS.length) | 0] }; all.computer = c; localStorage.setItem('gFighters', JSON.stringify(all)); } catch (e) { /* egal */ }
@@ -435,16 +404,21 @@ async function vsCpu(k) {
     fx.stage.replaceChildren();
     const res = await Promise.race([g.run(fx, p, CPU, { cpu: 1 }), aborted]);
     if (!res || fx.signal.aborted) return;
+    recordCpu(k, p, res, false);
     const next = await Promise.race([resultCard(fx, res, p, CPU, false), aborted]);
     if (next !== 'again') { fx.close(); return; }
   }
 }
 async function soloStack() {
-  const fx = openFx('Hochstapler', 'Allein · so hoch wie möglich');
+  const p = await me('Hochstapler');
+  if (!p) return;
+  const fx = openFx('Hochstapler', `${p.name} · so hoch wie möglich`);
   const m = await import('./stack.js');
-  await m.stackSolo(fx, me());
+  await m.stackSolo(fx, p, (score) => recordScore('stack', p, score));
 }
 async function soloChess() {
+  const p = await me('Schach');
+  if (!p) return;
   const lv = await sheet('Schach gegen Computer', (body, close) => {
     let level = store.get('gChessLv', 2), color = 'w';
     const seg = h('div.gseg.chlvseg'), seg2 = h('div.gseg.chlvseg');
@@ -463,10 +437,11 @@ async function soloChess() {
   const cpu = { name: 'Computer', color: '#8a8f98' };
   for (let white = lv.color;;) {
     fx.stage.replaceChildren();
-    const A = white === 'w' ? me() : cpu, B = white === 'w' ? cpu : me();
+    const A = white === 'w' ? p : cpu, B = white === 'w' ? cpu : p;
     const aborted = new Promise((r) => { fx.onClose = () => r(null); });
     const res = await Promise.race([m.chessGame(fx, A, B, { ai: white === 'w' ? 'b' : 'w', level: lv.level }), aborted]);
     if (!res || fx.signal.aborted) return;
+    recordCpu('chess', p, res, white !== 'w');
     const next = await resultCard(fx, res, A, B, false);
     if (next !== 'again') { fx.close(); return; }
   }
@@ -502,7 +477,7 @@ async function runDuel(key, A, B, { tour, power }) {
     if (!res || fx.signal.aborted) return last;
     // Ergebnis auf A/B zurückrechnen, falls getauscht wurde
     const r = round % 2 && res.w != null ? { ...res, w: 1 - res.w } : res;
-    addStat(A, B, r);
+    addStat(key, A, B, r);
     last = r;
     const next = await Promise.race([resultCard(fx, r, A, B, tour), aborted]);
     if (next !== 'again') { fx.close(); return r; }
@@ -857,3 +832,9 @@ async function planeDuel(fx, A, B, o = {}) {
   if (!B) return { score: a };
   return { w: a > b ? 0 : b > a ? 1 : null, detail: `${fmt(a)} : ${fmt(b)}` };
 }
+
+// Namen, Icons und Rekord-Formate für die Profil-Ansicht
+registerGames({
+  names: Object.fromEntries(Object.entries(GAMES).map(([k, g]) => [k, { name: g.name, icon: g.icon }])),
+  fmt: { ...Object.fromEntries(Object.entries(SOLO).map(([k, g]) => [k, g.fmt])), stack: (x) => `${x} ${x === 1 ? 'Block' : 'Blöcke'}` },
+});
