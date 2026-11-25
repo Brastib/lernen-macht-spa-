@@ -43,6 +43,7 @@ export function features(a) {
     { id: 'reminders', area: 'Planer', name: 'Erinnerungen', ic: 'clock', kw: 'wecker termin nicht vergessen', run: () => a.go({ view: 'reminders' }) },
     a.sphOn ? { id: 'messages', area: 'Planer', name: 'Nachrichten', ic: 'inbox', kw: 'schulportal post', run: () => a.go({ view: 'messages' }) } : null,
     ...KIT_TABS.map(([k, l, ic, sub]) => ({ id: 'kit-' + k, area: 'Werkzeuge', name: l, ic, kw: sub, run: () => a.go({ view: 'kit', tab: k }) })),
+    { id: 'alkane', area: 'Werkzeuge', name: 'Alkane benennen', ic: 'atom', kw: 'chemie iupac nomenklatur verzweigt methyl ethyl kette organik', run: () => { try { localStorage.setItem('chemSec', 'alk'); } catch (e) { /* egal */ } a.go({ view: 'kit', tab: 'chem' }); } },
     { id: 'code', area: 'Werkzeuge', name: 'Programmieren', ic: 'code', kw: 'code python lua web', run: () => a.go({ view: 'code' }) },
     { id: 'games', area: 'Spiele', name: 'Alle Spiele', ic: 'game', kw: 'games spielen pause turnier', run: () => a.go({ view: 'games' }) },
     { id: 'backup', area: 'Einstellungen', name: 'Sicherung', ic: 'save', kw: 'backup speichern wiederherstellen', run: a.backup },
