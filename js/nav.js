@@ -35,6 +35,7 @@ export function features(a) {
     { id: 'subject', area: 'Lernen', name: 'Fach anlegen', ic: 'plus', kw: 'neues fach hinzufuegen', run: a.addSubject },
     { id: 'sort', area: 'Lernen', name: 'Eingang einsortieren', ic: 'inbox', kw: 'sortieren eingang seiten', run: () => a.go({ view: 'sort' }) },
     { id: 'faecher', area: 'Lernen', name: 'Fächer', ic: 'book', kw: 'buecher hefte mappen bibliothek', run: () => a.tab('faecher') },
+    { id: 'vocabscan', area: 'Lernen', name: 'Vokabeln aus Scan', ic: 'camera', kw: 'vokabeln scannen buch seite herausholen markieren lernkarten englisch', run: () => import('./vocabscan.js').then((m) => m.startVocab({ onDone: () => {} })) },
     { id: 'cards', area: 'Lernen', name: 'Lernkarten', ic: 'cards', kw: 'vokabeln karteikarten lernen', run: () => a.tab('heute') },
     { id: 'quiz', area: 'Lernen', name: 'Quiz allein', ic: 'cards', kw: 'ueben arbeit test fragen', run: () => import('./quiz.js').then((m) => m.quizSolo()) },
     { id: 'timetable', area: 'Planer', name: 'Stundenplan', ic: 'grid', kw: 'stunden raum zeiten vertretung', run: () => a.go({ view: 'timetable' }) },

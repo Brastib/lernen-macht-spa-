@@ -183,3 +183,27 @@ export function fuzzyFind(text, q, norm) {
   for (const w of words) { const nw = norm(w); if (lev(nw, q, max) <= max || nw.length > q.length && lev(nw.slice(0, q.length), q, max) <= max && nw.length - q.length <= 3) return w; }
   return '';
 }
+
+// Wörter mit Position auf einem fertigen Bild (Canvas), in Pixeln dieses Bildes. Für „Vokabeln aus Scan“.
+// psm '3' = automatisch (Spalten getrennt, klappt bei Vokabelteilen am besten), '6' = ein Textblock.
+export async function ocrCanvasWords(canvas, { psm = '3', onProgress = () => {} } = {}) {
+  onProgress('Texterkennung wird geladen …');
+  const worker = await makeWorker();
+  try {
+    await worker.setParameters({ tessedit_pageseg_mode: psm, preserve_interword_spaces: '1' });
+    onProgress('Vokabeln werden gelesen …');
+    const { data } = await worker.recognize(canvas, {}, { text: true, blocks: true });
+    const words = [];
+    let li = 0;
+    for (const b of data.blocks || []) for (const par of b.paragraphs || []) for (const l of par.lines || []) {
+      li++;
+      for (const w of l.words || []) {
+        const t = (w.text || '').trim();
+        if (!t) continue;
+        const bb = w.bbox;
+        words.push({ text: t, conf: w.confidence, line: li, x0: bb.x0, y0: bb.y0, x1: bb.x1, y1: bb.y1 });
+      }
+    }
+    return words;
+  } finally { await worker.terminate(); }
+}
