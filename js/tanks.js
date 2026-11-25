@@ -113,14 +113,19 @@ export function battle(fx, cfg) {
         if (wx === 'snow') t.snowCap = Math.min(7, (t.snowCap || 0) + dt * 0.35); else t.snowCap = Math.max(0, (t.snowCap || 0) - dt * 0.5);
         if (t.hurt > 0.9) t.snowCap = 0;
         if (t.fallFrom != null) continue;
-        const dep = poolDepth(t.x);
-        if (dep > 8 && !t.wetWarn) { t.wetWarn = true; pop(t.x, t.y - 90, 'Wasser steigt!', '#2f7fd6'); }
+        // Lava: wer sie berührt, schmilzt. Wasser/Tinte (Pfütze, Meer): wer ganz untergeht, ist raus.
+        const inLava = t.y > lavaY + 3;
+        const dep = Math.max(poolDepth(t.x), t.y - waterY, t.y - inkY, 0);
+        const inInk = t.y - inkY > t.y - waterY && t.y - inkY >= poolDepth(t.x);
+        if (dep > 8 && dep <= DROWN * t.scale && !inLava && !t.wetWarn) { t.wetWarn = true; pop(t.x, t.y - 90, inInk ? 'Tinte steigt!' : 'Wasser steigt!', inInk ? '#3d3dbd' : '#2f7fd6'); }
         if (dep < 4) t.wetWarn = false;
-        if (dep > DROWN * t.scale) {
-          for (let k = 0; k < 18; k++) parts.push({ x: t.x + (R() - 0.5) * 40, y: t.y - dep, vx: (R() - 0.5) * 80, vy: -60 - R() * 140, t: 0, life: 0.9, kind: 'drop', c: '#7fb8ff', r: 2.5 });
-          pop(t.x, t.y - 90, 'Untergegangen!', '#2f7fd6');
-          t.shield = 0; dealDamage(t, t.hp + 999, null);
-          if (t.dead) { const f = feed[feed.length - 1]; if (f) f.txt = `${t.p.name} ist untergegangen`; if (t === cur() && phase === 'aim' && !over) { phase = 'settle'; cpuDrive = null; syncCtrl(); later(nextTurn, 1000); } }
+        let how = null;
+        if (inLava) { how = 'lava'; for (let k = 0; k < 26; k++) parts.push({ x: t.x + (R() - 0.5) * 50, y: lavaY, vx: (R() - 0.5) * 160, vy: -80 - R() * 220, t: 0, life: 0.9, kind: 'spark', c: k % 2 ? '#ffb02e' : '#ff5a14', r: 3 }); smoke(t.x, lavaY - 10, 10); }
+        else if (dep > DROWN * t.scale) { how = inInk ? 'ink' : 'water'; for (let k = 0; k < 18; k++) parts.push({ x: t.x + (R() - 0.5) * 40, y: t.y - dep, vx: (R() - 0.5) * 80, vy: -60 - R() * 140, t: 0, life: 0.9, kind: 'drop', c: inInk ? '#6a6aff' : '#7fb8ff', r: 2.5 }); }
+        if (how) {
+          pop(t.x, t.y - 90, how === 'lava' ? 'Geschmolzen!' : 'Untergegangen!', how === 'lava' ? '#e0483e' : how === 'ink' ? '#3d3dbd' : '#2f7fd6');
+          t.liq = how; t.shield = 0; dealDamage(t, t.hp + 999, null);
+          if (t.dead) { const f = feed[feed.length - 1]; if (f) f.txt = how === 'lava' ? `${t.p.name} ist in der Lava geschmolzen` : how === 'ink' ? `${t.p.name} ist in der Tinte versunken` : `${t.p.name} ist untergegangen`; if (t === cur() && phase === 'aim' && !over) { phase = 'settle'; cpuDrive = null; syncCtrl(); later(nextTurn, 1000); } }
         }
       }
     }
@@ -428,7 +433,7 @@ export function battle(fx, cfg) {
     }
     function kill(t, o, wasLead) {
       t.dead = true; t.hp = 0; t.deaths++; t.poison = 0; t.deathTurn = turnsDone; deathOrder.push(t);
-      booms.push({ x: t.x, y: t.y - 14, r: 60 * t.scale, t: 0, big: true }); smoke(t.x, t.y - 14, 14); shake = Math.max(shake, 10);
+      if (t.liq) { t.lost = 0; t.hurt = 0; } else { booms.push({ x: t.x, y: t.y - 14, r: 60 * t.scale, t: 0, big: true }); smoke(t.x, t.y - 14, 14); shake = Math.max(shake, 10); for (let k = 0; k < 10; k++) parts.push({ x: t.x, y: t.y - 16, vx: (R() - 0.5) * 300, vy: -150 - R() * 300, t: 0, life: 1.4, kind: 'chunk', r: 3 + R() * 3, rot: R() * 6, c: t.p.color }); }
       if (o && isFoe(o, t)) { o.kills++; if (scoreMode) addScore(o, 50 * (wasLead ? 2 : 1)); feed.push({ txt: `${o.p.name} erwischt ${t.p.name}`, c: o.p.color, t: 0 }); }
       else if (o === t) feed.push({ txt: `${t.p.name} hat sich selbst erwischt`, c: t.p.color, t: 0 });
       else feed.push({ txt: `${t.p.name} ist raus`, c: t.p.color, t: 0 });
@@ -445,7 +450,8 @@ export function battle(fx, cfg) {
       if (w.deep) carve(cx, cy + r * 0.6, r * 0.9);
       if (w.flood) addWater(cx, w.flood);
       if (r > 0) wetBlast(cx, cy, r);
-      booms.push({ x: cx, y: cy, r, t: 0, c: w.c, ring: w.k === 'ring' });
+      booms.push({ x: cx, y: cy, r, t: 0, c: w.c, ring: w.k === 'ring', big: r > 70 });
+      if (r > 0) { for (let k = 0; k < 8 + r / 5; k++) { const a = -Math.PI * R(), sp = 120 + R() * 380 * Math.min(1.6, r / 50); parts.push({ x: cx, y: cy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, t: 0, life: 0.7 + R() * 0.8, kind: 'ember', r: 1.5 + R() * 2 }); } for (let k = 0; k < 2 + r / 25; k++) parts.push({ x: cx + (R() - 0.5) * r * 0.6, y: cy - R() * r * 0.4, vx: wind * 14 + (R() - 0.5) * 20, vy: -18 - R() * 26, t: 0, life: 2.4 + R() * 1.4, kind: 'smoke', r: r * 0.18 + R() * 10 }); if (!opt.noCarve) { scorches.push({ x: cx, y: cy, r }); if (scorches.length > 40) scorches.shift(); } }
       debris(cx, cy, Math.round(6 + r / 6)); smoke(cx, cy, Math.round(3 + r / 14));
       for (let k = 0; k < 8; k++) parts.push({ x: cx, y: cy, vx: (R() - 0.5) * 600, vy: (R() - 0.5) * 600, t: 0, life: 0.35, kind: 'spark', c: '#ffcf5a', r: 2 });
       shake = Math.max(shake, Math.min(18, r / 6)); if (r > 100) flash = 0.5;
@@ -485,7 +491,7 @@ export function battle(fx, cfg) {
 
     // ---------- Schüsse ----------
     const speedK = (w) => (w.k === 'snipe' ? 1.45 : w.k === 'shot' ? 1.5 : 1);
-    let shotHits = new Map(), trees = [], pendingFx = 0;
+    let shotHits = new Map(), trees = [], pendingFx = 0, scorches = [];
     const fxLater = (fn, ms) => { pendingFx++; later(() => { pendingFx--; fn(); }, ms); };
     const mk = (x0, y0, vx, vy, w, o, ex = {}) => ({ x: x0, y: y0, vx, vy, w, o, trail: [], age: 0, mode: 'fly', hops: w.hops || 0, ...ex });
     function shoot() {
@@ -496,7 +502,7 @@ export function battle(fx, cfg) {
       if (solo) shots++;
       const a = t.ang * Math.PI / 180, v = t.pow * 8.4 * speedK(w), [mx, my] = muzzle(t);
       shotHits = new Map();
-      t.kick = 1; smoke(mx, my, 3);
+      t.kick = 1; smoke(mx, my, 3); booms.push({ x: mx, y: my, r: 16, t: 0, muzzle: true, ang: a });
       shells = [];
       if (w.k === 'beam') { fireBeam(t, mx, my, a, w); }
       else if (w.k === 'volley') { for (let k = 0; k < w.shots; k++) { const vv = v; shells.push(mk(mx, my, Math.cos(a) * vv, -Math.sin(a) * vv, w, t, { wait: k * 0.2 })); } }
@@ -740,7 +746,7 @@ export function battle(fx, cfg) {
       trees = trees.filter((tr) => tr.left > 0 || tr.grow < 1);
       // Gift, Wasser, Lava, Tinte
       if (t.poison > 0) { t.poison--; pop(t.x, t.y - 90, 'Tinte brennt', '#3d3dbd'); dealDamage(t, 8, t.lastBy && t.lastBy !== t ? t.lastBy : null); }
-      if (!t.dead && t.y > hazardY() + 4) { const dm = t.y > lavaY ? 25 : t.y > inkY ? 20 : 15; pop(t.x, t.y - 90, t.y > lavaY ? 'Lava!' : t.y > inkY ? 'In der Tinte!' : 'Wasser!', '#e0483e'); dealDamage(t, dm, t.lastBy && t.lastBy !== t ? t.lastBy : null); }
+      if (!t.dead && t.y > Math.min(waterY, inkY) + 4) { const dm = t.y > inkY ? 20 : 15; pop(t.x, t.y - 90, t.y > inkY ? 'In der Tinte!' : 'Wasser!', '#e0483e'); dealDamage(t, dm, t.lastBy && t.lastBy !== t ? t.lastBy : null); }
       if (t.dead) { syncCtrl(); later(nextTurn, 900); return; }
       if (!msgT || msgT < 0.3) { msg = `${t.p.name} ist dran`; msgT = 1.1; }
       const cr = O.crates, every = mode.id === 'crates' ? 1 : cr === 2 ? 2 : 4, maxC = mode.id === 'crates' ? 6 : 2 + (N >> 1);
@@ -909,6 +915,8 @@ export function battle(fx, cfg) {
       // Schraffur
       x.strokeStyle = dark ? 'rgba(255,255,255,.05)' : 'rgba(80,50,20,.09)'; x.lineWidth = 1.2; x.beginPath();
       for (let d = -TH; d < TW; d += 11) { x.moveTo(d, TH); x.lineTo(d + TH, 0); } x.stroke();
+      // Brandflecken an Einschlägen
+      for (const q of scorches) { const g2 = x.createRadialGradient(q.x, q.y, 0, q.x, q.y, q.r * 1.35); g2.addColorStop(0, dark ? 'rgba(0,0,0,.45)' : 'rgba(45,28,12,.38)'); g2.addColorStop(0.7, dark ? 'rgba(0,0,0,.18)' : 'rgba(45,28,12,.14)'); g2.addColorStop(1, 'rgba(45,28,12,0)'); x.fillStyle = g2; x.fillRect(q.x - q.r * 1.4, q.y - q.r * 1.4, q.r * 2.8, q.r * 2.8); }
       // Tiefe: weicher Schatten unter der Oberfläche
       x.lineJoin = 'round';
       [[18, 18, 0.07], [38, 26, 0.04]].forEach(([dy, lw, a]) => { x.strokeStyle = `rgba(40,20,0,${dark ? a * 1.6 : a})`; x.lineWidth = lw; x.beginPath(); for (let i = 0; i < TW; i += 4) (i ? x.lineTo(i, ground[i] + dy) : x.moveTo(i, ground[i] + dy)); x.stroke(); });
@@ -997,19 +1005,49 @@ export function battle(fx, cfg) {
       x.globalAlpha = 1;
     }
     function drawHazard(tm) {
-      const layers = [];
-      if (waterY < TH) layers.push([waterY, dark ? 'rgba(40,110,200,.55)' : 'rgba(70,150,235,.5)', '#2f7fd6']);
-      if (lavaY < TH) layers.push([lavaY, 'rgba(255,90,20,.82)', '#ffb02e']);
-      if (inkY < TH) layers.push([inkY, 'rgba(40,40,140,.72)', '#6a6aff']);
-      for (const [y0, fill, line] of layers) {
-        x.fillStyle = fill; x.beginPath(); x.moveTo(-40, TH + 40);
-        for (let i = -40; i <= TW + 40; i += 10) x.lineTo(i, y0 + Math.sin(i / 40 + tm / 500) * 4);
-        x.lineTo(TW + 40, TH + 40); x.closePath(); x.fill();
-        x.strokeStyle = line; x.lineWidth = 3; x.beginPath(); for (let i = -40; i <= TW + 40; i += 10) (i > -40 ? x.lineTo(i, y0 + Math.sin(i / 40 + tm / 500) * 4) : x.moveTo(i, y0)); x.stroke();
-        if (line === '#ffb02e') { x.fillStyle = '#ffd166'; for (let k = 0; k < 8; k++) { const bx = (k * 237 + tm / 20) % TW, by = y0 + 12 + Math.sin(tm / 300 + k) * 6; x.beginPath(); x.arc(bx, by, 3 + (k % 3), 0, Math.PI * 2); x.fill(); } }
+      const surf = (y0, amp, sp) => (i) => y0 + Math.sin(i / 40 + tm / sp) * amp + Math.sin(i / 17 - tm / (sp * 0.7)) * amp * 0.35;
+      const body = (f) => { x.beginPath(); x.moveTo(-40, TH + 40); for (let i = -40; i <= TW + 40; i += 8) x.lineTo(i, f(i)); x.lineTo(TW + 40, TH + 40); x.closePath(); };
+      const line = (f) => { x.beginPath(); for (let i = -40; i <= TW + 40; i += 8) (i > -40 ? x.lineTo(i, f(i)) : x.moveTo(i, f(i))); };
+      // Wasser (Meer)
+      if (waterY < TH) {
+        const f = surf(waterY, 3.5, 520), gr = x.createLinearGradient(0, waterY - 6, 0, TH);
+        gr.addColorStop(0, dark ? 'rgba(70,150,235,.62)' : 'rgba(110,190,250,.58)'); gr.addColorStop(1, dark ? 'rgba(10,40,110,.92)' : 'rgba(25,85,180,.85)');
+        body(f); x.fillStyle = gr; x.fill();
+        x.save(); body(f); x.clip(); x.strokeStyle = 'rgba(255,255,255,.12)'; x.lineWidth = 2;
+        for (let k = 0; k < 5; k++) { const yy = waterY + 18 + k * 22; x.beginPath(); for (let i = -40; i <= TW + 40; i += 12) { const y = yy + Math.sin(i / (28 + k * 5) + tm / (700 + k * 90) + k) * 4; i > -40 ? x.lineTo(i, y) : x.moveTo(i, y); } x.stroke(); }
+        x.restore();
+        line(f); x.strokeStyle = dark ? '#a9d3ff' : '#e6f4ff'; x.lineWidth = 3; x.stroke(); line((i) => f(i) + 3); x.strokeStyle = 'rgba(47,127,214,.6)'; x.lineWidth = 1.5; x.stroke();
+        // Schaum, wo Land ins Wasser geht
+        x.fillStyle = 'rgba(255,255,255,.75)'; for (let i = 2; i < TW - 2; i += 6) { const g = ground[i]; if ((ground[i - 2] < waterY) !== (ground[i + 2] < waterY) && Math.abs(g - waterY) < 30) { for (let k = 0; k < 3; k++) { x.beginPath(); x.arc(i + (k - 1) * 5, f(i) + Math.sin(tm / 300 + k + i) * 1.5, 2.2, 0, Math.PI * 2); x.fill(); } } }
+      }
+      // Lava: Glühen darüber, helle Oberfläche, dunkle Kruste, Blasen
+      if (lavaY < TH) {
+        const f = surf(lavaY, 2.5, 900);
+        const glow = x.createLinearGradient(0, lavaY - 90, 0, lavaY); glow.addColorStop(0, 'rgba(255,120,30,0)'); glow.addColorStop(1, `rgba(255,120,30,${0.32 + 0.06 * Math.sin(tm / 400)})`); x.fillStyle = glow; x.fillRect(-40, lavaY - 90, TW + 80, 92);
+        const gr = x.createLinearGradient(0, lavaY - 4, 0, TH); gr.addColorStop(0, '#ffd166'); gr.addColorStop(0.12, '#ff8a1e'); gr.addColorStop(0.5, '#e0401a'); gr.addColorStop(1, '#7a1408');
+        body(f); x.fillStyle = gr; x.fill();
+        x.save(); body(f); x.clip(); x.strokeStyle = 'rgba(80,15,5,.55)'; x.lineWidth = 2.2; x.lineJoin = 'round';
+        for (let k = 0; k < 14; k++) { const cx0 = ((k * 173 + tm / 60) % (TW + 200)) - 100, cy0 = lavaY + 14 + (k * 37) % 50; x.beginPath(); x.moveTo(cx0, cy0); x.lineTo(cx0 + 14, cy0 - 4); x.lineTo(cx0 + 26, cy0 + 3); x.lineTo(cx0 + 40, cy0 - 2); x.stroke(); }
+        x.restore();
+        line(f); x.strokeStyle = '#fff1a8'; x.lineWidth = 3; x.stroke();
+        for (let k = 0; k < 10; k++) { const ph = (tm / 900 + k * 0.37) % 1, bx = (k * 211 + 60) % TW; if (gAt(bx) < lavaY) continue; x.fillStyle = `rgba(255,214,102,${1 - ph})`; x.strokeStyle = `rgba(120,20,5,${0.6 * (1 - ph)})`; x.lineWidth = 1.2; x.beginPath(); x.arc(bx, f(bx) - ph * 6, 3 + ph * 5, 0, Math.PI * 2); x.fill(); x.stroke(); }
+        if (R() < 0.15) { const px = R() * TW; if (gAt(px) > lavaY) parts.push({ x: px, y: lavaY - 4, vx: wind * 8, vy: -25, t: 0, life: 1.8, kind: 'smoke', r: 5 + R() * 5 }); }
+      }
+      // Tinte
+      if (inkY < TH) {
+        const f = surf(inkY, 3, 700), gr = x.createLinearGradient(0, inkY, 0, TH); gr.addColorStop(0, 'rgba(70,70,200,.8)'); gr.addColorStop(1, 'rgba(20,20,90,.94)');
+        body(f); x.fillStyle = gr; x.fill(); line(f); x.strokeStyle = '#9a9aff'; x.lineWidth = 3; x.stroke();
+        x.strokeStyle = 'rgba(255,255,255,.25)'; x.lineWidth = 1.5; x.beginPath(); for (let i = 20; i < TW; i += 70) { const y = f(i) + 6; x.moveTo(i, y); x.lineTo(i + 18, y); } x.stroke();
       }
     }
     function drawTank(t, tm) {
+      // versunkene Panzer gleiten nach unten und verschwinden (Lava) oder bleiben als Schatten (Wasser)
+      if (t.dead && t.liq) { t.sinkK = Math.min(1, (t.sinkK || 0) + 0.008); if (t.liq === 'lava' && t.sinkK >= 1) return; }
+      const lt = Math.min(poolTop(t.x), waterY, inkY);
+      if (!t.dead && lt < t.y - 2 && R() < 0.05) ripples.push({ x: t.x + (R() - 0.5) * 30, y: lt, t: 0, big: 1 });
+      if (t.dead && t.liq && t.liq !== 'lava' && R() < 0.08) parts.push({ x: t.x + (R() - 0.5) * 24, y: t.y - 10, vx: 0, vy: -50, t: 0, life: 1.2, kind: 'bubble', r: 2 + R() * 3 });
+      if (t.dead && t.liq === 'lava' && R() < 0.2) parts.push({ x: t.x + (R() - 0.5) * 30, y: lavaY - 4, vx: wind * 8, vy: -40, t: 0, life: 1.4, kind: 'smoke', r: 6 + R() * 6 });
+      x.save(); if (t.sinkK) { if (t.liq === 'lava') x.translate(0, t.sinkK * 46 * t.scale); x.globalAlpha = 1 - t.sinkK * (t.liq === 'lava' ? 1 : 0.55); }
       x.save(); x.translate(t.x, t.y);
       if (t.hurt > 0) x.translate(Math.sin(t.hurt * 40) * 3 * t.hurt, 0);
       // Fallschirm
@@ -1020,12 +1058,13 @@ export function battle(fx, cfg) {
       x.rotate(tilt(t));
       paintTank(x, { color: t.dead ? '#6b6b6b' : t.p.color, body: t.body, pat: t.dead ? 'hatch' : t.pat, ang: t.ang - tilt(t) * -180 / Math.PI, roll: t.roll, kick: t.kick || 0, wind, tm, dead: t.dead }, dark, ink);
       if (t.snowCap > 0.6) { const h2 = t.snowCap, tr = t.body === 'dome' ? 15 : t.body === 'heavy' ? 13 : 11, hw = t.body === 'heavy' ? 28 : 25; x.fillStyle = '#ffffff'; x.strokeStyle = 'rgba(120,150,190,.8)'; x.lineWidth = 1.2; x.beginPath(); x.ellipse(0, -13 - tr + 1, tr * 0.8, h2 * 0.55, 0, Math.PI, 0); x.closePath(); x.fill(); x.stroke(); x.beginPath(); x.ellipse(-hw + 9, -13, 7, h2 * 0.4, 0, Math.PI, 0); x.ellipse(hw - 9, -13, 7, h2 * 0.4, 0, Math.PI, 0); x.fill(); }
-      x.restore();
+      x.restore(); x.restore();
       if (t.shield > 0 && !t.dead) { x.save(); x.strokeStyle = t.p.color; x.globalAlpha = 0.5 + Math.sin(tm / 200) * 0.15; x.lineWidth = 3; x.setLineDash([7, 6]); x.beginPath(); x.arc(t.x, t.y - 12 * t.scale, 44 * t.scale, Math.PI * 1.02, Math.PI * 1.98); x.stroke(); x.setLineDash([]); x.fillStyle = t.p.color; x.globalAlpha = 0.07; x.fill(); x.restore(); }
       if (t.poison > 0 && !t.dead) { x.fillStyle = '#3d3dbd'; for (let k = 0; k < 3; k++) { x.globalAlpha = 0.5; x.beginPath(); x.arc(t.x - 14 + k * 14, t.y - 34 - ((tm / 15 + k * 20) % 30), 3, 0, Math.PI * 2); x.fill(); } x.globalAlpha = 1; }
-      if (t.dead && R() < 0.12) parts.push({ x: t.x + (R() - 0.5) * 20, y: t.y - 18, vx: wind * 10, vy: -30, t: 0, life: 1.6, kind: 'smoke', r: 6 + R() * 6 });
+      if (t.dead && !t.liq && R() < 0.12) parts.push({ x: t.x + (R() - 0.5) * 20, y: t.y - 18, vx: wind * 10, vy: -30, t: 0, life: 1.6, kind: 'smoke', r: 6 + R() * 6 });
     }
     function drawTag(t, tm) {
+      if (t.dead && t.liq && t.sinkK > 0.6) return;
       if (wx === 'fog' && t !== cur() && Math.abs(t.x - cur().x) > 420) return;
       const y0 = t.tagY;
       x.font = `700 15px ${FONT}`; x.textAlign = 'center'; x.textBaseline = 'middle';
@@ -1084,11 +1123,32 @@ export function battle(fx, cfg) {
       const k = b.t / (b.big ? 0.9 : 0.6);
       if (b.heal) { x.strokeStyle = '#2fbf71'; x.globalAlpha = 1 - k; x.lineWidth = 4; x.beginPath(); x.arc(b.x, b.y, b.r * (0.3 + k), 0, Math.PI * 2); x.stroke(); x.globalAlpha = 1; return; }
       if (b.erase) { x.fillStyle = dark ? 'rgba(255,160,190,.25)' : 'rgba(255,140,170,.35)'; x.globalAlpha = 1 - k; pcirc(x, b.x, b.y, b.r * (0.6 + k * 0.4), 5, 0.2); x.fill(); x.globalAlpha = 1; return; }
-      if (k < 0.18) { x.fillStyle = `rgba(255,255,240,${0.9 * (1 - k / 0.18)})`; x.beginPath(); x.arc(b.x, b.y, b.r * 0.7, 0, Math.PI * 2); x.fill(); }
-      const gr = x.createRadialGradient(b.x, b.y, 0, b.x, b.y, b.r * (0.5 + k * 0.7));
-      gr.addColorStop(0, `rgba(255,240,170,${0.9 * (1 - k)})`); gr.addColorStop(0.45, `rgba(255,140,40,${0.8 * (1 - k)})`); gr.addColorStop(1, 'rgba(200,60,30,0)');
-      x.fillStyle = gr; pcirc(x, b.x, b.y, b.r * (0.5 + k * 0.7), 7, 0.25); x.fill();
-      x.strokeStyle = b.ring ? '#ff6b5a' : ink; x.globalAlpha = (1 - k) * 0.8; x.lineWidth = b.ring ? 5 : 2; pcirc(x, b.x, b.y, b.r * (0.6 + k * 0.9), 9, 0.12); x.stroke(); x.globalAlpha = 1;
+      if (b.muzzle) {   // Mündungsfeuer
+        if (k > 0.35) return; const q = 1 - k / 0.35; x.save(); x.translate(b.x, b.y); x.rotate(-b.ang); x.globalCompositeOperation = 'lighter';
+        x.fillStyle = `rgba(255,200,90,${0.9 * q})`; x.beginPath(); x.moveTo(0, -7 * q); x.lineTo(26 * q, 0); x.lineTo(0, 7 * q); x.lineTo(8 * q, 0); x.closePath(); x.fill();
+        x.fillStyle = `rgba(255,250,220,${q})`; x.beginPath(); x.arc(2, 0, 6 * q, 0, Math.PI * 2); x.fill(); x.restore(); return;
+      }
+      const r = Math.max(10, b.r);
+      if (!b.puffs) b.puffs = Array.from({ length: 7 + Math.min(8, r / 12 | 0) }, () => { const a = R() * Math.PI * 2, d = R() * 0.55; return { dx: Math.cos(a) * d, dy: Math.sin(a) * d * 0.8 - 0.15, s: 0.35 + R() * 0.3, up: 0.2 + R() * 0.4 }; });
+      x.save();
+      // Lichtschein
+      if (k < 0.5) { x.globalCompositeOperation = 'lighter'; const lg = x.createRadialGradient(b.x, b.y, 0, b.x, b.y, r * 2.2); lg.addColorStop(0, `rgba(255,190,90,${0.5 * (1 - k * 2)})`); lg.addColorStop(1, 'rgba(255,190,90,0)'); x.fillStyle = lg; x.fillRect(b.x - r * 2.2, b.y - r * 2.2, r * 4.4, r * 4.4); x.globalCompositeOperation = 'source-over'; }
+      // Druckwelle
+      if (k < 0.6) { const q = k / 0.6; x.strokeStyle = b.ring ? `rgba(255,107,90,${1 - q})` : `rgba(255,255,255,${0.85 * (1 - q) ** 2})`; x.lineWidth = (b.ring ? 6 : 4) * (1 - q) + 1; x.beginPath(); x.arc(b.x, b.y, r * (0.4 + q * 1.5), 0, Math.PI * 2); x.stroke(); }
+      // Feuerball aus Wolken, wird zu Rauch
+      for (const p of b.puffs) {
+        const grow = r * (p.s + k * 0.55), px = b.x + p.dx * r * (0.6 + k), py = b.y + p.dy * r * (0.6 + k) - k * r * p.up;
+        const hot = Math.max(0, 1 - k * 1.7), a = (1 - k) ** 1.3;
+        const g = x.createRadialGradient(px, py, 0, px, py, grow);
+        if (hot > 0) { g.addColorStop(0, `rgba(255,${200 + 55 * hot | 0},${120 + 120 * hot | 0},${a})`); g.addColorStop(0.55, `rgba(255,${110 + 60 * hot | 0},30,${a * 0.9})`); g.addColorStop(1, `rgba(140,60,40,0)`); }
+        else { const c0 = dark ? 150 : 110; g.addColorStop(0, `rgba(${c0},${c0},${c0 + 6},${a * 0.7})`); g.addColorStop(1, `rgba(${c0},${c0},${c0 + 6},0)`); }
+        x.fillStyle = g; x.beginPath(); x.arc(px, py, grow, 0, Math.PI * 2); x.fill();
+      }
+      // heller Kern
+      if (k < 0.22) { x.fillStyle = `rgba(255,255,240,${0.95 * (1 - k / 0.22)})`; x.beginPath(); x.arc(b.x, b.y, r * (0.35 + k), 0, Math.PI * 2); x.fill(); }
+      // Papier-Umriss (Stil der App)
+      x.strokeStyle = ink; x.globalAlpha = Math.max(0, 0.5 - k) ; x.lineWidth = 1.6; pcirc(x, b.x, b.y, r * (0.55 + k * 0.6), 9, 0.15); x.stroke();
+      x.restore();
     }
     function drawParts() {
       for (const q of parts) {
@@ -1096,6 +1156,8 @@ export function battle(fx, cfg) {
         if (q.kind === 'smoke') { x.fillStyle = dark ? `rgba(160,165,180,${0.35 * a})` : `rgba(110,110,115,${0.3 * a})`; x.beginPath(); x.arc(q.x, q.y, q.r * (1 + q.t), 0, Math.PI * 2); x.fill(); }
         else if (q.kind === 'dust') { x.fillStyle = dark ? `rgba(200,190,160,${0.4 * a})` : `rgba(150,120,80,${0.35 * a})`; x.beginPath(); x.arc(q.x, q.y, q.r * (1 + q.t), 0, Math.PI * 2); x.fill(); }
         else if (q.kind === 'spark') { x.strokeStyle = q.c; x.globalAlpha = a; x.lineWidth = q.r; x.beginPath(); x.moveTo(q.x, q.y); x.lineTo(q.x - q.vx * 0.03, q.y - q.vy * 0.03); x.stroke(); x.globalAlpha = 1; }
+        else if (q.kind === 'ember') { const h2 = 1 - a; x.fillStyle = `rgb(255,${220 - 150 * h2 | 0},${90 - 80 * h2 | 0})`; x.globalAlpha = a; x.beginPath(); x.arc(q.x, q.y, q.r * (0.6 + a * 0.6), 0, Math.PI * 2); x.fill(); x.globalAlpha = 1; }
+        else if (q.kind === 'bubble') { x.strokeStyle = dark ? `rgba(200,230,255,${a})` : `rgba(255,255,255,${a})`; x.lineWidth = 1.4; x.beginPath(); x.arc(q.x, q.y, q.r, 0, Math.PI * 2); x.stroke(); }
         else if (q.kind === 'drop') { x.fillStyle = q.c; x.globalAlpha = a; x.beginPath(); x.arc(q.x, q.y, q.r, 0, Math.PI * 2); x.fill(); x.globalAlpha = 1; }
         else { x.save(); x.translate(q.x, q.y); x.rotate(q.rot); x.globalAlpha = Math.min(1, a * 2); x.fillStyle = dark ? shade(q.c.startsWith('#') ? q.c : '#888888', -0.4) : q.c; x.fillRect(-q.r, -q.r, q.r * 2, q.r * 2); x.strokeStyle = ink; x.lineWidth = 0.8; x.strokeRect(-q.r, -q.r, q.r * 2, q.r * 2); x.restore(); }
       }
@@ -1163,7 +1225,7 @@ export function battle(fx, cfg) {
       }
       // Schüsse
       if (phase === 'fly') {
-        for (const s of shells) { for (let k = 0; k < 4; k++) stepShell(s, dt / 4); if (!s.dead && !(s.wait > 0)) { s.trail.push([s.x, s.y]); if (s.trail.length > 36) s.trail.shift(); } }
+        for (const s of shells) { for (let k = 0; k < 4; k++) stepShell(s, dt / 4); if (!s.dead && !(s.wait > 0) && R() < 0.3) parts.push({ x: s.x, y: s.y, vx: (R() - 0.5) * 10, vy: -8, t: 0, life: 0.7, kind: 'smoke', r: s.sub ? 2.5 : 4 }); if (!s.dead && !(s.wait > 0)) { s.trail.push([s.x, s.y]); if (s.trail.length > 36) s.trail.shift(); } }
         shells = shells.filter((s) => !s.dead || s.trail.length > 1);
         shells.forEach((s) => { if (s.dead) s.trail.shift(); });
         const busy = shells.some((s) => !s.dead) || pendingFx > 0 || flames.length || T.some((t) => t.fallFrom != null || Math.abs(t.slide) > 1) || beams.some((b) => b.t < 0.4);
@@ -1194,7 +1256,7 @@ export function battle(fx, cfg) {
       for (const c of crates) { if (c.fall) { c.y += 70 * dt; const g = gAt(c.x); if (c.y >= g) { c.y = g; c.fall = false; } } else c.y = gAt(c.x); }
       if (phase === 'aim' && !over) T.forEach((t) => { if (t.y >= gAt(t.x) - 1) pickCrates(t); });
       booms.forEach((b) => { b.t += dt; }); booms = booms.filter((b) => b.t < (b.big ? 0.9 : 0.6));
-      parts.forEach((q) => { q.t += dt; if (q.kind === 'smoke' || q.kind === 'dust') { q.x += q.vx * dt; q.y += q.vy * dt; } else { q.vy += 700 * dt; q.x += q.vx * dt; q.y += q.vy * dt; if (q.kind === 'chunk') { q.rot += dt * 6; const g = gAt(q.x); if (q.y > g) { q.y = g; q.vy *= -0.3; q.vx *= 0.5; } } } });
+      parts.forEach((q) => { q.t += dt; if (q.kind === 'smoke' || q.kind === 'dust' || q.kind === 'bubble') { q.x += q.vx * dt + (q.kind === 'bubble' ? Math.sin(q.t * 9 + q.r) * 0.4 : 0); q.y += q.vy * dt; } else { q.vy += 700 * dt; q.x += q.vx * dt; q.y += q.vy * dt; if (q.kind === 'chunk') { q.rot += dt * 6; const g = gAt(q.x); if (q.y > g) { q.y = g; q.vy *= -0.3; q.vx *= 0.5; } } } });
       parts = parts.filter((q) => q.t < q.life); if (parts.length > 700) parts.splice(0, parts.length - 700);
       pops.forEach((q) => { q.t += dt; }); pops = pops.filter((q) => q.t < 1.6);
       beams.forEach((b) => { b.t += dt; }); beams = beams.filter((b) => b.t < 0.6);
