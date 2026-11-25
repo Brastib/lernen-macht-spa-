@@ -48,6 +48,8 @@ export async function startSerialScan(bookId, { onDone } = {}) {
     tempo: lsGet('serTempo', 'normal'),
     sound: lsGet('serSound', '1') === '1',
     flat: lsGet('serFlat', '1') === '1',
+    bright: lsGet('serBright', 'auto'),   // auto | dark | darker | off
+    ev: 0, evCaps: null, lastEv: 0, clip: 0, warnedBright: false,
     prev: null, ref: null, armed: true, moved: true,
     stillSince: 0, best: null, bestSharp: 0, sharpHist: [],
     quad: null, quadFound: false, lastDetect: 0,
@@ -127,6 +129,8 @@ function settingsSheet() {
     body.append(
       row('Tempo (wie lange ruhig vor dem Auslösen)', seg([['fast', 'Schnell'], ['normal', 'Normal'], ['calm', 'Sorgfältig']], S.tempo, (v) => { S.tempo = v; lsSet('serTempo', v); })),
       row('Wölbung zur Buchmitte glätten', seg([['1', 'An'], ['0', 'Aus']], S.flat ? '1' : '0', (v) => { S.flat = v === '1'; lsSet('serFlat', v); })),
+      row('Helligkeit der Seiten', seg([['auto', 'Automatisch'], ['dark', 'Dunkler'], ['darker', 'Viel dunkler'], ['off', 'Nicht ändern']], S.bright, (v) => { S.bright = v; lsSet('serBright', v); })),
+      h('p.muted', { text: S.evCaps ? 'Die Kamera-Belichtung wird automatisch heruntergeregelt, wenn die Seite zu hell ist.' : 'Diese Kamera lässt die Belichtung nicht einstellen. Zu helle Seiten werden danach dunkler gerechnet. Hilft auch: kein direktes Licht von oben, iPad etwas höher halten.' }),
       row('Klick-Ton beim Aufnehmen', seg([['1', 'An'], ['0', 'Aus']], S.sound ? '1' : '0', (v) => { S.sound = v === '1'; lsSet('serSound', v); })),
       h('p.muted', { text: 'Tipp: Buch auf einen dunklen Tisch legen, gutes Licht, iPad flach drüber. Die ganze Doppelseite soll ins Bild passen.' }));
   });
@@ -145,6 +149,11 @@ async function openCamera() {
     await S.ui.video.play().catch(() => {});
     const caps = S.track.getCapabilities?.() || {};
     if (caps.torch) S.ui.light.hidden = false;
+    if (caps.exposureCompensation && caps.exposureCompensation.max > caps.exposureCompensation.min) {
+      S.evCaps = caps.exposureCompensation;
+      S.ev = 0;
+      if (caps.exposureMode?.includes?.('continuous')) S.track.applyConstraints({ advanced: [{ exposureMode: 'continuous' }] }).catch(() => {});
+    }
     if (caps.focusMode?.includes?.('continuous')) S.track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(() => {});
     resetStill(); hint();
     loop();
@@ -228,6 +237,7 @@ function tick() {
     const r = detectPage(acv);
     S.quad = r.corners.map(([x, y]) => [x / acv.width, y / acv.height]);
     S.quadFound = r.found;
+    exposureCheck(g, now);
     drawQuad();
   }
   if (!S.auto) return;
@@ -332,7 +342,7 @@ function capture(manual) {
   S.ui.flash.classList.remove('go'); void S.ui.flash.offsetWidth; S.ui.flash.classList.add('go');
   click();
   hint('Aufgenommen ✓ · jetzt umblättern');
-  const item = { canvas, split: S.split, mode: S.mode, flat: S.flat, pageIds: [], gone: false, done: false };
+  const item = { canvas, split: S.split, mode: S.mode, flat: S.flat, bright: S.bright, pageIds: [], gone: false, done: false };
   S.items.push(item);
   S.pages += item.split ? 2 : 1;
   setCount();
@@ -361,7 +371,7 @@ async function processItem(item) {
     for (const p of parts) {
       if (item.gone) break;
       await new Promise((r2) => setTimeout(r2, 0));
-      const straight = deskew(p);
+      const straight = deskew(tameHighlights(p, item.bright));
       // farbige Kästen merken, solange die Farben noch da sind (für „Vokabeln herausholen“)
       let vxBoxes = null;
       try { vxBoxes = (await import('./vocabscan.js')).detectBoxes(straight); } catch (e) { /* egal */ }
@@ -423,6 +433,63 @@ async function finish() {
   const n = s.pages;
   if (n) toast(n === 1 ? '1 Seite gespeichert' : `${n} Seiten gespeichert`);
   try { await s.onDone?.(s.bookId); } catch (e) { console.error(e); }
+}
+
+// ---------- Belichtung ----------
+// Anteil fast weißer (ausgefressener) Pixel auf der Seite messen. Ist die Seite zu hell,
+// die Kamera-Belichtung herunterregeln (falls die Kamera das erlaubt), sonst einmal Tipp zeigen.
+function exposureCheck(g, now) {
+  if (!S.quad) return;
+  const w = acv.width, hh = acv.height;
+  const xs = S.quad.map((p) => p[0] * w), ys = S.quad.map((p) => p[1] * hh);
+  const x0 = Math.max(0, Math.min(...xs) | 0), x1 = Math.min(w, Math.max(...xs) | 0);
+  const y0 = Math.max(0, Math.min(...ys) | 0), y1 = Math.min(hh, Math.max(...ys) | 0);
+  let n = 0, clip = 0, sum = 0;
+  for (let y = y0; y < y1; y += 2) for (let x = x0; x < x1; x += 2) { const v = g[y * w + x]; n++; sum += v; if (v >= 250) clip++; }
+  if (!n) return;
+  S.clip = clip / n;
+  const mean = sum / n;
+  if (S.evCaps && S.bright !== 'off') {
+    if (now - S.lastEv < 700) return;
+    const { min, max } = S.evCaps, step = Math.max(S.evCaps.step || 0, 0.33);
+    let ev = S.ev;
+    if (S.clip > 0.12) ev = Math.max(min, ev - step);
+    else if (S.clip < 0.01 && mean < 150 && ev < 0) ev = Math.min(0, max, ev + step);
+    if (ev !== S.ev) {
+      S.ev = ev; S.lastEv = now;
+      S.track.applyConstraints({ advanced: [{ exposureCompensation: ev }] }).catch(() => {});
+    }
+  } else if (S.clip > 0.3 && !S.warnedBright && S.bright !== 'off') {
+    S.warnedBright = true;
+    toast('Die Seite ist sehr hell. Die App rechnet sie dunkler. Noch besser: kein direktes Licht von oben, iPad etwas höher halten.', 5000);
+  }
+}
+
+// Zu helle (überbelichtete) Seite: Mitteltöne abdunkeln, damit blasse Schrift wieder kräftig wird.
+// Papier bleibt weiß, Schrift und Bilder werden dunkler.
+export function tameHighlights(c, level = 'auto') {
+  if (level === 'off') return c;
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+  const img = ctx.getImageData(0, 0, c.width, c.height), d = img.data;
+  let gam = level === 'dark' ? 1.4 : level === 'darker' ? 1.8 : 0;
+  if (level === 'auto') {
+    // wie viel ist ausgefressen, wie blass ist die Schrift (dunkelste 2 %)?
+    const hist = new Uint32Array(256); let n = 0;
+    for (let i = 0; i < d.length; i += 4 * 7) { hist[(d[i] * 77 + d[i + 1] * 150 + d[i + 2] * 29) >> 8]++; n++; }
+    let acc = 0, p02 = 0;
+    for (let v = 0; v < 256; v++) { acc += hist[v]; if (acc >= n * 0.02) { p02 = v; break; } }
+    let clip = 0; for (let v = 250; v < 256; v++) clip += hist[v];
+    clip /= n;
+    if (clip > 0.2 && p02 > 80) gam = Math.min(2.2, 1.3 + (p02 - 80) / 90);
+    else if (clip > 0.45) gam = 1.3;
+  }
+  if (!gam) return c;
+  const lut = new Uint8ClampedArray(256);
+  for (let v = 0; v < 256; v++) lut[v] = 255 * Math.pow(v / 255, gam);
+  for (let i = 0; i < d.length; i += 4) { d[i] = lut[d[i]]; d[i + 1] = lut[d[i + 1]]; d[i + 2] = lut[d[i + 2]]; }
+  ctx.putImageData(img, 0, 0);
+  console.log('[serie] abgedunkelt', { gam: +gam.toFixed(2) });
+  return c;
 }
 
 // ---------- Doppelseite teilen ----------
@@ -576,4 +643,4 @@ export function flattenCurl(c, gutter) {
 }
 
 // für Tests
-window.__serial = { state: () => S, findGutter, splitSpread, flattenCurl };
+window.__serial = { state: () => S, findGutter, splitSpread, flattenCurl, tameHighlights };
