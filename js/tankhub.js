@@ -389,12 +389,18 @@ export function tankHub(openFx, players, me) {
   // ---------- Waffenbuch ----------
   function armsTab(body) {
     const best = store.get('tkTargetBest', 0);
-    body.append(h('div.ghero.tkligahero', null, h('span.gheroic', null, icon('bomb')), h('div.gherotx', null, h('b', { text: `${WEAPONS.length} Waffen und ${EXTRAS.length} Extras` }), h('small', { text: `Kisten bringen Nachschub. Ein Extra pro Zug.${best ? ` Zielscheiben-Rekord: ${best} Schüsse.` : ''}` }))));
-    body.append(h('div.tkarms', null, ...WEAPONS.map((w) => {
+    body.append(h('div.ghero.tkligahero', null, h('span.gheroic', null, icon('bomb')), h('div.gherotx', null, h('b', { text: `${WEAPONS.filter((w) => !w.op).length} Waffen, ${WEAPONS.filter((w) => w.op).length} OP-Waffen und ${EXTRAS.length} Extras` }), h('small', { text: `Kisten bringen Nachschub. Ein Extra pro Zug.${best ? ` Zielscheiben-Rekord: ${best} Schüsse.` : ''}` }))));
+    const card = (w) => {
       const cv = h('canvas', { width: 96, height: 96 }); glyph(cv.getContext('2d'), w, 96, isDark());
-      return h('div.tkarm', null, cv, h('div.tkarmtx', null, h('b', { text: w.name }), h('small', { text: w.d }),
-        h('span.tkstats', null, w.dmg > 0 ? h('em', { text: `Schaden ${w.dmg}` }) : null, w.r ? h('em', { text: `Radius ${w.r}` }) : null, h('em', { text: w.n === Infinity ? 'immer' : `${w.n}× pro Spiel` }))));
-    })));
+      return h('div.tkarm' + (w.op ? '.op' : ''), null, cv, h('div.tkarmtx', null, h('b', { text: w.name }), h('small', { text: w.d }),
+        h('span.tkstats', null, w.dmg > 0 ? h('em', { text: w.op ? `bis ${Math.min(50, w.dmg)} Schaden` : `Schaden ${w.dmg}` }) : w.dmg < 0 ? h('em', { text: `Heilt ${-w.dmg}` }) : null, w.r && !w.heal ? h('em', { text: `Radius ${w.r}` }) : null, h('em', { text: w.op ? 'Goldene Kiste' : w.n === Infinity ? 'immer' : `${w.n}× pro Spiel` }))));
+    };
+    body.append(h('div.tkarms', null, ...WEAPONS.filter((w) => !w.op).map(card)));
+    body.append(h('h3.tksec', { text: 'Kisten' }), h('div.tkarms', null,
+      h('div.tkarm', null, h('span.tkexic.tkcrate', null, icon('boxes')), h('div.tkarmtx', null, h('b', { text: 'Nachschub-Kiste' }), h('small', { text: 'Leben, ein Extra oder Munition für eine Waffe.' }))),
+      h('div.tkarm.epic', null, h('span.tkexic.tkcrate', null, icon('boxes')), h('div.tkarmtx', null, h('b', { text: 'Epische Kiste (lila)' }), h('small', { text: 'Zwei starke Waffen, aber keine OP-Waffe.' }))),
+      h('div.tkarm.op', null, h('span.tkexic.tkcrate', null, icon('star')), h('div.tkarmtx', null, h('b', { text: 'Goldene Kiste' }), h('small', { text: 'Eine von 10 OP-Waffen. Selten! Höchstens 50 Schaden pro Panzer.' })))));
+    body.append(h('h3.tksec', { text: 'OP-Waffen (nur aus goldenen Kisten)' }), h('div.tkarms', null, ...WEAPONS.filter((w) => w.op).map(card)));
     body.append(h('h3.tksec', { text: 'Extras' }), h('div.tkarms', null, ...EXTRAS.map((e) => h('div.tkarm', null, h('span.tkexic', null, icon(e.ic)), h('div.tkarmtx', null, h('b', { text: e.name }), h('small', { text: e.d }))))));
   }
 

@@ -8,43 +8,58 @@ import { findProfile, profileData, setProfileData } from './profiles.js';
 // g = kleines Bild (Glyphe), c = Farbe der Glyphe, d = Beschreibung.
 export const WEAPONS = [
   { id: 'ball', name: 'Kugel', k: 'std', r: 40, dmg: 40, n: Infinity, g: 'ball', c: '#5b6475', d: 'Die Standard-Kugel. Geht nie aus.' },
-  { id: 'three', name: 'Dreier', k: 'std', split: 3, spread: 0.07, r: 26, dmg: 20, n: 3, g: 'multi3', c: '#4f7cff', d: 'Drei Kugeln auf einmal, leicht gefächert.' },
-  { id: 'five', name: 'Fünfer', k: 'std', split: 5, spread: 0.06, r: 24, dmg: 16, n: 2, g: 'multi5', c: '#2f6fd6', d: 'Fünf Kugeln im Fächer. Gut gegen Gruppen.' },
-  { id: 'big', name: 'Riesenknall', k: 'std', r: 75, dmg: 60, n: 2, g: 'big', c: '#e0483e', d: 'Großer Krater, viel Schaden.' },
-  { id: 'nuke', name: 'Tintenfass', k: 'std', r: 145, dmg: 85, n: 1, g: 'nuke', c: '#3d3dbd', d: 'Der größte Knall im Spiel. Nur einmal.' },
+  { id: 'three', name: 'Dreier', k: 'std', split: 3, pows: [0.9, 1, 1.1], spread: 0, r: 28, dmg: 22, n: 3, g: 'multi3', c: '#4f7cff', d: 'Drei Kugeln mit weniger, gleicher und mehr Kraft. Trifft auch, wenn die Kraft nicht ganz stimmt.' },
+  { id: 'five', name: 'Schrot', k: 'shot', split: 5, spread: 0.1, r: 20, dmg: 15, n: 3, g: 'multi5', c: '#2f6fd6', d: 'Fünf schnelle Kugeln fast ohne Bogen und Wind. Aus der Nähe stark, auf Entfernung schwach.' },
+  { id: 'big', name: 'Riesenknall', k: 'std', r: 75, dmg: 45, n: 2, g: 'big', c: '#e0483e', d: 'Großer Krater: reißt Deckung weg und lässt Panzer abstürzen.' },
+  { id: 'nuke', name: 'Tintenfass', op: true, k: 'std', r: 165, dmg: 50, n: 0, g: 'nuke', c: '#3d3dbd', d: 'Der größte Krater im Spiel. Trifft alle in einem riesigen Kreis.' },
   { id: 'roll', name: 'Rollbombe', k: 'roll', r: 44, dmg: 40, n: 2, g: 'roll', c: '#e08a1e', d: 'Rollt am Boden weiter, bis sie an einen Panzer stößt.' },
   { id: 'hop', name: 'Hüpfball', k: 'bounce', hops: 3, r: 42, dmg: 40, n: 2, g: 'bounce', c: '#2fbf71', d: 'Springt dreimal auf, dann knallt es.' },
   { id: 'rubber', name: 'Gummiball', k: 'bounce', hops: 5, every: true, r: 22, dmg: 12, n: 2, g: 'bounce2', c: '#ff7ac8', d: 'Knallt bei jedem Aufprall ein bisschen, fünfmal.' },
   { id: 'cluster', name: 'Streubombe', k: 'cluster', sub: 6, r: 30, dmg: 18, n: 2, g: 'cluster', c: '#a46bff', d: 'Platzt beim Aufprall in sechs kleine Bomben.' },
   { id: 'mirv', name: 'Sternregen', k: 'apex', sub: 5, r: 30, dmg: 22, n: 2, g: 'star', c: '#f2b632', d: 'Teilt sich am höchsten Punkt in fünf Sterne.' },
-  { id: 'confetti', name: 'Konfetti', k: 'std', split: 10, spread: 0.16, r: 16, dmg: 8, n: 2, g: 'confetti', c: '#ff6b5a', d: 'Zehn winzige Kugeln, weit gestreut.' },
-  { id: 'volley', name: 'Salve', k: 'volley', shots: 5, r: 24, dmg: 15, n: 2, g: 'volley', c: '#21b8c9', d: 'Fünf Schüsse kurz nacheinander.' },
-  { id: 'mole', name: 'Wühler', k: 'mole', len: 170, r: 40, dmg: 38, n: 2, g: 'mole', c: '#8a6a3a', d: 'Gräbt sich am Boden entlang und knallt dann.' },
+  { id: 'confetti', name: 'Konfetti', k: 'std', split: 10, spread: 0.16, r: 30, dmg: 5, n: 2, g: 'confetti', c: '#ff6b5a', d: 'Zehn Krümel, die viele Löcher reißen. Zerlegt Hügel, Mauern und Deckung.' },
+  { id: 'volley', name: 'Salve', k: 'volley', shots: 5, deep: true, r: 26, dmg: 9, n: 2, g: 'volley', c: '#21b8c9', d: 'Fünf Schüsse genau auf dieselbe Stelle. Gräbt ein tiefes Loch, der Gegner stürzt hinein.' },
+  { id: 'mole', name: 'Wühler', k: 'mole', len: 170, r: 40, dmg: 38, n: 2, g: 'mole', c: '#8a6a3a', d: 'Gräbt sich unter Mauern und Hügeln durch und knallt am ersten Panzer.' },
   { id: 'erase', name: 'Radierer', k: 'erase', r: 95, dmg: 0, n: 2, g: 'erase', c: '#ff9fb0', d: 'Radiert ein großes Loch, macht keinen Schaden. Panzer können abstürzen.' },
   { id: 'dirt', name: 'Erdhügel', k: 'dirt', r: 62, dmg: 0, n: 2, g: 'dirt', c: '#9a6b2f', d: 'Schüttet einen Hügel auf. Gut zum Einbuddeln.' },
   { id: 'wall', name: 'Erdmauer', k: 'wall', r: 18, dmg: 0, n: 2, g: 'wall', c: '#7a5a35', d: 'Baut eine hohe Mauer als Deckung.' },
   { id: 'fire', name: 'Tintenfeuer', k: 'fire', drops: 16, r: 24, dmg: 10, n: 2, g: 'fire', c: '#ff7a1a', d: 'Brennende Tinte, die den Hang hinunterläuft.' },
-  { id: 'laser', name: 'Lineal-Laser', k: 'beam', r: 18, dmg: 36, n: 2, g: 'laser', c: '#e0483e', d: 'Schnurgerade, ohne Wind und ohne Schwerkraft.' },
+  { id: 'laser', name: 'Lineal-Laser', k: 'beam', r: 18, dmg: 36, n: 2, g: 'laser', c: '#e0483e', d: 'Schnurgerade, ohne Wind und ohne Schwerkraft. Zum Zielen bei Sturm.' },
   { id: 'seek', name: 'Spürnase', k: 'seek', r: 36, dmg: 34, n: 2, g: 'seek', c: '#2fbf71', d: 'Sucht sich im Sinkflug den nächsten Gegner.' },
   { id: 'air', name: 'Luftpost', k: 'air', sub: 6, r: 32, dmg: 22, n: 1, g: 'air', c: '#4f7cff', d: 'Markiert eine Stelle, dann fallen sechs Bomben vom Himmel.' },
-  { id: 'quake', name: 'Beben', k: 'quake', r: 380, dmg: 22, n: 1, g: 'quake', c: '#8a6a3a', d: 'Erschüttert den Boden. Trifft alle in der Nähe ein bisschen.' },
+  { id: 'quake', name: 'Beben', k: 'quake', r: 380, dmg: 18, n: 1, g: 'quake', c: '#8a6a3a', d: 'Ebnet Hügel und Mauern ein und trifft alle in der Nähe ein bisschen.' },
   { id: 'heal', name: 'Heilpflaster', k: 'heal', r: 80, dmg: -35, n: 2, g: 'heal', c: '#2fbf71', d: 'Heilt alle Panzer im Umkreis um 35, auch Gegner.' },
   { id: 'mine', name: 'Mine', k: 'mine', r: 50, dmg: 45, n: 2, g: 'mine', c: '#5b6475', d: 'Bleibt liegen. Wer darüber fährt, fliegt in die Luft.' },
-  { id: 'timer', name: 'Zeitzünder', k: 'timer', fuse: 3, r: 62, dmg: 50, n: 2, g: 'timer', c: '#e0a106', d: 'Hüpft herum und knallt nach 3 Sekunden.' },
+  { id: 'timer', name: 'Zeitzünder', k: 'timer', fuse: 3, r: 62, dmg: 44, n: 2, g: 'timer', c: '#e0a106', d: 'Hüpft herum und knallt nach 3 Sekunden. Rollt in Löcher und hinter Deckung.' },
   { id: 'leech', name: 'Saugnapf', k: 'std', leech: 0.6, r: 38, dmg: 34, n: 2, g: 'leech', c: '#c2185b', d: 'Was du an Schaden machst, bekommst du zum Teil als Leben.' },
   { id: 'tele', name: 'Teleporter', k: 'tele', r: 0, dmg: 0, n: 2, g: 'tele', c: '#a46bff', d: 'Dein Panzer springt dorthin, wo die Kugel landet.' },
-  { id: 'bolt', name: 'Blitz', k: 'bolt', r: 44, dmg: 44, n: 2, g: 'bolt', c: '#f2b632', d: 'Ruft einen Blitz an die Stelle, wo die Kugel landet.' },
-  { id: 'rain', name: 'Wolkenbruch', k: 'rain', sub: 14, r: 16, dmg: 9, n: 2, g: 'rain', c: '#21b8c9', d: 'Am höchsten Punkt regnet es viele kleine Tropfen.' },
-  { id: 'saw', name: 'Kreissäge', k: 'saw', len: 320, r: 30, dmg: 24, n: 2, g: 'saw', c: '#8a8f98', d: 'Sägt am Boden entlang und trifft jeden Panzer auf dem Weg.' },
+  { id: 'bolt', name: 'Blitz', k: 'bolt', r: 44, dmg: 40, n: 2, g: 'bolt', c: '#f2b632', d: 'Kommt von oben, trifft auch unter Überhängen. Schlägt er ins Wasser, trifft er alle im Wasser.' },
+  { id: 'rain', name: 'Wolkenbruch', k: 'rain', sub: 14, flood: 30, r: 12, dmg: 4, n: 2, g: 'rain', c: '#21b8c9', d: 'Schüttet viel Wasser aus. Füllt Mulden, wer untergeht, ist raus.' },
+  { id: 'saw', name: 'Kreissäge', k: 'saw', len: 320, r: 30, dmg: 24, n: 2, g: 'saw', c: '#8a8f98', d: 'Sägt weit am Boden entlang und trifft jeden Panzer auf dem Weg, nicht nur den ersten.' },
   { id: 'push', name: 'Druckwelle', k: 'push', r: 120, dmg: 12, n: 2, g: 'push', c: '#4f7cff', d: 'Wenig Schaden, schiebt aber alle weit weg.' },
   { id: 'snipe', name: 'Scharfschuss', k: 'snipe', r: 18, dmg: 30, bonus: 35, n: 2, g: 'snipe', c: '#26262b', d: 'Sehr schnell. Direkter Treffer macht extra Schaden.' },
-  { id: 'ghost', name: 'Geisterkugel', k: 'ghost', r: 40, dmg: 36, n: 2, g: 'ghost', c: '#8fa3c7', d: 'Fliegt durch Berge hindurch, trifft nur Panzer.' },
+  { id: 'ghost', name: 'Geisterkugel', k: 'ghost', r: 40, dmg: 36, n: 2, g: 'ghost', c: '#8fa3c7', d: 'Fliegt im Bogen durch Berge hindurch, trifft nur Panzer. Gegen Eingebuddelte.' },
   { id: 'ring', name: 'Ringknall', k: 'ring', r: 125, inner: 55, dmg: 42, n: 2, g: 'ring', c: '#ff6b5a', d: 'Trifft im Ring außen herum. Die Mitte bleibt sicher.' },
   { id: 'ink', name: 'Kleckser', k: 'std', poison: 3, r: 36, dmg: 16, n: 2, g: 'ink', c: '#3d3dbd', d: 'Tintenklecks: danach 3 Züge lang je 8 Schaden.' },
   { id: 'drill', name: 'Bohrer', k: 'drill', len: 120, r: 46, dmg: 44, n: 2, g: 'drill', c: '#5b6475', d: 'Bohrt sich nach unten und sprengt von unten.' },
-  { id: 'magnet', name: 'Magnetkugel', k: 'magnet', r: 34, dmg: 30, n: 2, g: 'magnet', c: '#e0483e', d: 'Wird von Panzern in der Nähe angezogen.' },
+  { id: 'magnet', name: 'Magnetkugel', k: 'magnet', r: 34, dmg: 26, n: 2, g: 'magnet', c: '#e0483e', d: 'Wird von Panzern angezogen und zieht beim Knall alle in der Nähe zur Mitte, zum Beispiel in ein Loch.' },
+  // ---- OP-Waffen: nur aus goldenen Kisten. Höchstens 50 Schaden pro Panzer und Schuss ----
+  { id: 'comet', name: 'Kometenschauer', op: true, k: 'air', sub: 9, wide: 440, r: 42, dmg: 18, n: 0, g: 'comet', c: '#ff7a1a', d: 'Neun Kometen schlagen in einem breiten Streifen ein.' },
+  { id: 'hole', name: 'Schwarzes Loch', op: true, k: 'hole', r: 105, dmg: 50, n: 0, g: 'hole', c: '#3a2a6b', d: 'Saugt alle Panzer in der Nähe zur Mitte und reißt einen tiefen Krater.' },
+  { id: 'chain', name: 'Kettenblitz', op: true, k: 'chain', r: 40, dmg: 30, n: 0, g: 'chain', c: '#f2b632', d: 'Ein Blitz, der zu jedem Gegner weiterspringt.' },
+  { id: 'dragon', name: 'Drachenatem', op: true, k: 'dragon', r: 40, dmg: 24, n: 0, g: 'dragon', c: '#e0483e', d: 'Feuersäulen auf jedem Gegner, die danach weiterbrennen.' },
+  { id: 'rift', name: 'Erdspalte', op: true, k: 'rift', r: 240, dmg: 26, n: 0, g: 'rift', c: '#7a5a35', d: 'Reißt eine tiefe Spalte auf. Wer darauf steht, stürzt hinein.' },
+  { id: 'swarm', name: 'Raketenschwarm', op: true, k: 'swarm', r: 36, dmg: 30, n: 0, g: 'swarm', c: '#2fbf71', d: 'Auf jeden Gegner stürzt eine Suchrakete vom Himmel.' },
+  { id: 'orbital', name: 'Himmelsstrahl', op: true, k: 'orbital', r: 80, dmg: 50, n: 0, g: 'orbital', c: '#21b8c9', d: 'Ein riesiger Strahl von oben, durch alles hindurch.' },
+  { id: 'healrain', name: 'Heilregen', op: true, heal: true, k: 'healall', dmg: -50, r: 0, n: 0, g: 'healrain', c: '#2fbf71', d: 'Dein ganzes Team bekommt +50 Leben und einen Schild.' },
+  { id: 'tree', name: 'Lebensbaum', op: true, heal: true, k: 'tree', dmg: -20, r: 200, n: 0, g: 'tree', c: '#3f9a4b', d: 'Pflanzt einen Baum: +20 Leben jetzt, dann 3 Züge lang +10 für dein Team in der Nähe.' },
 ];
 export const W = Object.fromEntries(WEAPONS.map((w) => [w.id, w]));
+export const OP_IDS = WEAPONS.filter((w) => w.op).map((w) => w.id);
+export const NORMAL_IDS = WEAPONS.filter((w) => !w.op).map((w) => w.id);
+// Epische Kisten: zwei davon (keine OP-Waffen)
+export const STRONG_IDS = ['big', 'cluster', 'mirv', 'timer', 'drill', 'ring', 'bolt', 'air', 'seek', 'fire', 'leech', 'saw', 'magnet', 'rain'];
+export const OP_MAX = 50;
 export const CLASSIC = ['ball', 'three', 'big', 'roll', 'dirt', 'hop', 'cluster', 'erase'];
 
 // ---------- Extras (ein Extra pro Zug) ----------
@@ -228,7 +243,7 @@ export function myMapObj(d) {
   const base = MAP[d.theme] || MAP.meadow, liq = LIQUIDS.find((l) => l.id === d.liquid) || LIQUIDS[0];
   const hs = d.h.map(Number);
   return {
-    id: d.id, name: d.name || 'Eigene Karte', d: 'Selbst gemalt', own: true,
+    id: d.id, name: d.name || 'Eigene Karte', d: 'Selbst gemalt', own: true, theme: base.id,
     sky: base.sky, skyD: base.skyD, top: base.top, soil: base.soil, hill: base.hill, night: base.night, grav: base.grav, wind: base.wind, fuelCost: base.fuelCost,
     weather: d.weather || base.weather || 'clear', water: liq.water, lava: liq.lava,
     gen: (R, TW, TH) => (i) => { const f = Math.max(0, Math.min(1, i / TW)) * (MYMAP_N - 1), a = Math.floor(f), b = Math.min(MYMAP_N - 1, a + 1), t = f - a; return (hs[a] * (1 - t) + hs[b] * t) * TH / 696; },
