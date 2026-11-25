@@ -1,6 +1,6 @@
 // Offline-Speicher für die App selbst (nicht für deine Scans, die liegen in IndexedDB).
 // Bei jeder neuen Version VERSION erhöhen.
-const VERSION = 'v111';
+const VERSION = 'v112';
 const CACHE = 'lernapp-' + VERSION;
 const CDN_KEEP = ['/npm/@huggingface/transformers@4.3.2/', '/npm/onnxruntime-web@'];
 const FILES = [
@@ -13,6 +13,7 @@ const FILES = [
   './js/db.js',
   './js/scanner.js',
   './js/editor.js',
+  './js/fcalc.js',
   './js/paper.js',
   './js/pen.js',
   './js/ui.js',

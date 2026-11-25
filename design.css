@@ -419,3 +419,60 @@ h2.section {
   .vxside { box-shadow: 0 -0.5px 0 var(--line-strong); overflow-y: auto; }
 }
 @media (max-width: 520px) { .vxstart { grid-template-columns: 1fr; } .vxtools { grid-template-columns: 1fr; } }
+
+/* ---------- Schwebender Rechner im Editor (js/fcalc.js) ---------- */
+.fcalc {
+  position: absolute; z-index: 8; width: 318px; max-width: calc(100% - 20px);
+  display: flex; flex-direction: column; gap: 8px; padding: 0 10px 10px;
+  border-radius: var(--r-lg); background: color-mix(in srgb, var(--surface) 94%, transparent);
+  -webkit-backdrop-filter: saturate(1.5) blur(18px); backdrop-filter: saturate(1.5) blur(18px);
+  box-shadow: var(--hair), var(--e3); touch-action: none;
+  -webkit-user-select: none; user-select: none; animation: fcin .16s var(--ease, ease);
+}
+.fcalc[hidden] { display: none; }
+@keyframes fcin { from { opacity: 0; transform: scale(.97); } to { opacity: 1; transform: none; } }
+.fcalc.small { width: 248px; }
+.fcalc.dragging { box-shadow: var(--hair), 0 4px 10px rgba(16, 20, 40, .10), 0 26px 50px -12px rgba(16, 20, 40, .32); }
+.fchead { display: flex; align-items: center; gap: 2px; height: 42px; margin: 0 -4px; cursor: grab; touch-action: none; }
+.fcalc.dragging .fchead { cursor: grabbing; }
+.fcgrip { flex: none; width: 18px; height: 14px; margin: 0 4px 0 6px; opacity: .45;
+  background: radial-gradient(circle, var(--muted) 1.4px, transparent 1.6px) 0 0 / 6px 7px; }
+.fctitle { flex: 1; min-width: 0; font-size: 13px; font-weight: 600; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fcb { flex: none; min-width: 36px; height: 34px; display: grid; place-items: center; border-radius: 10px; color: var(--muted); padding: 0 6px; }
+.fcb .ic { width: 18px; height: 18px; }
+.fcb:active { background: var(--surface-2); color: var(--ink); }
+.fcb[hidden] { display: none; }
+.fcbody { min-width: 0; }
+.fcalc .calc { gap: 8px; }
+.fcalc .calcscreen { padding: 8px 12px; border-radius: var(--r-md); background: var(--surface-2); box-shadow: none; }
+.fcalc .calctop { gap: 4px; margin-bottom: 2px; }
+.fcalc .calctop small { display: none; }
+.fcalc .calcmode { height: 28px; min-width: 40px; padding: 0 8px; font-size: 12px; background: var(--surface); }
+.fcalc .calcin { font-size: 21px; padding: 2px 0; }
+.fcalc .calcout { min-height: 26px; font-size: 19px; }
+.fcalc .calcout.err { font-size: 12.5px; text-align: right; }
+.fcalc .calcvars { min-height: 0; margin-top: 6px; padding-top: 6px; gap: 4px; }
+.fcalc .calcvars > small { display: none; }
+.fcalc .calcvars:not(:has(.vchip)) { display: none; }
+.fcalc .calcpad { gap: 5px; }
+.fcalc .ck { min-height: 40px; border-radius: 11px; font-size: 17px; }
+.fcalc .ck.sci { min-height: 32px; font-size: 13px; border-radius: 9px; }
+.fcalc .calchist { display: none; }
+.fcalc.small .ck.sci, .fcalc.small .calcvars, .fcalc.small .calcmode:not(:first-child), .fcalc.fitsmall .ck.sci, .fcalc.fitsmall .calcvars { display: none; }
+.fcalc.min .calcpad, .fcalc.min .calcvars, .fcalc.fitmin .calcpad, .fcalc.fitmin .calcvars { display: none; }
+.fcmin .ic { transition: transform var(--t-fast, .15s) ease; transform: rotate(180deg); }
+.fcalc.min .fcmin .ic { transform: none; }
+.fcput {
+  display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 40px; width: 100%;
+  border-radius: 12px; font-size: 14px; font-weight: 600; color: var(--accent); background: var(--accent-soft);
+}
+.fcput .ic { width: 18px; height: 18px; flex: none; }
+.fcput span { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fcput:active { filter: brightness(.94); }
+.fchint { display: none; align-items: center; gap: 6px; min-height: 40px; padding: 0 4px 0 12px; border-radius: 12px;
+  background: var(--accent); color: #fff; font-size: 13.5px; font-weight: 600; }
+.fchint span { flex: 1; min-width: 0; }
+.fchint .fccancel { color: #fff; background: rgba(255, 255, 255, .18); font-size: 13px; font-weight: 600; }
+.fcalc.placing .fcput { display: none; }
+.fcalc.placing .fchint { display: flex; animation: fcin .16s ease; }
+.edpanes.fcplacing .edscroll { cursor: crosshair; }
