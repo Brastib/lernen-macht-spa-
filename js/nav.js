@@ -30,6 +30,7 @@ export function areaBar(cur, onPick, badges = {}) {
 export function features(a) {
   const f = [
     { id: 'scan', area: 'Lernen', name: 'Scannen', ic: 'camera', kw: 'kamera foto buch seite einscannen', run: a.scan },
+    { id: 'serial', area: 'Lernen', name: 'Serien-Scan (ganzes Kapitel)', ic: 'camera', kw: 'kapitel buch viele seiten automatisch doppelseite umblaettern', run: a.serial },
     { id: 'note', area: 'Lernen', name: 'Notiz', ic: 'pen', kw: 'schreiben pencil blatt heft', run: a.note },
     { id: 'worksheet', area: 'Lernen', name: 'Arbeitsblatt ausfüllen', ic: 'page', kw: 'scannen ausfuellen luecken', run: a.worksheet },
     { id: 'subject', area: 'Lernen', name: 'Fach anlegen', ic: 'plus', kw: 'neues fach hinzufuegen', run: a.addSubject },

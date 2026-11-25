@@ -2,7 +2,7 @@
 import { resumeVplanSetup, vplanCfg } from './vplan.js';
 import { renderMessages, unreadCount } from './messages.js';
 import * as db from './db.js';
-const APP_VERSION = '107';   // gleich wie VERSION in sw.js
+const APP_VERSION = '108';   // gleich wie VERSION in sw.js
 // Anzeige: bis 99 wie bisher, ab 100 als 1.0 … 1.99, dann 2.0 … (interne Nummer zählt weiter)
 const SHOW_VERSION = +APP_VERSION >= 100 ? Math.floor(+APP_VERSION / 100) + '.' + (+APP_VERSION % 100) : APP_VERSION;
 import { openEditor } from './editor.js';
@@ -133,6 +133,7 @@ async function renderLibrary() {
       iconBtn('search', 'Suchen', () => searchFlow()),
       iconBtn('more', 'Mehr', (e) => menu(e.currentTarget, [
         { label: 'Arbeitsblatt scannen und ausfüllen', icon: 'page', onClick: () => worksheetScan() },
+        { label: 'Serien-Scan (ganzes Kapitel) …', icon: 'camera', onClick: () => serialFromLibrary() },
         'sep',
         { label: 'Sicherung …', icon: 'save', onClick: () => backupSheet({ saveFile, onLoad: () => $('fileBackup').click(), after: render }) },
         { label: 'Sicherung laden', icon: 'restore', onClick: () => $('fileBackup').click() },
@@ -271,6 +272,7 @@ function featureActs(sphOn) {
     scan: () => startScan(INBOX, 'camera'),
     note: () => quickNote(),
     worksheet: () => worksheetScan(),
+    serial: () => serialFromLibrary(),
     addSubject: () => addSubjectFlow(),
     backup: () => backupSheet({ saveFile, onLoad: () => $('fileBackup').click(), after: render }),
     theme: () => themeSheet(),
@@ -531,6 +533,7 @@ async function renderBook() {
     else menu(e.currentTarget, Object.entries(PAPERS).map(([p, label]) => ({ label, icon: 'page', onClick: () => newSheet(p) })));
   }));
   if (isInbox && pages.length) actions.push(btn('Einsortieren', 'folder', () => go({ view: 'sort' })));
+  actions.push(btn('Serien-Scan', 'camera', () => serialScan(b.id)));
   actions.push(btn('Scannen', 'camera', () => startScan(b.id, 'camera'), '.primary'));
   setHeader({
     back: isInbox ? { label: 'Bibliothek', go: () => go({ view: 'library' }) } : { label: s.name, go: () => go({ view: 'subject', subject: s }) },
@@ -946,6 +949,19 @@ function worksheetScan() {
   toast('Arbeitsblatt fotografieren. Danach öffnet es sich direkt zum Ausfüllen.', 3500);
   startScan(INBOX, 'camera');
 }
+// ---------- Serien-Scan (Kamera bleibt offen, löst selbst aus) ----------
+async function serialScan(bookId) {
+  (await import('./serial.js')).startSerialScan(bookId, { onDone: () => render() });
+}
+async function serialFromLibrary() {
+  (await import('./serial.js')).pickBookAndStart((bookId) => (bookId === INBOX ? render() : db.getBook(bookId).then(openBookById)));
+}
+async function openBookById(b) {
+  const s = b && (await db.listSubjects()).find((x) => x.id === b.subjectId);
+  if (!b || !s) return render();
+  go({ view: 'book', book: b, subject: s });
+}
+
 // ---------- Scannen fertig ----------
 setOnSaved(async (bookId) => {
   if (worksheetPending) {
