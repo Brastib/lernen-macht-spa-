@@ -3019,10 +3019,12 @@ div.acopt { cursor: default; }
 .tkfuelbar { grid-column: 1 / -1; }
 .tkfuelbar i { background: var(--pc, var(--accent)); }
 .tkextras { display: flex; gap: 6px; flex: 0 0 auto; }
-.tkex { position: relative; width: 48px; height: 48px; display: grid; place-items: center; border-radius: 14px; background: var(--bg); box-shadow: inset 0 0 0 1px var(--line); color: inherit; }
+.tkex { position: relative; width: 56px; height: 48px; display: flex; align-items: center; justify-content: center; gap: 4px; border-radius: 14px; background: var(--bg); box-shadow: inset 0 0 0 1px var(--line); color: inherit; }
 .tkex svg { width: 22px; height: 22px; }
 .tkex span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
-.tkex em { position: absolute; top: -5px; right: -5px; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 9px; background: var(--pc, var(--accent)); color: #fff; font: 700 11px/18px system-ui, sans-serif; font-style: normal; text-align: center; }
+.tkex svg { flex: none; width: 20px; height: 20px; }
+.tkex em { flex: none; min-width: 10px; font: 800 14px/1 system-ui, sans-serif; font-style: normal; color: var(--pc, var(--accent)); text-align: left; }
+.tkex:disabled em { color: var(--muted); }
 .tkhprow { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .tkshield { display: inline-flex; align-items: center; gap: 2px; font: 700 13px system-ui, sans-serif; color: var(--muted); flex: 0 0 auto; }
 .tkshield[hidden] { display: none; }

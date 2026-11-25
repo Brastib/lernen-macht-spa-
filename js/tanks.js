@@ -388,7 +388,13 @@ export function battle(fx, cfg) {
       else if (id === 'chute') { t.chute = true; pop(t.x, t.y - 70, 'Fallschirm bereit', t.p.color); }
       else { t.scope = true; pop(t.x, t.y - 70, 'Zielhilfe an', t.p.color); }
     }
-    const pop = (px, py, text, color) => { pops.push({ x: px, y: py, text, color, t: 0 }); };
+    // Meldungen so setzen, dass sie weder Namensschilder, Schadenszahlen noch andere Meldungen überdecken
+    const pop = (px, py, text, color) => {
+      const w = text.length * 12 + 24;
+      for (const t of T) if (Math.abs(px - t.x) < 70 * t.scale + w / 2) py = Math.min(py, (t.tagY ?? t.y - 58 * t.scale) - 74);
+      for (let k = 0; k < 8; k++) { const hit = pops.find((q) => q.t < 1.4 && Math.abs(q.x - px) < (q.w + w) / 2 && Math.abs((q.y - q.t * 30) - py) < 28); if (!hit) break; py = hit.y - hit.t * 30 - 30; }
+      pops.push({ x: clamp(px, w / 2 + 6, TW - w / 2 - 6), y: Math.max(40, py), text, color, t: 0, w });
+    };
     function sparkle(px, py, color) { for (let k = 0; k < 14; k++) parts.push({ x: px + (R() - 0.5) * 40, y: py + (R() - 0.5) * 20, vx: (R() - 0.5) * 60, vy: -40 - R() * 80, t: 0, life: 0.9, kind: 'spark', c: color, r: 2 + R() * 2 }); }
 
     // ---------- Punkte, Schaden ----------
@@ -924,7 +930,7 @@ export function battle(fx, cfg) {
     }
     function drawTag(t, tm) {
       if (wx === 'fog' && t !== cur() && Math.abs(t.x - cur().x) > 420) return;
-      const y0 = t.y - 58 * t.scale - (t === cur() && !over ? 6 : 0);
+      const y0 = t.tagY;
       x.font = `700 15px ${FONT}`; x.textAlign = 'center'; x.textBaseline = 'middle';
       const name = t.p.name.length > 12 ? t.p.name.slice(0, 11) + '…' : t.p.name, w = Math.max(64, x.measureText(name).width + 18);
       x.fillStyle = dark ? 'rgba(27,31,40,.85)' : 'rgba(255,255,255,.85)'; x.strokeStyle = t.p.color; x.lineWidth = 2;
@@ -936,11 +942,28 @@ export function battle(fx, cfg) {
     }
     function drawCrate(c, tm) {
       x.save(); x.translate(c.x, c.y); x.lineCap = 'round'; x.lineJoin = 'round'; x.strokeStyle = ink; x.lineWidth = 2;
-      if (c.fall) { const sw = Math.sin(tm / 400 + c.sway) * 0.12; x.rotate(sw); x.fillStyle = dark ? '#3b4252' : '#fff8e6'; x.beginPath(); x.arc(0, -52, 26, Math.PI, 0); x.closePath(); x.fill(); x.stroke(); x.beginPath(); x.moveTo(-26, -52); x.lineTo(-10, -24); x.moveTo(26, -52); x.lineTo(10, -24); x.moveTo(0, -52); x.lineTo(0, -24); x.stroke(); }
-      const gr = x.createLinearGradient(0, -26, 0, 0); gr.addColorStop(0, dark ? '#7a6440' : '#f0d6a0'); gr.addColorStop(1, dark ? '#5a4a30' : '#d4ad6a');
-      x.fillStyle = gr; prect(x, -14, -26, 28, 26, 7, 0.6); x.fill(); x.stroke();
-      x.strokeStyle = dark ? '#c9a46a' : '#9a6b2f'; x.lineWidth = 1.5; x.beginPath(); x.moveTo(-14, -13); x.lineTo(14, -13); x.moveTo(-6, -26); x.lineTo(-6, 0); x.stroke();
-      x.fillStyle = c.kind === 'hp' ? '#2fbf71' : c.kind.startsWith('w:') ? '#e0483e' : '#4f7cff'; x.beginPath(); x.arc(5, -19, 4.5, 0, Math.PI * 2); x.fill();
+      if (c.fall) {
+        const sw = Math.sin(tm / 400 + c.sway) * 0.12; x.rotate(sw);
+        const cg2 = x.createLinearGradient(-28, 0, 28, 0); cg2.addColorStop(0, dark ? '#3b4252' : '#ffffff'); cg2.addColorStop(1, dark ? '#4b5468' : '#ffe9c2');
+        x.fillStyle = cg2; x.beginPath(); x.arc(0, -54, 28, Math.PI, 0); x.quadraticCurveTo(14, -48, 0, -52); x.quadraticCurveTo(-14, -48, -28, -54); x.closePath(); x.fill(); x.stroke();
+        x.lineWidth = 1.2; x.beginPath(); x.moveTo(-9, -80); x.quadraticCurveTo(-12, -64, -14, -51); x.moveTo(9, -80); x.quadraticCurveTo(12, -64, 14, -51); x.stroke();
+        x.lineWidth = 1.4; x.beginPath(); x.moveTo(-27, -54); x.lineTo(-12, -26); x.moveTo(27, -54); x.lineTo(12, -26); x.moveTo(-1, -52); x.lineTo(0, -26); x.stroke();
+      } else { x.fillStyle = 'rgba(0,0,0,.18)'; x.beginPath(); x.ellipse(0, 1, 18, 3.5, 0, 0, Math.PI * 2); x.fill(); }
+      // Holzkiste mit Brettern und Eckbeschlägen
+      const gr = x.createLinearGradient(0, -28, 0, 0); gr.addColorStop(0, dark ? '#8a7048' : '#f3d9a2'); gr.addColorStop(1, dark ? '#5e4a2e' : '#d3a75f');
+      x.fillStyle = gr; prect(x, -15, -28, 30, 28, 7, 0.5); x.fill();
+      x.strokeStyle = dark ? 'rgba(255,230,180,.25)' : 'rgba(120,70,20,.35)'; x.lineWidth = 1.2; x.beginPath(); x.moveTo(-13, -19); x.lineTo(13, -19); x.moveTo(-13, -10); x.lineTo(13, -10); x.stroke();
+      x.strokeStyle = dark ? '#c9a46a' : '#8a5a22'; x.lineWidth = 2.2; x.beginPath(); x.moveTo(-12, -25); x.lineTo(12, -3); x.stroke();
+      x.fillStyle = dark ? '#aab2c0' : '#7b8494'; [[-15, -28], [11, -28], [-15, -4], [11, -4]].forEach(([qx, qy]) => x.fillRect(qx, qy, 4, 4));
+      x.strokeStyle = ink; x.lineWidth = 2; prect(x, -15, -28, 30, 28, 7, 0.5); x.stroke();
+      // Etikett: Leben = Kreuz, Waffe = Granate, Extra = Stern
+      const kc = c.kind === 'hp' ? '#2fbf71' : c.kind.startsWith('w:') ? '#e0483e' : '#4f7cff';
+      x.fillStyle = dark ? '#1b1f28' : '#ffffff'; x.beginPath(); x.arc(0, -14, 8.5, 0, Math.PI * 2); x.fill(); x.strokeStyle = kc; x.lineWidth = 2; x.stroke();
+      x.fillStyle = kc;
+      if (c.kind === 'hp') { x.fillRect(-1.8, -19, 3.6, 10); x.fillRect(-5, -15.8, 10, 3.6); }
+      else if (c.kind.startsWith('w:')) { x.beginPath(); x.arc(0, -13, 4, 0, Math.PI * 2); x.fill(); x.fillRect(-1.2, -19.5, 2.4, 3.5); }
+      else { x.beginPath(); for (let k = 0; k < 10; k++) { const a = -Math.PI / 2 + k * Math.PI / 5, rr = k % 2 ? 2.4 : 5.6; x.lineTo(Math.cos(a) * rr, -14 + Math.sin(a) * rr); } x.closePath(); x.fill(); }
+      if (!c.fall) { const g = 0.5 + 0.5 * Math.sin(tm / 300 + c.sway); x.globalAlpha = 0.35 * g; x.strokeStyle = kc; x.lineWidth = 3; prect(x, -19, -32, 38, 36, 9, 0.3); x.stroke(); x.globalAlpha = 1; }
       x.restore();
     }
     function drawShell(s, tm) {
@@ -1090,7 +1113,18 @@ export function battle(fx, cfg) {
       drawGround();
       drawSnow(tm);
       for (const f of flames) { const a = Math.min(1, f.life); x.fillStyle = `rgba(255,${120 + Math.round(Math.sin(f.t * 20) * 40)},30,${0.85 * a})`; x.beginPath(); x.moveTo(f.x - 6, f.y); x.quadraticCurveTo(f.x - 7, f.y - 12, f.x, f.y - 20 - Math.sin(f.t * 15) * 5); x.quadraticCurveTo(f.x + 7, f.y - 12, f.x + 6, f.y); x.closePath(); x.fill(); }
-      for (const m of mines) { x.fillStyle = ink; x.beginPath(); x.arc(m.x, m.y - 4, 7, Math.PI, 0); x.fill(); x.fillStyle = m.armed && Math.sin(tm / 200) > 0 ? '#e0483e' : '#8a8f98'; x.beginPath(); x.arc(m.x, m.y - 11, 2.5, 0, Math.PI * 2); x.fill(); }
+      for (const m of mines) {
+        x.save(); x.translate(m.x, m.y); x.lineCap = 'round';
+        x.fillStyle = 'rgba(0,0,0,.2)'; x.beginPath(); x.ellipse(0, 1, 13, 3, 0, 0, Math.PI * 2); x.fill();
+        x.strokeStyle = ink; x.lineWidth = 2.4; x.beginPath(); for (let k = 0; k < 5; k++) { const a = Math.PI * (1.08 + k * 0.21); x.moveTo(Math.cos(a) * 9, -3 + Math.sin(a) * 9); x.lineTo(Math.cos(a) * 14, -3 + Math.sin(a) * 14); } x.stroke();
+        const mg = x.createLinearGradient(0, -12, 0, 0); mg.addColorStop(0, dark ? '#7a808c' : '#6b717c'); mg.addColorStop(1, dark ? '#3a3f4b' : '#2e323a');
+        x.fillStyle = mg; x.beginPath(); x.arc(0, -2, 10, Math.PI, 0); x.lineTo(11, 0); x.lineTo(-11, 0); x.closePath(); x.fill(); x.lineWidth = 1.6; x.stroke();
+        x.fillStyle = 'rgba(255,255,255,.25)'; x.beginPath(); x.ellipse(-4, -7, 3, 1.6, -0.5, 0, Math.PI * 2); x.fill();
+        const on = m.armed && Math.sin(tm / 200) > 0;
+        if (on) { x.fillStyle = 'rgba(255,80,60,.35)'; x.beginPath(); x.arc(0, -13, 7, 0, Math.PI * 2); x.fill(); }
+        x.fillStyle = on ? '#ff4d3d' : m.armed ? '#a33' : '#8a8f98'; x.beginPath(); x.arc(0, -13, 2.8, 0, Math.PI * 2); x.fill(); x.lineWidth = 1; x.stroke();
+        x.restore();
+      }
       if (solo) for (const q of targets) if (!q.hit) drawTarget(q, tm);
       crates.forEach((c) => drawCrate(c, tm));
       drawAim(tm);
@@ -1103,9 +1137,11 @@ export function battle(fx, cfg) {
       booms.forEach(drawBoom);
       drawParts();
       drawWeather(tm, dt);
+      // Namensschilder: liegen zwei Panzer dicht beieinander, wird ein Schild nach oben geschoben
+      { const placed = []; T.slice().sort((a, b) => (a === cur() ? -1 : b === cur() ? 1 : a.x - b.x)).forEach((t) => { let y0 = t.y - 58 * t.scale - (t === cur() && !over ? 6 : 0); for (let k = 0; k < 8; k++) { const hit = placed.find((q) => Math.abs(q.x - t.x) < 96 && Math.abs(q.y - y0) < 34); if (!hit) break; y0 = hit.y - 36; } t.tagY = y0; placed.push({ x: t.x, y: y0 }); }); }
       T.forEach((t) => drawTag(t, tm));
       x.textAlign = 'center'; x.textBaseline = 'alphabetic';
-      T.forEach((t) => { if (t.hurt > 0 && t.lost) { x.globalAlpha = t.hurt; x.font = `800 28px ${FONT}`; x.lineWidth = 4; x.strokeStyle = dark ? '#1b1f28' : '#fff'; x.strokeText(`-${t.lost}`, t.x, t.y - 90 * t.scale - (1 - t.hurt) * 30); x.fillStyle = '#e0483e'; x.fillText(`-${t.lost}`, t.x, t.y - 90 * t.scale - (1 - t.hurt) * 30); x.globalAlpha = 1; } });
+      T.forEach((t) => { if (t.hurt > 0 && t.lost) { x.globalAlpha = t.hurt; x.font = `800 28px ${FONT}`; x.lineWidth = 4; x.strokeStyle = dark ? '#1b1f28' : '#fff'; const dy = (t.tagY ?? t.y - 58 * t.scale) - 30 - (t === cur() && phase === 'aim' ? 16 : 0) - (1 - t.hurt) * 24; x.strokeText(`-${t.lost}`, t.x, dy); x.fillStyle = '#e0483e'; x.fillText(`-${t.lost}`, t.x, dy); x.globalAlpha = 1; } });
       pops.forEach((q) => { x.globalAlpha = Math.min(1, (1.6 - q.t) * 2); x.font = `800 22px ${FONT}`; x.lineWidth = 4; x.strokeStyle = dark ? '#1b1f28' : '#fbfaf5'; x.strokeText(q.text, q.x, q.y - q.t * 30); x.fillStyle = q.color; x.fillText(q.text, q.x, q.y - q.t * 30); x.globalAlpha = 1; });
       x.restore();
       x.strokeStyle = ink; x.lineWidth = 2; x.strokeRect(0, 0, TW, TH);

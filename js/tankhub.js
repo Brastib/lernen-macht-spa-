@@ -19,6 +19,7 @@ export function tankHub(openFx, players, me) {
   let lob = store.get('tkLobby', null);
   if (!lob || !Array.isArray(lob.roster)) lob = { mode: 'ffa', map: 'random', weather: 'map', opts: defOpts(), roster: [{ id: ps[0].id, name: ps[0].name, color: ps[0].color, cpu: 0, team: 0 }, { name: 'Computer', color: '#8a8f98', cpu: 2, team: 1 }] };
   lob.opts = { ...defOpts(), ...lob.opts };
+  if (!MODE[lob.mode]) lob.mode = 'ffa';
   // Namen und Farben aus den Spielerprofilen übernehmen (falls umbenannt), gelöschte Profile rausnehmen
   lob.roster = lob.roster.filter((r) => { if (r.cpu || !r.id) return true; const p = ps.find((q) => q.id === r.id); if (!p) return false; r.name = p.name; r.color = p.color; return true; });
   if (!lob.roster.length) lob.roster = [{ id: ps[0].id, name: ps[0].name, color: ps[0].color, cpu: 0, team: 0 }];
