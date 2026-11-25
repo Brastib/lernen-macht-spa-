@@ -1,6 +1,7 @@
 // Paket 6 (Teil 2): Burgwache (Weg malen, Türme bauen, Gegner aufhalten) und Kritzelflipper (Flipper auf Papier).
 // Beide als Rekord allein oder nacheinander im Duell (mehr Punkte gewinnt).
 import { h, icon } from './ui.js';
+import { isPalm } from './pen.js';
 import { FONT, isDark, inkOf, paper, pline, prect, pcirc, hatch, shade, canvasBox, chip, rng } from './sketch.js';
 import { banner, fit, toWorld, resample } from './p6a.js';
 import { seq, frameUI, overText } from './hsgames.js';
@@ -57,7 +58,7 @@ export function pathSheet(fx, p, R, opt = {}) {
     };
     const ro = new ResizeObserver(draw); ro.observe(host);
     const at = (e) => { const g = fit(C, TW, TH), q = toWorld(C, g, e); return [clamp(q[0], 30, TW - 30), clamp(q[1], 30, TH - 30)]; };
-    C.cv.addEventListener('pointerdown', (e) => { e.preventDefault(); cur = [at(e)]; try { C.cv.setPointerCapture(e.pointerId); } catch (er) { /* egal */ } draw(); });
+    C.cv.addEventListener('pointerdown', (e) => { if (isPalm(e) || cur) return; e.preventDefault(); cur = [at(e)]; try { C.cv.setPointerCapture(e.pointerId); } catch (er) { /* egal */ } draw(); });
     C.cv.addEventListener('pointermove', (e) => { if (!cur) return; const q = at(e), l = cur[cur.length - 1]; if (Math.hypot(q[0] - l[0], q[1] - l[1]) > 6) cur.push(q); draw(); });
     C.cv.addEventListener('pointerup', () => {
       if (!cur) return; const pts = cur; cur = null;

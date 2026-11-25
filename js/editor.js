@@ -1,7 +1,7 @@
 // Schreib-Ansicht: mit Apple Pencil (oder Finger) auf Blätter und Scans schreiben.
 import * as db from './db.js';
 import { fillHit } from './paper.js';
-import { PAGE_W, A4_H, drawPaper, drawStroke, renderPage, pageHeight, blobToImage, paperLines, fitText, lhOf, lineHeight, textWidthMax, FONT } from './paper.js';
+import { PAGE_W, A4_H, drawPaper, drawStroke, drawStrokes, drawMarkerLayer, renderPage, pageHeight, blobToImage, paperLines, fitText, lhOf, lineHeight, textWidthMax, FONT } from './paper.js';
 import { makeTool, drawTool, hitTool, findEdge, snapPoint, niceAngle, niceRadius, magnetTool, TOOL_NAMES, KNOB_OFF, MM } from './tools.js';
 import { menu, sheet, h as el, toast, busy, promptSheet, shareReady, zoomBar } from './ui.js';
 import { compile, mathify, expoInput, supify } from './mathfn.js';
@@ -17,13 +17,13 @@ const COLORS = [
   ['#1d1d1f', 'Graphit'], ['#1f4fbf', 'Blau'], ['#c62f2f', 'Rot'],
   ['#23764a', 'Grün'], ['#f2c230', 'Gelb'], ['#e2679f', 'Rosa'],
 ];
-const SIZES = { pen: [1.8, 3, 5], marker: [14, 22, 32], text: [18, 24, 34] };
+const SIZES = { pen: [0.8, 1.6, 3, 5], marker: [9, 14, 22, 32], text: [14, 18, 24, 34] };
 const TOOLS = ['pen', 'marker', 'eraser', 'lasso', 'text', 'fill'];
 const FANG = 1.8 * MM;          // Fangweite der Karo-Hilfe
 const ERASER_R = 10;
 
 let page = null, bg = null, strokes = [], undo = [], redo = [];
-let tool = 'pen', color = COLORS[0][0], sizeIdx = 1, markerColor = COLORS[4][0];
+let tool = 'pen', color = COLORS[0][0], sizeIdx = (() => { try { const v = +localStorage.getItem('edSize'); return localStorage.getItem('edSize') !== null && v >= 0 && v <= 3 ? v : 2; } catch (err) { return 2; } })(), markerColor = COLORS[4][0];
 let fingerDraws = true, penSeen = false;
 let zoom = 1, onCloseCb = null, saveTimer = null, dirty = false;
 let cur = null;               // Strich, der gerade gezeichnet wird
@@ -63,7 +63,7 @@ async function loadInto(p) {
   page = p; strokes = ink; bg = img;
   undo = []; redo = []; dirty = false; zoom = 1;
   $('edPage').style.transform = ''; zAnim = false;
-  cur = null; touches.clear(); pinch = null; tpl = null; tplDrag = null; sel = null; textEd = null;
+  cur = null; markLive = null; touches.clear(); pinch = null; tpl = null; tplDrag = null; sel = null; textEd = null;
   band = { x0: 0, x1: 0, y0: 0, y1: 0, s: 0 };
   exitGapMode();
 }
@@ -107,7 +107,7 @@ function activate(i) {
   finishStroke(); commitText(); exitGapMode();
   if (sel) { sel = null; drawSel(); }
   flushSave();
-  touches.clear(); if (pinch) endPinch(); tplDrag = null; cur = null;
+  touches.clear(); if (pinch) endPinch(); tplDrag = null; cur = null; endMarkLive();
   stash[pane] = grab();
   pane = i;
   put(stash[i]); stash[i] = null;
@@ -348,6 +348,7 @@ $('ed_fill').addEventListener('click', () => {
 });
 [...$('edSizes').children].forEach((b, i) => b.addEventListener('click', () => {
   sizeIdx = i;
+  try { localStorage.setItem('edSize', String(i)); } catch (err) { /* egal */ }
   if (textEd) { setTextSize(textEd.st, SIZES.text[i]); styleText(); }
   updateToolbar();
 }));
@@ -574,7 +575,7 @@ const scale = () => band.s || $('edInk').width / PAGE_W;
 function redrawInk() {
   const c = $('edInk'), ctx = c.getContext('2d');
   wipe(c);
-  const s = scale(), y0 = band.y0, y1 = band.y1;
+  const s = scale(), y0 = band.y0, y1 = band.y1, vis = [];
   for (const st of strokes) {
     if (textEd && st === textEd.st) continue;
     if (y0 > 0 || y1 < pageHeight(page) || band.x0 > 0 || band.x1 < PAGE_W) {
@@ -586,11 +587,18 @@ function redrawInk() {
       if (st.tool !== 'fill' && (hi < y0 - pad || lo > y1 + pad)) continue;
       if (st.tool !== 'fill' && st.tool !== 'text' && (hx < band.x0 - pad || lx > band.x1 + pad)) continue;
     }
-    drawStroke(ctx, st, s);
+    vis.push(st);
   }
+  // Beim Markern liegen die alten Marker solange auf der Live-Ebene (zusammen mit dem neuen Strich)
+  drawStrokes(ctx, vis, s, { noMarkers: !!markLive });
+  if (markLive) markLive.list = vis.filter((st) => st.tool === 'marker');
   lpRefresh();
 }
 
+// Marker-Strich läuft: Marker sind aus der Tinten-Ebene genommen und liegen auf der Live-Ebene
+let markLive = null;
+function startMarkLive() { markLive = { list: [] }; redrawInk(); }
+function endMarkLive() { if (!markLive) return; markLive = null; redrawInk(); }
 function clearLive() {
   wipe($('edLive'));
   if (LP.on) lpWipe('lpLive');
@@ -605,7 +613,8 @@ function scheduleLive() {
     const ctx = $('edLive').getContext('2d');
     if (cur.tool === 'marker') {
       clearLive();
-      drawStroke(ctx, cur, scale());
+      // alte Marker + neuer Strich als EINE Ebene: Überlappen wird nicht dunkler
+      drawMarkerLayer(ctx, [...(markLive ? markLive.list : []), cur], scale());
       if (cur.lupe) lpLiveDraw(cur, 3);
     } else {
       // Stift: nur die neuen Stücke zeichnen
@@ -620,8 +629,8 @@ function scheduleLive() {
 function toPage(e) {
   const r = $('edPage').getBoundingClientRect();
   return [
-    Math.round(((e.clientX - r.left) / r.width) * PAGE_W * 10) / 10,
-    Math.round(((e.clientY - r.top) / r.width) * PAGE_W * 10) / 10,
+    Math.round(((e.clientX - r.left) / r.width) * PAGE_W * 50) / 50,
+    Math.round(((e.clientY - r.top) / r.width) * PAGE_W * 50) / 50,
   ];
 }
 function pressureOf(e) {
@@ -650,6 +659,7 @@ area.addEventListener('contextmenu', (e) => e.preventDefault());
 area.addEventListener('selectstart', (e) => { if (!e.target.closest('.edtext')) e.preventDefault(); });
 
 area.addEventListener('pointerdown', (e) => {
+  hideHover();
   if (!page) return;
   if (e.target.closest('.edtext')) return;   // im Textfeld: normal tippen/markieren
   if (textEd) {
@@ -741,13 +751,15 @@ area.addEventListener('pointerdown', (e) => {
     pts: [r1(sx), r1(sy), pressureOf(e)],
     snap: snapEdge,
   };
+  if (cur.tool === 'marker') startMarkLive();
   liveFrom = 3;
   clearLive();
   scheduleLive();
 });
-const r1 = (v) => Math.round(v * 10) / 10;
+const r1 = (v) => Math.round(v * 50) / 50;   // 0,02 Einheiten: fein genug auch für winzige Schrift beim Zoomen
 
 area.addEventListener('pointermove', (e) => {
+  if (!cur && e.pointerType === 'pen' && !e.buttons) { penHover(e, ($('edPage').getBoundingClientRect().width || PAGE_W) / PAGE_W); return; }
   if (tplDrag && (e.pointerId === tplDrag.id || e.pointerId === tplDrag.id2)) { moveTpl(e); return; }
   if (touches.has(e.pointerId)) { moveTouch(e); return; }
   if (!cur || e.pointerId !== cur.id) return;
@@ -760,6 +772,8 @@ area.addEventListener('pointermove', (e) => {
     return;
   }
   const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [];
+  // Mindestabstand zwischen Punkten in Bildschirm-Pixeln (beim Heranzoomen also feiner auf dem Blatt)
+  const minD = 0.45 * PAGE_W / ($('edPage').getBoundingClientRect().width || PAGE_W);
   for (const ev of (evs.length ? evs : [e])) {
     let [x, y] = toPage(ev);
     if (cur.erase) { eraseAt(x, y); continue; }
@@ -767,7 +781,7 @@ area.addEventListener('pointermove', (e) => {
     if (cur.lassoMove) { moveSel(x - cur.start[0], y - cur.start[1]); continue; }
     if (cur.snap) { [x, y] = snapPoint(tpl, cur.snap, x, y); x = r1(x); y = r1(y); }
     const n = cur.pts.length;
-    if (Math.hypot(x - cur.pts[n - 3], y - cur.pts[n - 2]) < 0.6) continue;
+    if (Math.hypot(x - cur.pts[n - 3], y - cur.pts[n - 2]) < minD) continue;
     cur.pts.push(x, y, pressureOf(ev));
   }
   if (cur.lasso) drawSel();
@@ -805,6 +819,7 @@ function finishStroke() {
   const c = cur;
   cur = null;
   if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
+  if (!(c.tool === 'marker' && !c.erase && !c.lasso)) endMarkLive();
   if (c.textTap) { if (!c.scrolling) { const g = gapMode && !textAt(c.at[0], c.at[1]) ? gapAt(gaps, c.at[0], c.at[1]) : null; if (g) openGapText(g); else openText(c.at[0], c.at[1]); } return; }
   if (c.lasso) { pickSel(c.pts); updateToolbar(); return; }
   if (c.lassoMove) {
@@ -816,10 +831,11 @@ function finishStroke() {
     if (c.removed.length) { undo.push({ type: 'erase', items: c.removed }); redo = []; changed(); }
   } else {
     if (gapMode && c.tool === 'pen' && gapTap(c)) { clearLive(); updateToolbar(); return; }
+    if (c.tool === 'marker' && c.pts.length < 3) { endMarkLive(); clearLive(); updateToolbar(); return; }
     const st = { tool: c.tool, color: c.color, size: c.size, pts: assistStroke(c) };
     strokes.push(st);
     if (gapMode && c.tool === 'pen') gapStroke(st);
-    drawStroke($('edInk').getContext('2d'), st, scale());
+    if (st.tool === 'marker') endMarkLive(); else drawStroke($('edInk').getContext('2d'), st, scale());
     undo.push({ type: 'add', stroke: st }); redo = [];
     changed();
     if (c.lupe) lpAfter(st);
@@ -1150,7 +1166,7 @@ function plotInto(ax, fnc, src, color, group) {
       const n = out.length;
       if (i === pts.length - 3 || Math.hypot(pts[i] - out[n - 3], pts[i + 1] - out[n - 2]) > 2.5) out.push(pts[i], pts[i + 1], pts[i + 2]);
     }
-    group.push({ tool: 'pen', color, size: SIZES.pen[1], pts: out });
+    group.push({ tool: 'pen', color, size: SIZES.pen[2], pts: out });
   }
   // Beschriftung am Ende des Graphen
   const used = strokes.concat(group).filter((st) => st.fnOf === ax.pts.join(',')).length;
@@ -1870,7 +1886,7 @@ function lpDrawInk() {
   const c = lpEl('lpInk'), ctx = c.getContext('2d'), S = LP.P * LP.dpr;
   ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, c.width, c.height);
   ctx.setTransform(1, 0, 0, 1, -LP.x * S, -LP.y * S);
-  const x0 = LP.x, x1 = LP.x + LP.w, y0 = LP.y, y1 = LP.y + LP.h;
+  const x0 = LP.x, x1 = LP.x + LP.w, y0 = LP.y, y1 = LP.y + LP.h, vis = [];
   for (const st of strokes) {
     if (textEd && st === textEd.st) continue;
     if (st.tool !== 'fill' && st.tool !== 'text' && st.tool !== 'axes') {
@@ -1879,8 +1895,10 @@ function lpDrawInk() {
       for (let i = 1; i < p.length; i += 3) { if (p[i] < lo) lo = p[i]; if (p[i] > hi) hi = p[i]; if (p[i - 1] < lx) lx = p[i - 1]; if (p[i - 1] > hx) hx = p[i - 1]; }
       if (hi < y0 - pad || lo > y1 + pad || hx < x0 - pad || lx > x1 + pad) continue;
     }
-    drawStroke(ctx, st, S);
+    vis.push(st);
   }
+  drawStrokes(ctx, vis, S, { noMarkers: !!markLive });
+  LP.marks = vis.filter((st) => st.tool === 'marker');
 }
 function lpRefresh() {
   if (!LP.on || LP.raf) return;
@@ -1891,7 +1909,8 @@ function lpLiveDraw(c, from) {
   const cv = lpEl('lpLive'), ctx = cv.getContext('2d'), S = LP.P * LP.dpr;
   if (c.tool === 'marker' || from <= 3) { ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, cv.width, cv.height); from = 3; }
   ctx.setTransform(1, 0, 0, 1, -LP.x * S, -LP.y * S);
-  drawStroke(ctx, c, S, from, false);
+  if (c.tool === 'marker') drawMarkerLayer(ctx, [...(LP.marks || []), c], S);
+  else drawStroke(ctx, c, S, from, false);
 }
 function lpToPage(e) {
   const r = lpEl('lpStage').getBoundingClientRect();
@@ -1990,6 +2009,7 @@ const lpStage = lpEl('lpStage');
 for (const t of ['touchstart', 'touchmove']) lpStage.addEventListener(t, (e) => e.preventDefault(), { passive: false });
 lpStage.addEventListener('contextmenu', (e) => e.preventDefault());
 lpStage.addEventListener('pointerdown', (e) => {
+  hideHover();
   if (!page || !LP.on) return;
   e.preventDefault();
   if (e.pointerType === 'pen' && !penSeen) { penSeen = true; if (fingerDraws) { fingerDraws = false; updateToolbar(); } }
@@ -2009,11 +2029,13 @@ lpStage.addEventListener('pointerdown', (e) => {
   if (tool === 'eraser') { cur = { erase: true, lupe: true, id: e.pointerId, type: e.pointerType, removed: [] }; eraseAt(x, y); return; }
   const t = tool === 'marker' ? 'marker' : 'pen';
   cur = { id: e.pointerId, type: e.pointerType, tool: t, lupe: true, color: t === 'marker' ? markerColor : color, size: SIZES[t][sizeIdx], pts: [x, y, pressureOf(e)], snap: null };
+  if (t === 'marker') startMarkLive();
   liveFrom = 3;
   clearLive();
   scheduleLive();
 });
 lpStage.addEventListener('pointermove', (e) => {
+  if (!cur && e.pointerType === 'pen' && !e.buttons) { penHover(e, LP.P); return; }
   if (LP.pan && e.pointerId === LP.pan.id) {
     LP.x = LP.pan.x - (e.clientX - LP.pan.cx) / LP.P;
     LP.y = LP.pan.y - (e.clientY - LP.pan.cy) / LP.P;
@@ -2026,7 +2048,7 @@ lpStage.addEventListener('pointermove', (e) => {
     const [x, y] = lpToPage(ev);
     if (cur.erase) { eraseAt(x, y); continue; }
     const n = cur.pts.length;
-    if (Math.hypot(x - cur.pts[n - 3], y - cur.pts[n - 2]) < 0.15) continue;
+    if (Math.hypot(x - cur.pts[n - 3], y - cur.pts[n - 2]) < 0.45 / LP.P) continue;
     cur.pts.push(x, y, pressureOf(ev));
   }
   if (!cur.erase) scheduleLive();
@@ -2066,3 +2088,25 @@ lpGrip.addEventListener('pointercancel', lpGripUp);
 for (const t of ['touchstart', 'touchmove']) lpGrip.addEventListener(t, (e) => { e.stopPropagation(); e.preventDefault(); }, { passive: false });
 window.addEventListener('resize', () => { if (LP.on && page) requestAnimationFrame(lpSync); });
 window.__lupe = () => ({ on: LP.on, x: LP.x, y: LP.y, w: LP.w, h: LP.h, m: LP.m, lineX: LP.lineX, auto: LP.auto });
+
+// ---------- Pencil schwebt über dem Blatt (iPad Pro mit Pencil Pro/2): Punkt zeigt, wo der Strich landet ----------
+const hoverDot = document.createElement('div');
+hoverDot.className = 'penhover';
+hoverDot.hidden = true;
+document.body.append(hoverDot);
+let hoverT = 0;
+function penHover(e, k) {
+  // k = CSS-Pixel pro Seiten-Einheit
+  if (!page || !['pen', 'marker', 'eraser'].includes(tool)) { hideHover(); return; }
+  const t = tool;
+  const d = t === 'eraser' ? ERASER_R * 2 * k : t === 'marker' ? SIZES.marker[sizeIdx] * k : Math.max(2, SIZES.pen[sizeIdx] * 0.8 * k);
+  hoverDot.hidden = false;
+  hoverDot.className = 'penhover ' + t;
+  hoverDot.style.setProperty('--c', t === 'marker' ? markerColor : color);
+  hoverDot.style.width = hoverDot.style.height = Math.max(3, d) + 'px';
+  hoverDot.style.transform = `translate(${e.clientX}px, ${e.clientY}px) translate(-50%, -50%)`;
+  clearTimeout(hoverT);
+  hoverT = setTimeout(hideHover, 450);
+}
+function hideHover() { hoverDot.hidden = true; clearTimeout(hoverT); }
+for (const el of [...areas, lpStage]) el.addEventListener('pointerleave', (e) => { if (e.pointerType === 'pen') hideHover(); });

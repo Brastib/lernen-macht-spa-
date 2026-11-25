@@ -1,5 +1,6 @@
 // Papier-Spiele, Paket 4 (Teil 2): Kritzelgolf (Bahn selbst malen, dann putten) und Malraten (einer malt, der andere rät).
 import { h, icon, toast } from './ui.js';
+import { attachPen, smoothPath, isPalm } from './pen.js';
 import { FONT, isDark, inkOf, paper, pline, prect, pcirc, hatch, shade, canvasBox, chip, store, rng, turnCard } from './sketch.js';
 
 // ======================================================================
@@ -90,6 +91,7 @@ export function drawCourseSheet(fx, p, n, R, opt = {}) {
     const toW = (e) => { const g = fieldGeo(C), r = C.cv.getBoundingClientRect(); return [Math.max(0, Math.min(GW, (e.clientX - r.left - g.ox) / g.U)), Math.max(0, Math.min(GH, (e.clientY - r.top - g.oy) / g.U))]; };
     const near = (pt, q, d) => Math.hypot(pt[0] - q[0], pt[1] - q[1]) < d;
     C.cv.addEventListener('pointerdown', (e) => {
+      if (isPalm(e) || cur || drag) return;
       e.preventDefault(); const pt = toW(e); try { C.cv.setPointerCapture(e.pointerId); } catch (er) { /* egal */ }
       if (tool === 'start' || near(pt, c.start, 30)) { drag = 'start'; c.start = pt; }
       else if (tool === 'hole' || near(pt, c.hole, 30)) { drag = 'hole'; c.hole = pt; }
@@ -272,11 +274,12 @@ function guessRound(fx, { drawer, guesser, word, R, replay = null, time = 60, ti
     let msg = '', msgT = 0;
     // Malen (Koordinaten 0..1000 × 0..700, damit Bilder auf jedem Gerät gleich aussehen)
     const geo = () => { const U = Math.min(C.cw / 1000, C.ch / 700); return { U, ox: (C.cw - 1000 * U) / 2, oy: (C.ch - 700 * U) / 2 }; };
-    const toW = (e) => { const g = geo(), r = C.cv.getBoundingClientRect(); return [Math.round((e.clientX - r.left - g.ox) / g.U), Math.round((e.clientY - r.top - g.oy) / g.U)]; };
+    const toW = (e) => { const g = geo(), r = C.cv.getBoundingClientRect(); return [Math.round((e.clientX - r.left - g.ox) / g.U * 10) / 10, Math.round((e.clientY - r.top - g.oy) / g.U * 10) / 10]; };
     if (!replay) {
-      C.cv.addEventListener('pointerdown', (e) => { if (done) return; e.preventDefault(); const [a, b] = toW(e); curS = { c: color, w: width, p: [[a, b, Math.round(performance.now() - t0)]] }; strokes.push(curS); try { C.cv.setPointerCapture(e.pointerId); } catch (er) { /* egal */ } });
-      C.cv.addEventListener('pointermove', (e) => { if (!curS) return; const [a, b] = toW(e), l = curS.p[curS.p.length - 1]; if (Math.hypot(a - l[0], b - l[1]) > 3) curS.p.push([a, b, Math.round(performance.now() - t0)]); });
-      const up = () => { curS = null; }; C.cv.addEventListener('pointerup', up); C.cv.addEventListener('pointercancel', up);
+      // Pencil: alle Zwischenpunkte, Handballen wird ignoriert
+      attachPen(C.cv, { down: (e) => { if (done) return false; const [a, b] = toW(e); curS = { c: color, w: width, p: [[a, b, Math.round(performance.now() - t0)]] }; strokes.push(curS); return true; },
+        move: (ev) => { if (!curS) return; const [a, b] = toW(ev), l = curS.p[curS.p.length - 1]; if (Math.hypot(a - l[0], b - l[1]) > 1) curS.p.push([a, b, Math.round(performance.now() - t0)]); },
+        up: () => { curS = null; } });
     }
     function answer(w, el) {
       if (done || lock > 0) return;
@@ -293,7 +296,7 @@ function guessRound(fx, { drawer, guesser, word, R, replay = null, time = 60, ti
     function drawStroke(s, upto) {
       const pts = upto == null ? s.p : s.p.filter((q) => q[2] <= upto); if (!pts.length) return;
       x.strokeStyle = s.c === 'erase' ? (dark ? '#1b1f28' : '#fbfaf5') : s.c === '#26262b' ? ink : s.c; x.lineWidth = s.w; x.lineCap = 'round'; x.lineJoin = 'round';
-      x.beginPath(); pts.forEach(([a, b], k) => (k ? x.lineTo(a, b) : x.moveTo(a, b))); if (pts.length === 1) x.lineTo(pts[0][0] + 0.1, pts[0][1]); x.stroke();
+      smoothPath(x, pts); x.stroke();
     }
     const total = replay ? Math.max(1, ...replay.flatMap((s) => s.p.map((q) => q[2]))) : 1;
     function frame(tm) {

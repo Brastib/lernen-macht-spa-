@@ -1,8 +1,10 @@
 // Malfläche für Games: Skins, Kämpfer und Waffen. Prüft eine Mindestgröße.
 import { h, icon, sheet, toast } from './ui.js';
+import { attachPen, smoothVar, pressureOf } from './pen.js';
 
 const PALETTE = ['#1d1d1f', '#ffffff', '#4f7cff', '#ff6b5a', '#2fbf71', '#f2b632', '#a46bff', '#ff7ac8', '#8a5a2b', '#8a8f98'];
-const S = 600;   // interne Auflösung
+const S = 600;   // Koordinaten der Zeichnung
+const Q = 2;     // Pixel pro Koordinate (scharf auf dem iPad-Bildschirm)
 
 // opts: { title, text, color, old (dataURL), min (Anteil der Fläche, den die Zeichnung überspannen muss),
 //         grip: [x, y] (0..1, Griff-Punkt für Waffen), removeLabel, stats(info) → Elemente }
@@ -11,7 +13,7 @@ export function paintSheet(opts) {
   let kind = opts.kind || (opts.kinds ? opts.kinds[0][0] : null);
   const minOf = () => (opts.minFor ? opts.minFor(kind) : opts.min || 0.5);
   return sheet(opts.title, (body, close) => {
-    const cv = h('canvas.skincv', { width: S, height: S });
+    const cv = h('canvas.skincv', { width: S * Q, height: S * Q });
     const x = cv.getContext('2d', { willReadFrequently: true });
     const strokes = [];
     let col = opts.color || '#1d1d1f', size = 14, erase = false, cur = null, box = null, pinMode = false, pin = null;
@@ -23,8 +25,14 @@ export function paintSheet(opts) {
     const save = h('button.btn.primary', { text: opts.saveLabel || 'Sichern', disabled: true });
     const G = opts.grip ? [opts.grip[0] * S, opts.grip[1] * S] : null;
 
-    function redraw() {
-      x.clearRect(0, 0, S, S);
+    function paintStroke(st, from) {
+      x.save(); x.globalCompositeOperation = st.erase ? 'destination-out' : 'source-over';
+      x.strokeStyle = st.col; x.fillStyle = st.col; x.lineCap = 'round'; x.lineJoin = 'round';
+      smoothVar(x, st.pts, (q) => q[2], undefined, undefined, from);
+      x.restore();
+    }
+    function redraw(fast) {
+      x.setTransform(1, 0, 0, 1, 0, 0); x.clearRect(0, 0, S * Q, S * Q); x.setTransform(Q, 0, 0, Q, 0, 0);
       for (const st of strokes) {
         if (st.img) {
           const k = Math.min(S * 0.8 / st.img.width, S * 0.8 / st.img.height, 1.6);
@@ -35,20 +43,15 @@ export function paintSheet(opts) {
           if (opts.pins && opts.oldPins && !st.pinsDone) { st.pinsDone = true; const ox = G && st.grip ? G[0] - st.grip[0] * w : (S - w) / 2, oy = G && st.grip ? G[1] - st.grip[1] * hh : (S - hh) / 2; for (const q of opts.oldPins) pins.push([ox + q[0] * w, oy + q[1] * hh]); }
           continue;
         }
-        x.save(); x.globalCompositeOperation = st.erase ? 'destination-out' : 'source-over';
-        x.strokeStyle = st.col; x.fillStyle = st.col; x.lineCap = 'round'; x.lineJoin = 'round';
-        const pts = st.pts;
-        if (pts.length === 1) { x.beginPath(); x.arc(pts[0][0], pts[0][1], pts[0][2] / 2, 0, Math.PI * 2); x.fill(); }
-        for (let i = 1; i < pts.length; i++) { x.lineWidth = pts[i][2]; x.beginPath(); x.moveTo(pts[i - 1][0], pts[i - 1][1]); x.lineTo(pts[i][0], pts[i][1]); x.stroke(); }
-        x.restore();
+        paintStroke(st, 1);
       }
-      check();
+      if (!fast) check();
     }
     function measure() {
-      const d = x.getImageData(0, 0, S, S).data;
+      const d = x.getImageData(0, 0, S * Q, S * Q).data, SQ = S * Q;
       let x0 = S, y0 = S, x1 = -1, y1 = -1, n = 0, far = 0, fx = 0, fy = 0, nearGrip = false; const min = minOf();
       for (let y = 0; y < S; y += 2) for (let xx = 0; xx < S; xx += 2) {
-        if (d[(y * S + xx) * 4 + 3] <= 40) continue;
+        if (d[((y * Q) * SQ + xx * Q) * 4 + 3] <= 40) continue;
         n++; if (xx < x0) x0 = xx; if (xx > x1) x1 = xx; if (y < y0) y0 = y; if (y > y1) y1 = y;
         if (G) { const dd = Math.hypot(xx - G[0], y - G[1]); if (dd > far) { far = dd; fx = xx; fy = y; } if (dd < 50) nearGrip = true; }
       }
@@ -78,32 +81,38 @@ export function paintSheet(opts) {
     }
     const info = () => box && { kind, n: box.n, len: box.far / S, ang: box.ang, w: (box.x1 - box.x0) / S, h: (box.y1 - box.y0) / S };
     const pos = (e) => { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) * S / r.width, (e.clientY - r.top) * S / r.height]; };
-    const width = (ev) => (erase ? size * 2.4 : size) * (ev.pointerType === 'pen' ? 0.5 + ev.pressure : 1);
-    cv.addEventListener('pointerdown', (e) => {
-      if (e.pointerType === 'touch' && e.width > 40) return;   // Handballen ignorieren
-      e.preventDefault(); cv.setPointerCapture(e.pointerId);
+    const width = (ev) => (erase ? Math.max(10, size * 2.4) : size) * (ev.pointerType === 'pen' ? 0.45 + pressureOf(ev) : 1);
+    let chkT = 0;
+    attachPen(cv, { down: (e) => {
       const [a, b] = pos(e);
       if (pinMode && multiOn()) {
         const k = pins.findIndex((q) => Math.hypot(q[0] - a, q[1] - b) < 34);
         if (k >= 0) pins.splice(k, 1); else if (pins.length < (opts.pins.max || 4)) pins.push([a, b]); else toast(`Höchstens ${opts.pins.max || 4}. Tipp einen Punkt an, um ihn zu entfernen.`);
-        check(); return;
+        check(); return false;
       }
-      if (pinMode) { pin = [a, b]; check(); return; }
+      if (pinMode) { pin = [a, b]; check(); return false; }
       cur = { col, erase, pts: [[a, b, width(e)]] };
-      strokes.push(cur); redraw();
-    });
-    cv.addEventListener('pointermove', (e) => {
+      strokes.push(cur); x.setTransform(Q, 0, 0, Q, 0, 0); paintStroke(cur, 1);
+      return true;
+    }, move: (ev) => {
       if (!cur) return;
-      for (const ev of (e.getCoalescedEvents ? e.getCoalescedEvents() : [e])) { const [a, b] = pos(ev); cur.pts.push([a, b, width(ev)]); }
-      redraw();
-    });
-    const up = () => { cur = null; };
-    cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
+      const [a, b] = pos(ev), l = cur.pts[cur.pts.length - 1];
+      if (Math.hypot(a - l[0], b - l[1]) < 0.4) return;
+      cur.pts.push([a, b, width(ev)]);
+      // nur das neue Stück zeichnen (schnell, kein Nachziehen); Größen-Prüfung höchstens 3× pro Sekunde
+      x.setTransform(Q, 0, 0, Q, 0, 0);
+      const n = cur.pts.length; x.save(); x.globalCompositeOperation = cur.erase ? 'destination-out' : 'source-over';
+      x.strokeStyle = cur.col; x.fillStyle = cur.col; x.lineCap = 'round'; x.lineJoin = 'round';
+      if (n >= 2) { const p0 = cur.pts[n - 2], p1 = cur.pts[n - 1], pm = n >= 3 ? cur.pts[n - 3] : p0;
+        x.lineWidth = (p0[2] + p1[2]) / 2; x.beginPath(); x.moveTo((pm[0] + p0[0]) / 2, (pm[1] + p0[1]) / 2); x.quadraticCurveTo(p0[0], p0[1], (p0[0] + p1[0]) / 2, (p0[1] + p1[1]) / 2); x.stroke(); }
+      x.restore();
+      const now = performance.now(); if (now - chkT > 350) { chkT = now; check(); }
+    }, up: () => { if (cur) { cur = null; redraw(); } } });
     const tools = h('div.skintools');
     const drawTools = () => tools.replaceChildren(
       h('div.skinrow', null, ...PALETTE.slice(0, 9).map((c) => h('button.swatch' + (!erase && c === col ? '.on' : ''), { 'aria-label': 'Farbe', style: { '--sw': c }, on: { click: () => { col = c; erase = false; drawTools(); } } }))),
       h('div.skinrow', null,
-        ...[[7, 'Dünn'], [14, 'Mittel'], [28, 'Dick']].map(([v, l]) => h('button.skinsize' + (size === v ? '.on' : ''), { 'aria-label': l, title: l, on: { click: () => { size = v; drawTools(); } } }, h('i', { style: { width: v / 2 + 4 + 'px', height: v / 2 + 4 + 'px' } }))),
+        ...[[3, 'Fein'], [7, 'Dünn'], [14, 'Mittel'], [28, 'Dick']].map(([v, l]) => h('button.skinsize' + (size === v ? '.on' : ''), { 'aria-label': l, title: l, on: { click: () => { size = v; drawTools(); } } }, h('i', { style: { width: Math.round(v / 2.4 + 3) + 'px', height: Math.round(v / 2.4 + 3) + 'px' } }))),
         h('span.skinsep'),
         h('button.icbtn' + (erase ? '.on' : ''), { 'aria-label': 'Radierer', title: 'Radierer', on: { click: () => { erase = !erase; drawTools(); } } }, icon('eraser')),
         h('button.icbtn', { 'aria-label': 'Rückgängig', title: 'Rückgängig', on: { click: () => { strokes.pop(); redraw(); } } }, icon('undo')),
@@ -112,9 +121,9 @@ export function paintSheet(opts) {
     save.addEventListener('click', () => {
       if (!box) return;
       const pad = 8, sx = Math.max(0, box.x0 - pad), sy = Math.max(0, box.y0 - pad);
-      const w = Math.min(S, box.x1 + pad) - sx, hh = Math.min(S, box.y1 + pad) - sy, k = Math.min(1, 260 / Math.max(w, hh));
+      const w = Math.min(S, box.x1 + pad) - sx, hh = Math.min(S, box.y1 + pad) - sy, k = Math.min(1.2, 360 / Math.max(w, hh));
       const out = document.createElement('canvas'); out.width = Math.max(1, Math.round(w * k)); out.height = Math.max(1, Math.round(hh * k));
-      out.getContext('2d').drawImage(cv, sx, sy, w, hh, 0, 0, out.width, out.height);
+      const oc = out.getContext('2d'); oc.imageSmoothingQuality = 'high'; oc.drawImage(cv, sx * Q, sy * Q, w * Q, hh * Q, 0, 0, out.width, out.height);
       close({ url: out.toDataURL('image/png'), w: w / S, h: hh / S, grip: G ? [(G[0] - sx) / w, (G[1] - sy) / hh] : null, muzzle: G ? [(box.fx - sx) / w, (box.fy - sy) / hh] : null, pin: pin ? [(pin[0] - sx) / w, (pin[1] - sy) / hh] : null, pins: multiOn() && pins.length ? pins.map((q) => [(q[0] - sx) / w, (q[1] - sy) / hh]) : null, kind, info: info() });
     });
     const guide = h('span.skinguide' + (G ? '.round' : ''));

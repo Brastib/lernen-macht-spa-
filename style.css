@@ -3632,3 +3632,10 @@ body:has(#editor.lupeon:not([hidden])) .toast { bottom: calc(clamp(200px, 29vh, 
 .alkafter:not(:empty) { margin-top: 10px; }
 .alkrow { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
 .alktarget { color: var(--accent); overflow-wrap: anywhere; }
+
+/* v111: Schwebe-Punkt des Pencils (zeigt, wo der Strich landet) */
+.penhover { position: fixed; left: 0; top: 0; z-index: 60; pointer-events: none; border-radius: 50%;
+  background: var(--c, #1d1d1f); opacity: .55; box-shadow: 0 0 0 1px rgba(255,255,255,.85); }
+.penhover.marker { border-radius: 2px; opacity: .35; }
+.penhover.eraser { background: transparent; opacity: 1; box-shadow: 0 0 0 1px rgba(0,0,0,.45), inset 0 0 0 1px rgba(255,255,255,.8); }
+.penhover[hidden] { display: none; }

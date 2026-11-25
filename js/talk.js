@@ -5,6 +5,7 @@ import * as db from './db.js';
 import { $, h, icon, toast, plural, sheet, confirmSheet } from './ui.js';
 import { editExam, editGrade, daysUntil, countdownText, approxLabel } from './school.js';
 import { micButton } from './speech.js';
+import { attachPen, smoothVar, keepSharp } from './pen.js';
 
 const pad = (n) => String(n).padStart(2, '0');
 const tid = () => Math.random().toString(36).slice(2, 9);
@@ -40,45 +41,37 @@ export function drawInk(cv, strokes, { dark = isDark() } = {}) {
   for (const s of strokes) {
     x.strokeStyle = (INK_COLORS[s.c] || INK_COLORS.ink)(dark);
     const p = s.p;
-    if (p.length === 1) { x.fillStyle = x.strokeStyle; x.beginPath(); x.arc(ox + p[0][0] * k, oy + p[0][1] * k, s.w * k * 0.6, 0, Math.PI * 2); x.fill(); continue; }
-    for (let i = 1; i < p.length; i++) {
-      const a = p[i - 1], b = p[i];
-      x.lineWidth = Math.max(1, s.w * k * (0.55 + 0.45 * ((a[2] + b[2]) / 200)));
-      x.beginPath(); x.moveTo(ox + a[0] * k, oy + a[1] * k); x.lineTo(ox + b[0] * k, oy + b[1] * k); x.stroke();
-    }
+    x.fillStyle = x.strokeStyle;
+    // weiche Linie, Breite nach Pencil-Druck
+    smoothVar(x, p, (q) => Math.max(0.8, s.w * k * (0.55 + 0.45 * (q[2] / 100))), (q) => ox + q[0] * k, (q) => oy + q[1] * k);
   }
 }
 function inkPad(strokes) {
   const wrap = h('div.tkpad');
   const cv = h('canvas.tkpadcv', { width: IW, height: IH });
-  let col = 'ink', erase = false, cur = null;
+  let col = 'ink', erase = false, cur = null, w = 5;
   const redraw = () => drawInk(cv, strokes);
-  const pos = (e) => { const r = cv.getBoundingClientRect(); return [Math.round((e.clientX - r.left) / r.width * IW), Math.round((e.clientY - r.top) / r.height * IH), Math.round((e.pressure && e.pointerType === 'pen' ? e.pressure : 0.5) * 100)]; };
+  keepSharp(cv, redraw);   // scharf in Bildschirm-Auflösung (vorher 800×400 gestreckt)
+  const pos = (e) => { const r = cv.getBoundingClientRect(); return [Math.round((e.clientX - r.left) / r.width * IW * 10) / 10, Math.round((e.clientY - r.top) / r.height * IH * 10) / 10, Math.round((e.pressure && e.pointerType === 'pen' ? e.pressure : 0.5) * 100)]; };
   const hitErase = (p) => { const i = strokes.findIndex((s) => s.p.some((q) => Math.hypot(q[0] - p[0], q[1] - p[1]) < 14)); if (i >= 0) { strokes.splice(i, 1); redraw(); } };
-  cv.addEventListener('pointerdown', (e) => {
-    e.preventDefault(); cv.setPointerCapture(e.pointerId);
+  let raf = 0;
+  attachPen(cv, { down: (e) => {
     const p = pos(e);
-    if (erase) { hitErase(p); cur = 'erase'; return; }
-    cur = { c: col, w: 5, p: [p] }; strokes.push(cur); redraw();
-  });
-  cv.addEventListener('pointermove', (e) => {
+    if (erase) { hitErase(p); cur = 'erase'; return true; }
+    cur = { c: col, w, p: [p] }; strokes.push(cur); redraw(); return true;
+  }, move: (ev) => {
     if (!cur) return;
-    const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
-    for (const ev of evs) {
-      const p = pos(ev);
-      if (cur === 'erase') { hitErase(p); continue; }
-      const l = cur.p[cur.p.length - 1];
-      if (Math.hypot(l[0] - p[0], l[1] - p[1]) >= 2) cur.p.push(p);
-    }
-    if (cur !== 'erase') redraw();
-  });
-  const end = () => { cur = null; };
-  cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end);
-  cv.addEventListener('touchstart', (e) => e.preventDefault(), { passive: false });
+    const p = pos(ev);
+    if (cur === 'erase') { hitErase(p); return; }
+    const l = cur.p[cur.p.length - 1];
+    if (Math.hypot(l[0] - p[0], l[1] - p[1]) >= 0.6) cur.p.push(p);
+    if (!raf) raf = requestAnimationFrame(() => { raf = 0; redraw(); });
+  }, up: () => { cur = null; } });
   const tools = h('div.tkpadtools');
   const drawTools = () => {
     tools.replaceChildren(
       ...Object.keys(INK_COLORS).map((c) => h('button.tkcol' + (!erase && col === c ? '.on' : ''), { type: 'button', 'aria-label': 'Farbe', style: { '--k': INK_COLORS[c](isDark()) }, on: { click: () => { col = c; erase = false; drawTools(); } } }, h('i'))),
+      ...[[2, 'Fein'], [5, 'Normal']].map(([v, l]) => h('button.tkpadbtn.tksize' + (w === v ? '.on' : ''), { type: 'button', 'aria-label': l, title: l, on: { click: () => { w = v; erase = false; drawTools(); } } }, h('i', { style: { '--d': (v + 2) + 'px' } }))),
       h('button.tkpadbtn' + (erase ? '.on' : ''), { type: 'button', 'aria-label': 'Radierer', title: 'Radierer', on: { click: () => { erase = !erase; drawTools(); } } }, icon('eraser')),
       h('button.tkpadbtn', { type: 'button', 'aria-label': 'Rückgängig', title: 'Rückgängig', on: { click: () => { strokes.pop(); redraw(); } } }, icon('undo')),
       h('button.tkpadbtn', { type: 'button', 'aria-label': 'Alles löschen', title: 'Alles löschen', on: { click: () => { strokes.length = 0; redraw(); } } }, icon('trash')));

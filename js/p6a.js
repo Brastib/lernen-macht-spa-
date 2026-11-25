@@ -2,6 +2,7 @@
 // Windbogen (Bogenschießen mit Wind, abwechselnd), Sternenduell (2 Raumschiffe, Schwerkraft um einen Planeten).
 // Rennen und Kissenschlacht brauchen eine Tastatur (WASD = Spieler 1, Pfeiltasten = Spieler 2). Ohne Tastatur: Schloss.
 import { h, icon } from './ui.js';
+import { isPalm } from './pen.js';
 import { FONT, UIFONT, isDark, inkOf, paper, pline, prect, pcirc, hatch, shade, canvasBox, chip, store, rng, turnCard } from './sketch.js';
 
 export function banner(x, cw, ch, dark, txt, y = null) {
@@ -81,7 +82,7 @@ export function drawTrackSheet(fx, p, R, opt = {}) {
       ok.disabled = !track;
     };
     const ro = new ResizeObserver(draw); ro.observe(host);
-    C.cv.addEventListener('pointerdown', (e) => { e.preventDefault(); const g = fit(C, RW, RH); cur = [toWorld(C, g, e)]; try { C.cv.setPointerCapture(e.pointerId); } catch (er) { /* egal */ } draw(); });
+    C.cv.addEventListener('pointerdown', (e) => { if (isPalm(e) || cur) return; e.preventDefault(); const g = fit(C, RW, RH); cur = [toWorld(C, g, e)]; try { C.cv.setPointerCapture(e.pointerId); } catch (er) { /* egal */ } draw(); });
     C.cv.addEventListener('pointermove', (e) => { if (!cur) return; const g = fit(C, RW, RH), q = toWorld(C, g, e), l = cur[cur.length - 1]; q[0] = Math.max(50, Math.min(RW - 50, q[0])); q[1] = Math.max(50, Math.min(RH - 50, q[1])); if (Math.hypot(q[0] - l[0], q[1] - l[1]) > 6) cur.push(q); draw(); });
     C.cv.addEventListener('pointerup', () => {
       if (!cur) return; const pts = cur; cur = null;
