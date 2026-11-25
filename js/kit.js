@@ -56,10 +56,10 @@ export function fracEl(fr, { mixed = false } = {}) {
   return h('span.frw', null, neg ? '−' : '', stack(n, fr.d));
 }
 const VAR_LETTERS = 'abcdkmnpqrstuvwx';
-export function calcWidget(root, { compact = false } = {}) {
+export function calcWidget(root, { compact = false, focus = true } = {}) {
   let deg = store.get('calcDeg', true), ans = store.get('calcAns', 0);
   let hist = store.get('calcHist', []), vars = store.get('calcVars', {}), fracFirst = store.get('calcFrac', false);
-  let last = null;   // letztes Ergebnis für die Bruchanzeige
+  let last = null, lastQ = '', lastName = null;   // letztes Ergebnis (für Bruchanzeige und „Aufs Blatt“)
   const inp = h('input.calcin', { type: 'text', inputmode: 'none', autocomplete: 'off', autocapitalize: 'off', spellcheck: false, placeholder: '0', 'aria-label': 'Rechnung' });
   const out = h('div.calcout', { text: ' ' });
   const histEl = h('div.calchist');
@@ -103,7 +103,7 @@ export function calcWidget(root, { compact = false } = {}) {
       const { v: r, name } = evalStr(v);
       if (!isFinite(r) && isNaN(r)) throw new Error('Das geht nicht (z. B. Wurzel aus einer negativen Zahl).');
       hist.unshift({ q: v, a: r }); hist = hist.slice(0, 30); store.set('calcHist', hist);
-      ans = r; store.set('calcAns', r); last = r;
+      ans = r; store.set('calcAns', r); last = r; lastQ = name ? '' : supify(v); lastName = name;
       if (name) { vars[name] = r; store.set('calcVars', vars); drawVars(); }
       show(r, name);
       inp.value = name ? '' : de(r).replace('−', '-');
@@ -157,7 +157,18 @@ export function calcWidget(root, { compact = false } = {}) {
   root.append(h('div.calc' + (compact ? '.compact' : ''), null,
     h('div.calcscreen', null, h('div.calctop', null, modeBtn, kbBtn, saveBtn, h('small', { text: 'Tippe oder schreib die Rechnung' })), inp, out, varsEl),
     pad, histEl));
-  setTimeout(() => inp.focus(), 50);
+  if (focus) setTimeout(() => inp.focus(), 50);
+  // Für den schwebenden Rechner: aktuelle Rechnung + Ergebnis (oder das letzte Ergebnis)
+  return {
+    result() {
+      const s = inp.value.trim();
+      if (s && !(last != null && s === de(last).replace('−', '-'))) {
+        try { const r = evalStr(s); if (isFinite(r.v)) return { q: r.name ? '' : supify(s), a: r.v, name: r.name }; } catch (e) { /* weiter */ }
+        return null;
+      }
+      return last != null ? { q: lastQ, a: last, name: lastName } : null;
+    },
+  };
 }
 function fact(n) { if (n > 170) return Infinity; let r = 1; for (let i = 2; i <= n; i++) r *= i; return r; }
 function calcModes(root) {

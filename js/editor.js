@@ -80,6 +80,7 @@ async function close() {
   const closed = usedSplit ? null : page;   // null: Bibliothek erneuert alle Vorschaubilder
   if (split) endSplit(false);
   if (LP.on) lpShow(false);
+  import('./fcalc.js').then((m) => m.hideFloatCalc());
   $('editor').hidden = true;
   page = null; bg = null; strokes = [];
   if (onCloseCb) onCloseCb(closed);
@@ -1198,12 +1199,13 @@ function showTool(type) {
 function toggleTool(k) { showTool(tpl && tpl.type === k ? null : k); }
 $('edQRuler').addEventListener('click', () => toggleTool('ruler'));
 $('edQTri').addEventListener('click', () => toggleTool('triangle'));
+$('edCalc').addEventListener('click', () => { finishStroke(); commitText(); import('./fcalc.js').then((m) => m.toggleFloatCalc()); });
 $('edMath').addEventListener('click', (e) => {
   menu(e.currentTarget, [
     { label: 'Koordinatensystem …', icon: 'axes', onClick: axesFlow },
     { label: 'Funktionsgraph …', icon: 'graph', onClick: graphFlow },
     { label: 'Funktionsplotter …', icon: 'graph', onClick: plotterFlow },
-    { label: 'Taschenrechner', icon: 'calc', onClick: () => import('./kit.js').then((m) => m.calcSheet()) },
+    { label: 'Taschenrechner aufs Blatt legen', icon: 'calc', onClick: () => import('./fcalc.js').then((m) => m.toggleFloatCalc(true)) },
     ...(page && page.kind !== 'blank' ? [{ label: (gapMode ? '✓ ' : '') + 'Lücken ausfüllen', icon: 'text', onClick: () => (gapMode ? exitGapMode() : enterGapMode()) }] : []),
     ...(page && page.kind !== 'blank' ? [{ label: 'Vokabeln herausholen …', icon: 'cards', onClick: async () => { finishStroke(); commitText(); await flushSave(); const m = await import('./vocabscan.js'); m.vocabFlow(page); } }] : []),
     ...(page && page.kind !== 'blank' ? [{ label: 'Lernkarten aus Markiertem', icon: 'cards', onClick: async () => { finishStroke(); commitText(); await flushSave(); const m = await import('./markcards.js'); m.cardsFromMarks({ page, strokes, pageW: PAGE_W }); } }] : []),
@@ -1786,6 +1788,26 @@ export function edInsertText(text) {
   const y = Math.max(12 * MM, Math.min(H - 30 * MM, (sc.top + sc.height * 0.35 - pr.top) / k));
   const st = { tool: 'text', color, size: SIZES.text[sizeIdx] || 18, text, pts: [x, y, 0, x, y + 24, 0] };
   fitText(st);
+  strokes.push(st); undo.push({ type: 'add', stroke: st }); redo = []; changed(); redrawInk(); updateToolbar();
+  return true;
+}
+
+// Text genau an eine angetippte Stelle setzen (schwebender Rechner: „Aufs Blatt“).
+// cx/cy = Bildschirmpunkt; der Text beginnt dort (links, mittig zur Zeile). false, wenn daneben getippt.
+export function edInsertAt(text, cx, cy, paneIdx = pane) {
+  if ($('editor').hidden || !page) return false;
+  if (split && paneIdx !== pane) activate(paneIdx);
+  finishStroke(); commitText();
+  const pr = $('edPage').getBoundingClientRect();
+  const k = pr.width / PAGE_W, H = pageHeight(page);
+  let x = (cx - pr.left) / k, y = (cy - pr.top) / k;
+  if (x < 0 || y < 0 || x > PAGE_W || y > H) return false;
+  const size = SIZES.text[sizeIdx] || 18;
+  y = Math.max(0, y - size * 0.75);
+  const st = { tool: 'text', color, size, text, pts: [x, y, 0, x, y + 24, 0] };
+  fitText(st);
+  const w = st.pts[3] - st.pts[0];
+  if (w > 0 && st.pts[0] + w > PAGE_W - 4 * MM) { const dx = Math.max(4 * MM, PAGE_W - 4 * MM - w) - st.pts[0]; st.pts[0] += dx; st.pts[3] += dx; }
   strokes.push(st); undo.push({ type: 'add', stroke: st }); redo = []; changed(); redrawInk(); updateToolbar();
   return true;
 }
