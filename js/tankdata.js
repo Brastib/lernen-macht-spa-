@@ -1,6 +1,7 @@
 // Papierpanzer: Daten für Waffen, Karten, Wetter, Modi, Optionen, Upgrades und Speicher.
 // Alles eigene Namen und eigener Papier-Look.
 import { store } from './sketch.js';
+import { findProfile, profileData, setProfileData } from './profiles.js';
 
 // ---------- Waffen ----------
 // k = Verhalten im Spiel, r = Explosionsradius, dmg = Schaden in der Mitte, n = Munition pro Spiel (Infinity = immer),
@@ -166,14 +167,20 @@ export const PATTERNS = [
 export const COIN_PER_BOLT = 40;   // Lern-Coins pro Schraube
 
 const gkey = (n) => (n || '').trim().toLowerCase();
+// Garage pro Spielerprofil (profiles.js, Bereich 'tanks'); Namen ohne Profil (Gäste) in tkGarage
+function rawGarage(name) {
+  const pr = findProfile(name);
+  if (pr) { const d = profileData(pr.id, 'tanks', null); if (d) return d; }
+  return store.get('tkGarage', {})[gkey(name)] || {};
+}
 export function garage(name) {
-  const all = store.get('tkGarage', {});
-  const g = all[gkey(name)] || {};
+  const g = rawGarage(name);
   return { bolts: g.bolts || 0, up: g.up || {}, body: g.body || 'classic', pat: g.pat || 'hatch', own: g.own || ['classic', 'hatch'], cups: g.cups || 0 };
 }
 export function saveGarage(name, g) {
-  const all = store.get('tkGarage', {});
-  all[gkey(name)] = g; store.set('tkGarage', all);
+  const pr = findProfile(name);
+  if (pr) { setProfileData(pr.id, 'tanks', g); return; }
+  const all = store.get('tkGarage', {}); all[gkey(name)] = g; store.set('tkGarage', all);
 }
 export function addBolts(name, n) { const g = garage(name); g.bolts += n; saveGarage(name, g); return g.bolts; }
 

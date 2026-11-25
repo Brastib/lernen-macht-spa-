@@ -216,13 +216,14 @@ function game(fx, players, { solo = false } = {}) {
 export const stackDuel = (fx, A, B) => game(fx, [A, B]);
 
 // Allein: so hoch wie möglich, Rekord bleibt gespeichert
-export async function stackSolo(fx, p) {
+export async function stackSolo(fx, p, onScore) {
   for (;;) {
     fx.stage.replaceChildren();
     const r = await game(fx, [p], { solo: true });
     if (!r || fx.signal.aborted) return;
     const best = store.get('gStackBest', 0), rec = r.score > best;
     if (rec) store.set('gStackBest', r.score);
+    if (onScore) onScore(r.score);   // Profil-Rekord
     const again = await new Promise((res) => {
       fx.stage.append(h('div.gres', null, h('div.grescard', null,
         h('span.gresic', { style: { color: rec ? '#e0a106' : p.color } }, icon(rec ? 'trophy' : 'stack')),

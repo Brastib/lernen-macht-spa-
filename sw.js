@@ -1,6 +1,6 @@
 // Offline-Speicher für die App selbst (nicht für deine Scans, die liegen in IndexedDB).
 // Bei jeder neuen Version VERSION erhöhen.
-const VERSION = 'v95';
+const VERSION = 'v97';
 const CACHE = 'lernapp-' + VERSION;
 const CDN_KEEP = ['/npm/@huggingface/transformers@4.3.2/', '/npm/onnxruntime-web@'];
 const FILES = [
@@ -36,7 +36,7 @@ const FILES = [
   './js/plotter.js',
   './js/backup.js',
   './js/chem.js',
-  './js/lab.js', './js/plan.js', './js/speech.js', './js/calc2.js', './js/markcards.js', './js/organize.js', './js/plane.js', './js/planeworld.js', './js/games.js', './js/gpaint.js', './js/arena.js', './js/weapons.js', './js/quiz.js', './js/stack.js', './js/chess.js', './js/wall.js', './js/runner.js', './js/pgames.js', './js/sketch.js', './js/rtgames.js', './js/hsgames.js', './js/p4a.js', './js/tanks.js', './js/tankdata.js', './js/tankhub.js', './js/p4b.js', './js/p5.js', './js/p6a.js', './js/p6b.js', './js/p6c.js', './js/hub.js', './js/shipart.js', './js/p7a.js', './js/p7b.js', './js/p7c.js', './js/p7d.js', './js/p8.js', './js/p9.js', './js/gaps.js', './js/autocards.js', './js/localai.js', './js/visionai.js', './js/mathgen.js', './js/morework.js', './js/myhand.js', './js/bigboy.js', './js/bbdata.js', './js/bbnlu.js', './js/topics.js',
+  './js/lab.js', './js/plan.js', './js/speech.js', './js/calc2.js', './js/markcards.js', './js/organize.js', './js/plane.js', './js/planeworld.js', './js/games.js', './js/profiles.js', './js/gpaint.js', './js/arena.js', './js/weapons.js', './js/quiz.js', './js/stack.js', './js/chess.js', './js/wall.js', './js/runner.js', './js/pgames.js', './js/sketch.js', './js/rtgames.js', './js/hsgames.js', './js/p4a.js', './js/tanks.js', './js/tankdata.js', './js/tankhub.js', './js/p4b.js', './js/p5.js', './js/p6a.js', './js/p6b.js', './js/p6c.js', './js/hub.js', './js/shipart.js', './js/p7a.js', './js/p7b.js', './js/p7c.js', './js/p7d.js', './js/p8.js', './js/p9.js', './js/gaps.js', './js/autocards.js', './js/localai.js', './js/visionai.js', './js/mathgen.js', './js/morework.js', './js/myhand.js', './js/bigboy.js', './js/bbdata.js', './js/bbnlu.js', './js/topics.js',
   './js/kit.js', './js/physik.js', './js/nav.js',
   './vendor/fengari-web.js',
   './vendor/pdf.min.js',

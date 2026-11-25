@@ -3449,3 +3449,65 @@ body:has(#editor.lupeon:not([hidden])) .toast { bottom: calc(clamp(200px, 29vh, 
 .tkpl .pkchip { max-width: none; }
 .tkctrl3 .tklab { flex: 1 1 120px; }
 .tkctrl3 .tkweapbtn { flex: 0 1 190px; min-width: 140px; }
+/* ---------- Spielerprofile (js/profiles.js) ---------- */
+.pfav { --pc: #8a8f98; width: 44px; height: 44px; flex: none; border-radius: 50%; display: grid; place-items: center; background: var(--pc); color: #fff; box-shadow: 0 0 0 2px var(--surface), 0 0 0 3px color-mix(in srgb, var(--pc) 45%, transparent); }
+.pfav b { font-size: 19px; font-weight: 700; line-height: 1; }
+.pfav.emo { background: color-mix(in srgb, var(--pc) 22%, var(--surface)); }
+.pfav.emo b { font-size: 23px; font-weight: 400; }
+.pfav.big { width: 64px; height: 64px; }
+.pfav.big b { font-size: 28px; }
+.pfav.big.emo b { font-size: 34px; }
+.pfav.small { width: 30px; height: 30px; box-shadow: none; }
+.pfav.small b { font-size: 14px; }
+.pfav.small.emo b { font-size: 17px; }
+.pfav.hubav { width: 38px; height: 38px; margin-bottom: 6px; box-shadow: none; }
+.pfav.plus { background: var(--surface-2); color: var(--muted); box-shadow: inset 0 0 0 1.5px var(--line); }
+.pfav.plus .ic { width: 22px; height: 22px; stroke: currentColor; }
+/* Profil-Leiste im Spiele-Menü */
+.pfrow { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.pfcard { min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 16px 10px 14px; border-radius: 18px; background: var(--surface); box-shadow: 0 0 0 1px var(--line); text-align: center; transition: transform .12s ease, box-shadow .12s ease; }
+.pfcard:not(.add) { box-shadow: inset 0 3px 0 var(--pc), 0 0 0 1px var(--line); }
+.pfcard:active { transform: scale(.97); }
+.pfcard > b { max-width: 100%; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pfcard > small { max-width: 100%; color: var(--muted); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pfcard.add { background: transparent; box-shadow: inset 0 0 0 1.5px var(--line); }
+.pfcard .pfav { margin-bottom: 2px; }
+/* Auswahl: Wer spielt? */
+.pfpick { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 10px; margin: 4px 0 6px; }
+.pfpk { position: relative; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 7px; padding: 14px 8px 12px; border-radius: 16px; background: var(--surface-2); text-align: center; transition: background .12s ease, box-shadow .12s ease, transform .12s ease; }
+.pfpk > b { max-width: 100%; font-size: 14.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pfpk:active { transform: scale(.97); }
+.pfpk.on { background: color-mix(in srgb, var(--pc) 14%, var(--surface)); box-shadow: inset 0 0 0 2.5px var(--pc); }
+.pfpk.add { background: transparent; box-shadow: inset 0 0 0 1.5px var(--line); color: var(--muted); }
+.pfpk.guest .pfav { background: var(--muted); }
+.pfno { position: absolute; top: 7px; right: 7px; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: var(--pc); color: #fff; font-size: 12px; font-weight: 700; }
+/* Profil anlegen */
+.pfprev { display: flex; align-items: center; gap: 14px; padding: 4px 2px 8px; min-width: 0; }
+.pfprev > b { font-size: 20px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pfswatches { display: flex; flex-wrap: wrap; gap: 10px; }
+.pfsw { width: 34px; height: 34px; border-radius: 50%; background: var(--pc); box-shadow: inset 0 0 0 2px rgba(0,0,0,.08); }
+.pfsw.on { box-shadow: 0 0 0 3px var(--surface), 0 0 0 5px var(--pc); }
+.pfavs { display: grid; grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); gap: 6px; }
+.pfavopt { height: 44px; border-radius: 12px; display: grid; place-items: center; background: var(--surface-2); font-size: 22px; }
+.pfavopt b { font-size: 18px; }
+.pfavopt.on { background: var(--accent-soft); box-shadow: inset 0 0 0 2px var(--accent); }
+/* Profil ansehen */
+.pfhead { display: flex; align-items: center; gap: 16px; min-width: 0; }
+.pfheadtx { display: flex; flex-direction: column; min-width: 0; }
+.pfheadtx b { font-size: 22px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pfheadtx small { color: var(--muted); font-size: 14px; }
+.pfnums { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 16px 0 6px; }
+.pfnum { display: flex; flex-direction: column; align-items: center; padding: 10px 4px; border-radius: 14px; background: var(--surface-2); min-width: 0; }
+.pfnum b { font-size: 22px; font-variant-numeric: tabular-nums; }
+.pfnum small { color: var(--muted); font-size: 12.5px; }
+.pfcpu { color: var(--muted); font-size: 14px; margin: 6px 0 0; }
+.pfglist { display: flex; flex-direction: column; border-radius: 14px; box-shadow: 0 0 0 1px var(--line); max-height: min(42vh, 380px); overflow: auto; }
+.pfgrow { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 12px; row-gap: 2px; align-items: center; padding: 10px 14px; }
+.pfgrow + .pfgrow { border-top: 1px solid var(--line); }
+.pfgic { grid-row: span 2; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: var(--surface-2); }
+.pfgic .ic { width: 19px; height: 19px; stroke: currentColor; }
+.pfgname { font-size: 15px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pfgbits { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; min-width: 0; }
+.pfgbits em { font-style: normal; font-weight: 600; color: var(--ink); margin-right: 5px; }
+.pfacts { flex-wrap: wrap; }
+.pfacts .danger { margin-right: auto; }

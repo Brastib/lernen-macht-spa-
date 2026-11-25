@@ -3,6 +3,7 @@
 import { h, icon, toast, confirmSheet, menu } from './ui.js';
 import { isDark, inkOf, rng } from './sketch.js';
 import { battle, paintTank, glyph } from './tanks.js';
+import { recordDuel, recordCpu, recordScore } from './profiles.js';
 import { WEAPONS, EXTRAS, MAPS, MAP, MODES, MODE, WEATHER, OPTS, UPGRADES, UPCOST, BODIES, PATTERNS, COIN_PER_BOLT, garage, saveGarage, ladder, recordLadder, clearLadder, LIGA_PTS, liga, saveLiga, BOT_NAMES, COLORS, store } from './tankdata.js';
 
 const TEAM_NAMES = ['Blau', 'Rot', 'Grün', 'Gelb'];
@@ -15,8 +16,11 @@ export function tankHub(openFx, players, me) {
   fx.root.classList.add('tkfx');
   const ps = players.length ? players : [me];
   let lob = store.get('tkLobby', null);
-  if (!lob || !Array.isArray(lob.roster)) lob = { mode: 'ffa', map: 'random', weather: 'map', opts: defOpts(), roster: [{ name: ps[0].name, color: ps[0].color, cpu: 0, team: 0 }, { name: 'Computer', color: '#8a8f98', cpu: 2, team: 1 }] };
+  if (!lob || !Array.isArray(lob.roster)) lob = { mode: 'ffa', map: 'random', weather: 'map', opts: defOpts(), roster: [{ id: ps[0].id, name: ps[0].name, color: ps[0].color, cpu: 0, team: 0 }, { name: 'Computer', color: '#8a8f98', cpu: 2, team: 1 }] };
   lob.opts = { ...defOpts(), ...lob.opts };
+  // Namen und Farben aus den Spielerprofilen übernehmen (falls umbenannt), gelöschte Profile rausnehmen
+  lob.roster = lob.roster.filter((r) => { if (r.cpu || !r.id) return true; const p = ps.find((q) => q.id === r.id); if (!p) return false; r.name = p.name; r.color = p.color; return true; });
+  if (!lob.roster.length) lob.roster = [{ id: ps[0].id, name: ps[0].name, color: ps[0].color, cpu: 0, team: 0 }];
   const saveLob = () => store.set('tkLobby', lob);
   let tab = store.get('tkHubTab', 'play');
 
@@ -65,7 +69,7 @@ export function tankHub(openFx, players, me) {
     if (!solo && lob.roster.length < (mode.coop ? 7 : 8)) {
       const free = ps.filter((p) => !lob.roster.some((r) => r.name.toLowerCase() === p.name.toLowerCase()));
       body.append(h('div.tkaddrow', null,
-        h('button.btn', { disabled: !free.length, on: { click: (e) => menu(e.currentTarget, free.map((p) => ({ label: p.name, icon: 'game', onClick: () => { lob.roster.push({ name: p.name, color: p.color, cpu: 0, team: nextTeam() }); saveLob(); render(); } }))) } }, icon('plus'), h('span', { text: free.length ? 'Spieler dazu' : 'Alle Spieler sind drin' })),
+        h('button.btn', { disabled: !free.length, on: { click: (e) => menu(e.currentTarget, free.map((p) => ({ label: p.name, icon: 'game', onClick: () => { lob.roster.push({ id: p.id, name: p.name, color: p.color, cpu: 0, team: nextTeam() }); saveLob(); render(); } }))) } }, icon('plus'), h('span', { text: free.length ? 'Spieler dazu' : 'Alle Spieler sind drin' })),
         h('button.btn', { on: { click: () => { const used = lob.roster.map((r) => r.name); const nm = BOT_NAMES.find((n) => !used.includes(n)) || `Bot ${lob.roster.length}`; const col = COLORS.find((c) => !lob.roster.some((r) => r.color === c)) || '#8a8f98'; lob.roster.push({ name: nm, color: col, cpu: lob.opts.cpu || 2, team: nextTeam() }); saveLob(); render(); } } }, icon('plus'), h('span', { text: 'Computer dazu' }))));
     }
     // Optionen
@@ -114,11 +118,21 @@ export function tankHub(openFx, players, me) {
       fx.stage.replaceChildren();
       const res = await battle(fx, buildCfg(mode, lob.map, lob.weather, lob.roster, lob.opts));
       if (!res || fx.signal.aborted) return;
-      if (res.solo) { const old = store.get('tkTargetBest', 0), rec = res.solo.all && (!old || res.solo.shots < old); if (rec) store.set('tkTargetBest', res.solo.shots); res.rec = rec; res.old = old; }
-      else recordLadder(res.ranking);
+      if (res.solo) { const old = store.get('tkTargetBest', 0), rec = res.solo.all && (!old || res.solo.shots < old); if (rec) store.set('tkTargetBest', res.solo.shots); res.rec = rec; res.old = old; if (res.solo.all) try { recordScore('tanksTargets', lob.roster[0], res.solo.shots, true); } catch (e) { /* egal */ } }
+      else { recordLadder(res.ranking); recordProfiles(res); }
       const next = await resultCard(res, mode);
       if (next !== 'again') { render(); return; }
     }
+  }
+  // Ergebnis auch in den Spielerprofilen zählen (nur bei genau zwei Panzern, wie bei Duellen)
+  function recordProfiles(res) {
+    if (lob.roster.length !== 2 || MODE[lob.mode].coop) return;
+    const [A, B] = lob.roster, w = res.winner;
+    try {
+      if (!A.cpu && !B.cpu) recordDuel('tanks', A, B, { w });
+      else if (!A.cpu) recordCpu('tanks', A, { w }, false);
+      else if (!B.cpu) recordCpu('tanks', B, { w }, true);
+    } catch (e) { /* Profile sind optional */ }
   }
   function resultCard(res, mode, extra) {
     return new Promise((resolve) => {
