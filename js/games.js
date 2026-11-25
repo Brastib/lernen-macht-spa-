@@ -120,6 +120,12 @@ export async function renderGames(ctx) {
     h('div.gherotx', null, h('b', { text: 'Turnier starten' }), h('small', { text: 'Jeder gegen jeden, mit Tabelle. Sieg 3 Punkte, Unentschieden 1 Punkt.' })),
     h('button.btn.primary', { text: 'Neues Turnier', on: { click: async () => { if (await newTournament()) again(); } } })));
 
+  // Papierpanzer: großer eigener Bereich
+  view.append(h('h2.section', { text: 'Papierpanzer' }), h('div.ghero.tkhero', null,
+    h('span.gheroic', null, icon('tank')),
+    h('div.gherotx', null, h('b', { text: 'Papierpanzer-Arena' }), h('small', { text: '12 Modi, 12 Karten mit Wetter, 36 Waffen, bis zu 8 Panzer. Liga mit Tabelle und Rangverlauf, Garage mit Upgrades.' })),
+    h('button.btn.primary', { text: 'Öffnen', on: { click: () => openTankHub() } })));
+
   // Quiz allein
   view.append(h('h2.section', { text: 'Für eine Arbeit üben' }), h('div.ghero.qhero', null,
     h('span.gheroic', null, icon('cards')),
@@ -149,7 +155,7 @@ export async function renderGames(ctx) {
     soloTile('blocks', 'Klötzchenregen', best('gBlocksBest') ? `Dein Rekord: ${best('gBlocksBest')} Punkte` : 'Volle Reihen bauen', () => soloScore('blocks')),
     soloTile('brick', 'Blockknacker', best('gBrickBest') ? `Dein Rekord: ${best('gBrickBest')} Punkte` : 'Alle Kästchen wegknacken', () => soloScore('brick')),
     soloTile('golfflag', 'Kritzelgolf', best('gGolfBest') ? `Dein Rekord: ${best('gGolfBest')} Schläge` : '3 Löcher, so wenig Schläge wie möglich', () => soloScore('golf')),
-    soloTile('tank', 'Papierpanzer', 'Gegen den Computer', () => vsCpu('tanks')),
+    soloTile('tank', 'Papierpanzer', 'Modi, Karten, Liga, Garage', () => openTankHub()),
     soloTile('pen', 'Malraten', best('gGuessBest') ? `Dein Rekord: ${best('gGuessBest')} Punkte` : 'Gespeicherte Bilder erraten', () => soloScore('paint')),
     soloTile('ship', 'Schiffe versenken', 'Gegen den Computer', () => vsCpu('ships')),
     soloTile('pool', 'Karo-Billard', best('gPoolBest') ? `Dein Rekord: ${best('gPoolBest')} Stöße` : 'Tisch mit wenig Stößen abräumen', () => soloScore('pool')),
@@ -423,6 +429,7 @@ async function soloScore(k) {
   }
 }
 // Gegen den Computer (Tic-Tac-Toe, Strichkampf, Mauerlauf)
+function openTankHub() { import('./tankhub.js').then((m) => m.tankHub(openFx, players(), me())); }
 async function vsCpu(k) {
   const g = GAMES[k], p = me();
   const fx = openFx(g.name, 'gegen den Computer');
