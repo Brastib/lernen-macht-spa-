@@ -1,7 +1,7 @@
 // Papierpanzer (v96): großes Artillerie-Spiel auf Papier.
 // Bis zu 8 Panzer (Menschen und Computer), Teams, viele Modi, 12 Karten, Wetter, 36 Waffen, Extras, Kisten, Minen,
 // Gelände geht kaputt, Upgrades aus der Garage. battle() spielt eine Partie, tanks() ist das schnelle Duell für Turnier/Duelle.
-import { h, icon } from './ui.js';
+import { h, icon, toast } from './ui.js';
 import { FONT, isDark, inkOf, prect, pcirc, shade, canvasBox, chip, rng } from './sketch.js';
 import { WEAPONS, W, CLASSIC, EXTRAS, MAPS, MAP, MODE, garage, findMap, OP_IDS, NORMAL_IDS, STRONG_IDS, OP_MAX } from './tankdata.js';
 
@@ -207,6 +207,51 @@ export function battle(fx, cfg) {
     const newWind = () => { const v = (R() * 2 - 1) * windK * (wx === 'storm' ? 2.2 : 1); wind = Math.round(v * 10) / 10; };
     newWind();
     if (mode.id === 'hill') moveHill();
+    let shotHits = new Map(), trees = [], pendingFx = 0, scorches = [];
+    // ---------- Gespeichertes Spiel laden ----------
+    const S0 = cfg.resume;
+    if (S0) {
+      const dy = OFF - S0.OFF;
+      for (let i = 0; i < TW; i++) ground[i] = clamp((S0.ground[i] ?? ground[i]) + dy, 70 + OFF, TH - 6);
+      if (S0.pool) S0.pool.forEach((v, k) => { if (k < NC) pool[k] = v; });
+      if (S0.snow) S0.snow.forEach((v, k) => { if (k < TW) snow[k] = v; });
+      wetK = S0.wetK || 0; arsenal = S0.arsenal || arsenal; if (S0.wx) wx = S0.wx;
+      turn = S0.turn; turnsDone = S0.turnsDone; wind = S0.wind; shots = S0.shots || 0;
+      inkY = S0.inkY == null ? Infinity : S0.inkY + OFF;
+      hill = S0.hill || null;
+      if (solo && S0.targets) targets = S0.targets.map((q) => ({ ...q, y: q.y + dy }));
+      scorches = (S0.scorches || []).map((q) => ({ ...q, y: q.y + dy }));
+      crates = (S0.crates || []).map((c) => ({ ...c, y: c.y + dy }));
+      mines = (S0.mines || []).map((m) => ({ ...m, y: m.y + dy, o: T[m.o] || null }));
+      trees = (S0.trees || []).map((tr) => ({ ...tr, o: T[tr.o] }));
+      S0.tanks.forEach((q, k) => {
+        const t = T[k]; if (!t) return;
+        Object.assign(t, q, { y: q.y + dy, lastBy: q.lastBy != null ? T[q.lastBy] : null, burn: 0, usedEx: false, scope: false, chute: false, fallFrom: null, vy: 0, slide: 0, hurt: 0, lost: 0 });
+        t.ammo = {}; Object.entries(q.ammo).forEach(([id, n]) => { t.ammo[id] = n < 0 ? Infinity : n; });
+      });
+      deathOrder = (S0.deathOrder || []).map((i) => T[i]).filter(Boolean);
+    }
+    // ---------- Spiel speichern (Platz für ein laufendes Spiel) ----------
+    const canSave = !cfg.duel && !cfg.noSave;
+    function snapshot() {
+      const r1 = (v) => Math.round(v * 10) / 10;
+      return {
+        v: 1, time: Date.now(), ctx: cfg.saveCtx || null, cfg: { players: cfg.players, mode: mode.id, map: map.id, weather: cfg.weather, opts: O },
+        OFF, ground: Array.from(ground, r1), pool: Array.from(pool, r1), snow: Array.from(snow, r1), wetK, arsenal, wx,
+        turn, turnsDone, wind, shots, inkY: inkY === Infinity ? null : inkY - OFF, hill, targets: solo ? targets : null, scorches: scorches.slice(-20),
+        crates: crates.filter((c) => !c.fall && !c.gone), mines: mines.filter((m) => !m.gone).map((m) => ({ x: m.x, y: m.y, armed: m.armed, o: m.o ? m.o.i : -1 })),
+        trees: trees.map((tr) => ({ x: tr.x, o: tr.o.i, left: tr.left, grow: tr.grow })), deathOrder: deathOrder.map((t) => t.i),
+        tanks: T.map((t) => ({ x: t.x, y: t.y, ang: t.ang, pow: t.pow, hp: t.hp, hpMax: t.hpMax, fuel: t.fuel, fuelMax: t.fuelMax, shield: t.shield, ex: t.ex, w: t.w, dead: t.dead, score: t.score, kills: t.kills, dmg: t.dmg, deaths: t.deaths, poison: t.poison, liq: t.liq || null, sinkK: t.sinkK || 0, turns: t.turns, lotto: t.lotto || null, deathTurn: t.deathTurn, lastBy: t.lastBy ? t.lastBy.i : null,
+          ammo: Object.fromEntries(Object.entries(t.ammo).map(([id, n]) => [id, n === Infinity ? -1 : n])) })),
+      };
+    }
+    const calm = () => phase === 'aim' && !over && !shells.some((s) => !s.dead) && pendingFx === 0 && !flames.length;
+    function saveGame(manual) {
+      if (!canSave) return false;
+      if (!calm()) { if (manual) toast('Speichern geht, sobald alles ruhig ist'); return false; }
+      try { localStorage.setItem('tkSave', JSON.stringify(snapshot())); if (manual) toast('Spiel gespeichert. Im Panzer-Menü geht es weiter.'); return true; }
+      catch (e) { if (manual) toast('Speichern hat nicht geklappt (Speicher voll?)'); return false; }
+    }
     function moveHill() { let hx = TW / 2; for (let s = 0; s < 40; s++) { hx = 120 + R() * (TW - 240); if (dryAt(hx, 30)) break; } hill = { x: hx, w: 150, t: 0 }; }
 
     // ---------- Oberfläche ----------
@@ -231,7 +276,8 @@ export function battle(fx, cfg) {
     });
     const windCv = h('canvas.tkwindcv', { width: 112, height: 44 });
     const infoTop = h('b'), infoSub = h('small'), timerEl = h('span.tktimer');
-    const info = h('div.tkinfo', null, h('div.tkinfotx', null, infoTop, infoSub), windCv, timerEl);
+    const saveBtn = cfg.duel || cfg.noSave ? null : h('button.icbtn.tksavebtn', { 'aria-label': 'Spiel speichern', title: 'Spiel speichern', on: { click: () => saveGame(true) } }, icon('save'));
+    const info = h('div.tkinfo', null, h('div.tkinfotx', null, infoTop, infoSub), windCv, timerEl, saveBtn);
     const hud = h('div.hshud.tkhud2', null, h('div.tkplayers' + (N > 4 ? '.many' : ''), null, ...plEls.map((e) => e.el)), info);
     const ctrl = h('div.tkctrl.ewctrl.tkctrl2.tkctrl3', null,
       h('div.tkdrive', null, bL, bR, fuelBox),
@@ -416,6 +462,7 @@ export function battle(fx, cfg) {
     function dealDamage(t, dmg, o, w) {
       if (t.dead || dmg <= 0) return 0;
       if (o && o !== t && o.team === t.team && !O.ff) return 0;
+      const friendly = o && o !== t && o.team === t.team;
       if (o) dmg *= o.dmgMul;
       if (mode.id === 'glass') dmg *= 2;
       if (w && w.op) { const used = shotHits.get(t) || 0; dmg = Math.min(dmg, OP_MAX - used); if (dmg <= 0) return 0; shotHits.set(t, used + Math.round(dmg)); }
@@ -428,6 +475,7 @@ export function battle(fx, cfg) {
       if (o && isFoe(o, t)) { o.dmg += real; if (scoreMode) addScore(o, real * (lead === t ? 2 : 1)); }
       if (w && w.leech && o && !o.dead) { const add = Math.min(o.hpMax - o.hp, Math.round(dmg * w.leech)); if (add > 0) { o.hp += add; pop(o.x, o.y - 70, `+${add}`, '#2f9e5b'); } }
       if (w && w.poison) t.poison = w.poison;
+      if (friendly && t.hp > 0 && (t.ffT || 0) < turnsDone + 1) { t.ffT = turnsDone + 1; pop(t.x, t.y - 95, 'Eigenes Team!', '#e0a106'); }
       if (t.hp <= 0) kill(t, o, lead === t);
       return dmg;
     }
@@ -456,6 +504,7 @@ export function battle(fx, cfg) {
       t.dead = true; t.hp = 0; t.deaths++; t.poison = 0; t.deathTurn = turnsDone; deathOrder.push(t);
       if (t.liq) { t.lost = 0; t.hurt = 0; } else tankBlast(t);
       if (o && isFoe(o, t)) { o.kills++; if (scoreMode) addScore(o, 50 * (wasLead ? 2 : 1)); feed.push({ txt: `${o.p.name} erwischt ${t.p.name}`, c: o.p.color, t: 0 }); }
+      else if (o && o !== t && o.team === t.team) feed.push({ txt: `${o.p.name} erwischt ${t.p.name} (eigenes Team)`, c: o.p.color, t: 0 });
       else if (o === t) feed.push({ txt: `${t.p.name} hat sich selbst erwischt`, c: t.p.color, t: 0 });
       else feed.push({ txt: `${t.p.name} ist raus`, c: t.p.color, t: 0 });
       if (feed.length > 4) feed.shift();
@@ -512,7 +561,6 @@ export function battle(fx, cfg) {
 
     // ---------- Schüsse ----------
     const speedK = (w) => (w.k === 'snipe' ? 1.45 : w.k === 'shot' ? 1.5 : 1);
-    let shotHits = new Map(), trees = [], pendingFx = 0, scorches = [];
     const fxLater = (fn, ms) => { pendingFx++; later(() => { pendingFx--; fn(); }, ms); };
     const mk = (x0, y0, vx, vy, w, o, ex = {}) => ({ x: x0, y: y0, vx, vy, w, o, trail: [], age: 0, mode: 'fly', hops: w.hops || 0, ...ex });
     function shoot() {
@@ -776,10 +824,12 @@ export function battle(fx, cfg) {
       if (wx === 'thunder' && R() < 0.3) later(() => { const px = 60 + R() * (TW - 120); pop(px, gAt(px) - 80, 'Gewitter!', '#e0a106'); lightning(px, null, { ...W.bolt, dmg: 18, r: 34 }); }, 500);
       timeLeft = O.timer;
       syncCtrl();
+      saveGame(false);
       if (!human()) later(cpuTurn, 800);
     }
     function finish() {
       over = true; phase = 'over';
+      if (canSave) try { localStorage.removeItem('tkSave'); } catch (e) { /* egal */ }
       const rank = ranking();
       const w0 = rank[0];
       msg = solo ? (targets.every((q) => q.hit) ? `Alle Scheiben mit ${shots} Schüssen!` : 'Keine Schüsse mehr') : w0.tie ? 'Unentschieden' : mode.teams || mode.coop ? `${teamLabel(w0.team, w0)} gewinnt!` : `${w0.name} gewinnt!`; msgT = 9;
@@ -1364,12 +1414,13 @@ export function battle(fx, cfg) {
 
     // Start
     T.forEach((t) => { t.y = gAt(t.x); });
-    if (mode.id === 'lotto') { const pool = arsenal.filter((id) => !['tele', 'heal'].includes(id)); const t = cur(); t.lotto = pool[(R() * pool.length) | 0]; t.w = t.lotto; }
-    msg = solo ? 'Triff alle Zielscheiben!' : `${cur().p.name} fängt an`; msgT = 1.5;
+    if (mode.id === 'lotto' && !S0) { const pool = arsenal.filter((id) => !['tele', 'heal'].includes(id)); const t = cur(); t.lotto = pool[(R() * pool.length) | 0]; t.w = t.lotto; }
+    msg = S0 ? `Weiter geht's: ${cur().p.name} ist dran` : solo ? 'Triff alle Zielscheiben!' : `${cur().p.name} fängt an`; msgT = 1.5;
     timeLeft = O.timer;
     syncCtrl();
+    saveGame(false);
     if (!human()) later(cpuTurn, 1300);
-    if (typeof window !== 'undefined') window.__tk = { fireAt: (id, px) => { shotHits = new Map(); const s = mk(px, gAt(px) - 2, 0, 50, W[id], cur()); shells.push(s); impact(s); phase = 'fly'; settleT = 0; }, get trees() { return trees; }, gAt, T, get crates() { return crates; }, dropCrate, get phase() { return phase; }, ground, shoot, get turn() { return turn; }, set wind(v) { wind = v; }, finish, map, mode, get wx() { return wx; }, pool, snow, cg, CS, poolDepth, explode: (px, py, id) => explode(px, py, W[id], cur()), nextTurn, targets };
+    if (typeof window !== 'undefined') window.__tk = { fireAt: (id, px) => { shotHits = new Map(); const s = mk(px, gAt(px) - 2, 0, 50, W[id], cur()); shells.push(s); impact(s); phase = 'fly'; settleT = 0; }, get trees() { return trees; }, gAt, T, get crates() { return crates; }, dropCrate, get phase() { return phase; }, ground, shoot, get turn() { return turn; }, set wind(v) { wind = v; }, finish, map, mode, get wx() { return wx; }, pool, snow, cg, CS, poolDepth, explode: (px, py, id) => explode(px, py, W[id], cur()), nextTurn, targets, saveGame, snapshot };
     raf = requestAnimationFrame(frame);
   });
 }

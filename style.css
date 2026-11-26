@@ -3643,3 +3643,12 @@ body:has(#editor.lupeon:not([hidden])) .toast { bottom: calc(clamp(200px, 29vh, 
 /* Leser: scharfe Ebene beim Heranzoomen (wird nach dem Zoomen in voller Auflösung gezeichnet) */
 .readstage .rdsharp { position: absolute; z-index: 4; pointer-events: none; opacity: 0; transform-origin: 0 0; transition: opacity .12s ease; will-change: transform; }
 .readstage .rdsharp.on { opacity: 1; }
+/* Papierpanzer: gespeichertes Spiel */
+.tksavecard { display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 12px; padding: 12px 14px; margin: 0 0 14px; border-radius: 16px; background: var(--card, var(--bg)); box-shadow: inset 0 0 0 1.5px var(--accent, #4f7cff), 0 6px 18px rgba(30, 50, 90, .08); }
+.tksaveic { width: 40px; height: 40px; display: grid; place-items: center; border-radius: 12px; background: color-mix(in srgb, var(--accent, #4f7cff) 14%, transparent); color: var(--accent, #4f7cff); }
+.tksavetx { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.tksavetx b { font-size: 15px; }
+.tksavetx small { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tksavecard .btn { white-space: nowrap; }
+@media (max-width: 640px) { .tksavecard { grid-template-columns: 1fr 1fr; } .tksaveic { display: none; } .tksavetx { grid-column: 1 / -1; } .tksavecard .btn { justify-content: center; } .tksavecard .btn span { display: inline; } }
+.tksavebtn { width: 36px; height: 36px; flex: 0 0 auto; border-radius: 10px; box-shadow: inset 0 0 0 1px var(--line); }
