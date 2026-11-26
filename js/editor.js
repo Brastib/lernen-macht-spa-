@@ -542,7 +542,12 @@ function renderBand(force) {
 function wipe(c) { const x = c.getContext('2d'); x.save(); x.setTransform(1, 0, 0, 1, 0, 0); x.clearRect(0, 0, c.width, c.height); x.restore(); }
 const bandRaf = [0, 0];
 for (const i of [0, 1]) {
-  document.getElementById(i ? 'edScroll2' : 'edScroll').addEventListener('scroll', () => {
+  document.getElementById(i ? 'edScroll2' : 'edScroll').addEventListener('scroll', (ev) => {
+    // Während der Pencil schreibt, bleibt das Blatt stehen (nichts darf es wegschieben)
+    if (i === pane && cur && cur.lock && !cur.lupe) {
+      const sc = ev.currentTarget;
+      if (Math.abs(sc.scrollTop - cur.lock[1]) > 1 || Math.abs(sc.scrollLeft - cur.lock[0]) > 1) { sc.scrollLeft = cur.lock[0]; sc.scrollTop = cur.lock[1]; return; }
+    }
     if (!bandRaf[i]) bandRaf[i] = requestAnimationFrame(() => { bandRaf[i] = 0; if (page && (i === pane || split)) withPane(i, () => renderBand(false)); });
   }, { passive: true });
 }
@@ -674,6 +679,7 @@ area.addEventListener('pointerdown', (e) => {
     // Wie bei Apple: sobald der Pencil benutzt wird, blättert der Finger nur noch
     if (fingerDraws) { fingerDraws = false; updateToolbar(); }
   }
+  if (e.pointerType === 'pen') { lastPenAt = performance.now(); palmCancel(); }
   const onPage = !!e.target.closest('.edpage');
   const [x, y] = toPage(e);
   const drawsHere = e.pointerType !== 'touch' || fingerDraws;
@@ -718,9 +724,12 @@ area.addEventListener('pointerdown', (e) => {
   if (e.pointerType === 'touch' && !fingerDraws) {
     // Handballen beim Schreiben mit dem Pencil: weder schieben noch zoomen
     if ((cur && cur.type === 'pen') || performance.now() - penUpAt < 350) { e.preventDefault(); return; }
+    // Große Auflage (Handballen), während gerade mit dem Pencil geschrieben wird: nicht schieben
+    if (writingNow() && ((e.width || 0) > 44 || (e.height || 0) > 44)) { e.preventDefault(); return; }
+    if (touches.size === 0) { const sc = $('edScroll'); touchBase = { l: sc.scrollLeft, t: sc.scrollTop }; }
     ftap = touches.size === 0 ? { id: e.pointerId, cx: e.clientX, cy: e.clientY, t: performance.now() } : null;
     touchTap = (gapMode || tool === 'fill') && onPage && touches.size === 0 ? { id: e.pointerId, at: [x, y], cx: e.clientX, cy: e.clientY, t: performance.now() } : null;
-    touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    touches.set(e.pointerId, { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, go: !writingNow() });
     if (touches.size === 2) startPinch();
     e.preventDefault();
     return;
@@ -751,6 +760,7 @@ area.addEventListener('pointerdown', (e) => {
     size: SIZES[tool === 'marker' ? 'marker' : 'pen'][sizeIdx],
     pts: [r1(sx), r1(sy), pressureOf(e)],
     snap: snapEdge,
+    lock: e.pointerType === 'pen' ? [$('edScroll').scrollLeft, $('edScroll').scrollTop] : null,
   };
   if (cur.tool === 'marker') startMarkLive();
   liveFrom = 3;
@@ -760,6 +770,7 @@ area.addEventListener('pointerdown', (e) => {
 const r1 = (v) => Math.round(v * 50) / 50;   // 0,02 Einheiten: fein genug auch für winzige Schrift beim Zoomen
 
 area.addEventListener('pointermove', (e) => {
+  if (e.pointerType === 'pen') lastPenAt = performance.now();
   if (!cur && e.pointerType === 'pen' && !e.buttons) { penHover(e, ($('edPage').getBoundingClientRect().width || PAGE_W) / PAGE_W); return; }
   if (tplDrag && (e.pointerId === tplDrag.id || e.pointerId === tplDrag.id2)) { moveTpl(e); return; }
   if (touches.has(e.pointerId)) { moveTouch(e); return; }
@@ -951,9 +962,29 @@ function openText(x, y, preset = null) {
   $('edPage').append(ta);
   styleText();
   if (!isNew) redrawInk();
-  ta.focus();
-  if (!isNew) ta.setSelectionRange(ta.value.length, ta.value.length);
+  ta.focus({ preventScroll: true });
+  // Schreib-Marke dahin, wo getippt wurde (nicht ans Ende: bei langem Text sprang das Blatt sonst ganz nach unten)
+  if (!isNew) { const o = preset ? ta.value.length : caretAt(ta, x, y); ta.setSelectionRange(o, o); }
   updateToolbar();
+}
+// Welche Stelle im Text liegt unter dem Seiten-Punkt (x, y)? Unsichtbare Kopie des Textfelds abfragen.
+function caretAt(ta, x, y) {
+  const n = ta.value.length;
+  try {
+    const cs = getComputedStyle(ta), m = document.createElement('div');
+    for (const k of ['left', 'top', 'width', 'fontSize', 'fontFamily', 'fontWeight', 'lineHeight', 'letterSpacing', 'padding']) m.style[k] = cs[k];
+    Object.assign(m.style, { position: 'absolute', zIndex: 9, opacity: 0, whiteSpace: 'pre-wrap', overflowWrap: 'break-word', pointerEvents: 'auto', userSelect: 'text', webkitUserSelect: 'text' });
+    m.textContent = ta.value + ' ';
+    $('edPage').append(m);
+    const r = $('edPage').getBoundingClientRect(), k = r.width / PAGE_W;
+    const mr = m.getBoundingClientRect();
+    const cx = Math.max(mr.left + 1, Math.min(mr.right - 2, r.left + x * k)), cy = Math.max(mr.top + 1, Math.min(mr.bottom - 2, r.top + y * k));
+    let o = null;
+    if (document.caretPositionFromPoint) { const c = document.caretPositionFromPoint(cx, cy); if (c && m.contains(c.offsetNode)) o = c.offset; }
+    if (o == null && document.caretRangeFromPoint) { const c = document.caretRangeFromPoint(cx, cy); if (c && m.contains(c.startContainer)) o = c.startOffset; }
+    m.remove();
+    return o == null ? n : Math.max(0, Math.min(n, o));
+  } catch (e) { return n; }
 }
 function styleText() {
   if (!textEd) return;
@@ -973,9 +1004,11 @@ function styleText() {
 }
 function growText() {
   if (!textEd) return;
-  const ta = textEd.ta;
+  const ta = textEd.ta, sc = $('edScroll'), l = sc.scrollLeft, t = sc.scrollTop;
   ta.style.height = '0px';
   ta.style.height = Math.max(ta.scrollHeight, parseFloat(ta.style.lineHeight) || 20) + 'px';
+  // Beim Messen kurz 0 hoch: das darf das Blatt nicht verschieben (iPad sprang sonst nach oben/unten)
+  if (sc.scrollTop !== t || sc.scrollLeft !== l) { sc.scrollLeft = l; sc.scrollTop = t; }
 }
 function commitText() {
   if (!textEd) return;
@@ -1522,10 +1555,30 @@ function doRedo() {
 // Erst beim Loslassen wird scharf neu gezeichnet. Der Punkt zwischen den Fingern bleibt unter den Fingern.
 const ZMIN = 0.5, ZMAX = 5;
 let zAnim = false, zLocked = false, penUpAt = 0, ftap = null, lastFtap = null;
+// Handballen-Schutz: lastPenAt = letzte Pencil-Bewegung (auch Schweben), touchBase = Stelle beim ersten Finger
+let lastPenAt = 0, touchBase = null;
+function writingNow() { return penSeen && performance.now() - lastPenAt < 2500; }
+// Pencil setzt auf, während noch "Finger" liegen: das waren Handballen. Schieben/Zoomen zurücknehmen.
+function palmCancel() {
+  ftap = null; lastFtap = null; touchTap = null;
+  if (!touches.size) return;
+  if (pinch) {
+    pinch = null;
+    const w = $('edPage'); w.style.transform = ''; w.style.transition = '';
+    zAnim = false; updateZbar();
+  }
+  touches.clear();
+  if (touchBase) { const sc = $('edScroll'); sc.scrollLeft = touchBase.l; sc.scrollTop = touchBase.t; touchBase = null; renderBand(false); }
+}
 try { zLocked = localStorage.getItem('zoomLock') === '1'; } catch (e) { /* egal */ }
 
 function moveTouch(e) {
   const t = touches.get(e.pointerId);
+  // Kurz nach dem Schreiben schiebt ein Finger erst nach einem deutlichen Wisch (Handballen ruckeln nur wenig)
+  if (!t.go && !pinch) {
+    if (Math.hypot(e.clientX - t.sx, e.clientY - t.sy) < 18) return;
+    t.go = true; t.x = e.clientX; t.y = e.clientY;
+  }
   const dx = e.clientX - t.x, dy = e.clientY - t.y;
   t.x = e.clientX; t.y = e.clientY;
   if (ftap && ftap.id === e.pointerId && Math.hypot(e.clientX - ftap.cx, e.clientY - ftap.cy) > 10) ftap = null;
@@ -1678,6 +1731,8 @@ function fingerTapUp(e) {
   const t = ftap; ftap = null;
   if (e.type !== 'pointerup' || Math.hypot(e.clientX - t.cx, e.clientY - t.cy) > 10 || performance.now() - t.t > 300) { lastFtap = null; return false; }
   const now = performance.now();
+  // Doppeltipp-Zoom nicht, wenn gerade geschrieben wird (sonst springt das Blatt durch den Handballen)
+  if (writingNow()) { lastFtap = null; return false; }
   if (lastFtap && now - lastFtap.t < 380 && Math.hypot(e.clientX - lastFtap.cx, e.clientY - lastFtap.cy) < 50) {
     lastFtap = null;
     if (zoom > 1.05) fitPage(); else zoomAround(2, e.clientX, e.clientY);
@@ -2035,9 +2090,11 @@ lpStage.addEventListener('pointerdown', (e) => {
   if (!page || !LP.on) return;
   e.preventDefault();
   if (e.pointerType === 'pen' && !penSeen) { penSeen = true; if (fingerDraws) { fingerDraws = false; updateToolbar(); } }
+  if (e.pointerType === 'pen') { lastPenAt = performance.now(); palmCancel(); if (LP.pan) { LP.x = LP.pan.x; LP.y = LP.pan.y; LP.pan = null; lpClamp(); lpPlace(); } }
   if (e.pointerType === 'touch' && !fingerDraws) {
     // Finger schiebt den Ausschnitt (Handballen beim Schreiben wird ignoriert)
     if ((cur && cur.type === 'pen') || performance.now() - penUpAt < 350 || LP.pan) return;
+    if (writingNow() && ((e.width || 0) > 44 || (e.height || 0) > 44)) return;
     LP.pan = { id: e.pointerId, cx: e.clientX, cy: e.clientY, x: LP.x, y: LP.y };
     try { lpStage.setPointerCapture(e.pointerId); } catch (err) { /* egal */ }
     return;
@@ -2057,6 +2114,7 @@ lpStage.addEventListener('pointerdown', (e) => {
   scheduleLive();
 });
 lpStage.addEventListener('pointermove', (e) => {
+  if (e.pointerType === 'pen') lastPenAt = performance.now();
   if (!cur && e.pointerType === 'pen' && !e.buttons) { penHover(e, LP.P); return; }
   if (LP.pan && e.pointerId === LP.pan.id) {
     LP.x = LP.pan.x - (e.clientX - LP.pan.cx) / LP.P;
