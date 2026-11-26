@@ -256,6 +256,7 @@ async function hiUrl(p) {
   return u;
 }
 function sharpenSoon() {
+  return;   // ersetzt durch die scharfe Ebene (drawSharp); das große Neurendern hier blockierte das iPad
   clearTimeout(hiTimer);
   if (z.s < 1.6) return;
   hiTimer = setTimeout(() => {
@@ -277,13 +278,15 @@ let sharp = null;              // aktuelle scharfe Ebene (Canvas) oder null
 let sharpAt = null;            // Zoom-Zustand, mit dem sie gezeichnet wurde { s, x, y, ox, oy, el }
 const srcCache = new Map();   // Seiten-ID -> Promise<{ bg, strokes }>
 let sharpTimer = 0, sharpTok = 0;
-const SHARP_MAX_PX = 13e6;    // Pixel-Budget der scharfen Ebene
+const SHARP_MAX_PX = 8e6;    // Pixel-Budget der scharfen Ebene
 function pageSrc(p) {
   if (!srcCache.has(p.id)) {
     if (srcCache.size > 6) srcCache.delete(srcCache.keys().next().value);
     srcCache.set(p.id, (async () => {
       const blob = p.kind === 'blank' ? null : await db.getImage(p.id);
-      const [bg, strokes] = await Promise.all([blob ? blobToImage(blob) : null, db.getInk(p.id).catch(() => [])]);
+      // createImageBitmap entpackt das Bild im Hintergrund (sonst friert das erste Zeichnen kurz ein)
+      const decode = async (b) => { try { if (window.createImageBitmap) return await createImageBitmap(b); } catch (e) { /* Rückfall */ } const im = await blobToImage(b); try { await im.decode(); } catch (e) { /* egal */ } return im; };
+      const [bg, strokes] = await Promise.all([blob ? decode(blob) : null, db.getInk(p.id).catch(() => [])]);
       return { bg, strokes: strokes || [] };
     })());
   }
@@ -306,20 +309,36 @@ function followSharp(anim) {
   sharp.style.transition = anim ? 'transform .28s cubic-bezier(.2,.8,.2,1), opacity .12s ease' : 'opacity .12s ease';
   sharp.style.transform = `translate3d(${tx}px, ${ty}px, 0) scale(${k})`;
 }
+// Deckt die vorhandene scharfe Ebene den sichtbaren Teil der Seite schon ab (gleiche Zoomstufe)? Dann nichts neu zeichnen.
+function sharpCovers() {
+  if (!sharp || !sharpAt || sharpAt.s !== z.s || sharpAt.el !== curEl()) return false;
+  const sr = stage.getBoundingClientRect(), o = sharp.getBoundingClientRect();
+  let need = null;
+  for (const img of curEl().querySelectorAll('img[data-idx]')) {
+    const r = img.getBoundingClientRect();
+    const l = Math.max(sr.left, r.left), t = Math.max(sr.top, r.top), rr = Math.min(sr.right, r.right), b = Math.min(sr.bottom, r.bottom);
+    if (rr <= l || b <= t) continue;
+    need = need ? { l: Math.min(need.l, l), t: Math.min(need.t, t), r: Math.max(need.r, rr), b: Math.max(need.b, b) } : { l, t, r: rr, b };
+  }
+  return !need || (o.left <= need.l + 1 && o.top <= need.t + 1 && o.right >= need.r - 1 && o.bottom >= need.b - 1);
+}
 function sharpSoon(ms, anim) {
   if (z.s < 1.15) { hideSharp(); return; }
   followSharp(anim);
   clearTimeout(sharpTimer);
+  if (pts.size) return;               // Finger noch auf dem Bildschirm: erst nach dem Loslassen zeichnen
+  if (!anim && sharpCovers()) return;  // schon scharf genug, nichts zu tun
   const tok = ++sharpTok;
   sharpTimer = setTimeout(() => drawSharp(tok), ms);
 }
 async function drawSharp(tok) {
   const el = curEl(); if (!el || tok !== sharpTok) return;
-  if (pinch) return;   // noch mitten im Zoomen: nach dem Loslassen
+  if (pinch || pts.size) return;   // noch mitten in einer Bewegung: nach dem Loslassen
+  if (sharpCovers()) return;
   const sr = stage.getBoundingClientRect();
   const dpr = Math.min(3, window.devicePixelRatio || 1);
   // Bereich: sichtbarer Teil plus Rand ringsum, damit beim Schieben alles scharf bleibt
-  let m = 0.5;
+  let m = 0.35;
   while (m > 0 && (sr.width * (1 + 2 * m)) * (sr.height * (1 + 2 * m)) * dpr * dpr > SHARP_MAX_PX) m -= 0.05;
   m = Math.max(0, m);
   const area = { l: sr.left - sr.width * m, t: sr.top - sr.height * m, r: sr.right + sr.width * m, b: sr.bottom + sr.height * m };
@@ -340,7 +359,9 @@ async function drawSharp(tok) {
   if (ur <= ul || ub <= ut) return;
   const state = { s: z.s, x: z.x, y: z.y, el };
   const data = await Promise.all(jobs.map((j) => j.src.catch(() => null)));
-  if (tok !== sharpTok || z.s !== state.s || z.x !== state.x || z.y !== state.y) return;
+  // dem Browser erst ein Bild Luft lassen, dann prüfen, ob inzwischen wieder bewegt wurde
+  await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
+  if (tok !== sharpTok || pts.size || z.s !== state.s || z.x !== state.x || z.y !== state.y) return;
   const c = document.createElement('canvas');
   c.className = 'rdsharp';
   c.setAttribute('aria-hidden', 'true');
@@ -413,6 +434,7 @@ stage.addEventListener('pointermove', (e) => {
 function endPointer(e) {
   if (!pts.has(e.pointerId)) return;
   pts.delete(e.pointerId);
+  if (!pts.size && z.s >= 1.15) setTimeout(() => { if (!pts.size) sharpSoon(140, false); }, 0);
   if (pinch) {
     if (pts.size < 2) {
       pinch = null;
