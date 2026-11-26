@@ -1,15 +1,12 @@
 // Werkzeuge für die Schule: Taschenrechner, Fokus-Timer, Einheiten, Periodensystem, Formelsammlung. Alles offline.
 import { $, h, icon, toast, sheet } from './ui.js';
-import { compile, expoInput, supify } from './mathfn.js';
+import { sciCalc, numText } from './scicalc.js';
 export { de };
 
 export const TABS = [['calc', 'Rechner', 'calc', 'Wissenschaftlich, Grad und Bogenmaß'], ['plot', 'Funktionen', 'graph', 'Graphen live zeichnen, Nullstellen, Schnittpunkte'], ['focus', 'Fokus-Timer', 'clock', 'Konzentriert lernen mit Pausen'], ['phys', 'Physik', 'phys', 'Formeln umstellen, Einheiten wie N in kg·m/s²'], ['units', 'Einheiten', 'ruler2', 'Länge, Masse, Zeit, Temperatur …'], ['chem', 'Chemie', 'atom', 'Periodensystem, Atommodelle, Labor'], ['formulas', 'Formeln', 'sigma', 'Mathe, Physik, Chemie']];
 const store = { get: (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } }, set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* egal */ } } };
-const de = (n, digits = 10) => {
-  if (!isFinite(n)) return n > 0 ? '∞' : n < 0 ? '−∞' : 'Fehler';
-  let s = Math.abs(n) >= 1e12 || (Math.abs(n) < 1e-6 && n !== 0) ? n.toExponential(6) : String(parseFloat(n.toPrecision(digits)));
-  return s.replace('.', ',').replace('-', '−');
-};
+// Zahl als Text: 2,5 · sehr groß/klein als 6,674·10⁻¹¹
+const de = (n, sig = 10) => numText(n, sig);
 
 export async function renderKit(ctx, tab = 'calc') {
   if (tab === 'pse') tab = 'chem';
@@ -55,122 +52,8 @@ export function fracEl(fr, { mixed = false } = {}) {
   if (mixed && w) return h('span.frw', null, (neg ? '−' : '') + w, stack(r, fr.d));
   return h('span.frw', null, neg ? '−' : '', stack(n, fr.d));
 }
-const VAR_LETTERS = 'abcdkmnpqrstuvwx';
-export function calcWidget(root, { compact = false, focus = true } = {}) {
-  let deg = store.get('calcDeg', true), ans = store.get('calcAns', 0);
-  let hist = store.get('calcHist', []), vars = store.get('calcVars', {}), fracFirst = store.get('calcFrac', false);
-  let last = null, lastQ = '', lastName = null;   // letztes Ergebnis (für Bruchanzeige und „Aufs Blatt“)
-  const inp = h('input.calcin', { type: 'text', inputmode: 'none', autocomplete: 'off', autocapitalize: 'off', spellcheck: false, placeholder: '0', 'aria-label': 'Rechnung' });
-  const out = h('div.calcout', { text: ' ' });
-  const histEl = h('div.calchist');
-  const varsEl = h('div.calcvars');
-  const modeBtn = h('button.calcmode', { on: { click: () => { deg = !deg; store.set('calcDeg', deg); modeBtn.textContent = deg ? 'DEG' : 'RAD'; preview(); } } }, deg ? 'DEG' : 'RAD');
-  const kbBtn = h('button.calcmode', { title: 'Tastatur', 'aria-label': 'Tastatur', on: { click: () => { inp.inputMode = inp.inputMode === 'none' ? 'decimal' : 'none'; inp.blur(); inp.focus(); } } }, icon('edit'));
-  const saveBtn = h('button.calcmode', { title: 'Ergebnis als Variable speichern', on: { click: (e) => saveVar(e.currentTarget) } }, '→ Var');
-  const varProxy = () => new Proxy(vars, { get: (t, k) => { if (typeof k === 'string' && k in t) return t[k]; throw new Error(`${k} hat noch keinen Wert. Zum Beispiel: ${k} = 5`); }, has: (t, k) => k in t });
-  const prep = (src) => src.replace(/ans/gi, `(${ans})`).replace(/(\d+(?:[.,]\d+)?)\s*%/g, '($1/100)').replace(/(\d+)!/g, (m, n) => String(fact(+n)));
-  // Gibt { v, name } zurück; name gesetzt, wenn eine Variable belegt wird („a = 5“)
-  const evalStr = (src) => {
-    let name = null, body = src;
-    const m = src.match(/^\s*([a-zA-Z])\s*=(?!=)\s*(.+)$/);
-    if (m && VAR_LETTERS.includes(m[1].toLowerCase())) { name = m[1].toLowerCase(); body = m[2]; }
-    const f = compile(prep(body), { deg, params: varProxy() });
-    let v;
-    if (vars.x === undefined) {
-      const a = f(1.2345), b = f(2.7183);
-      if (!(Number.isNaN(a) && Number.isNaN(b)) && a !== b) throw new Error('x hat noch keinen Wert. Zum Beispiel: x = 2. Gleichungen löst der Bereich „Gleichungen“.');
-      v = a;
-    } else v = f(vars.x);
-    return { v, name };
-  };
-  function show(v, name) {
-    out.textContent = ''; out.classList.remove('err');
-    const fr = toFrac(v);
-    const dec = h('span', { text: (name ? name + ' = ' : '= ') + de(v) });
-    if (fr && fracFirst) out.append(h('span.calcmain', null, name ? name + ' = ' : '= ', fracEl(fr)), h('small.calcalt', { text: '≈ ' + de(v) }));
-    else if (fr) out.append(dec, h('small.calcalt', null, '= ', fracEl(fr, { mixed: Math.abs(v) > 1 })));
-    else out.append(dec);
-  }
-  function preview() {
-    const v = inp.value.trim();
-    if (!v) { out.textContent = ' '; out.classList.remove('err'); return; }
-    try { const r = evalStr(v); show(r.v, r.name); } catch (e) { out.textContent = ' '; }
-  }
-  function equals() {
-    const v = inp.value.trim();
-    if (!v) return;
-    try {
-      const { v: r, name } = evalStr(v);
-      if (!isFinite(r) && isNaN(r)) throw new Error('Das geht nicht (z. B. Wurzel aus einer negativen Zahl).');
-      hist.unshift({ q: v, a: r }); hist = hist.slice(0, 30); store.set('calcHist', hist);
-      ans = r; store.set('calcAns', r); last = r; lastQ = name ? '' : supify(v); lastName = name;
-      if (name) { vars[name] = r; store.set('calcVars', vars); drawVars(); }
-      show(r, name);
-      inp.value = name ? '' : de(r).replace('−', '-');
-      drawHist();
-    } catch (e) { out.textContent = e.message; out.classList.add('err'); }
-  }
-  function saveVar(anchor) {
-    const v = inp.value.trim() ? (() => { try { return evalStr(inp.value).v; } catch (e) { return null; } })() : ans;
-    if (v == null || !isFinite(v)) { toast('Erst etwas ausrechnen'); return; }
-    import('./ui.js').then(({ menu }) => menu(anchor, [...'abcdx'].map((k) => ({ label: `${k} = ${de(v)}${vars[k] !== undefined ? '  (statt ' + de(vars[k]) + ')' : ''}`, onClick: () => { vars[k] = v; store.set('calcVars', vars); drawVars(); toast(`${k} = ${de(v)} gespeichert`); } }))));
-  }
-  function drawVars() {
-    varsEl.textContent = '';
-    const ks = Object.keys(vars).sort();
-    for (const k of ks) {
-      varsEl.append(h('span.vchip', null,
-        h('button', { on: { click: () => ins(k) } }, h('b', { text: k }), ' = ' + de(vars[k])),
-        h('button.vdel', { 'aria-label': `${k} löschen`, on: { click: () => { delete vars[k]; store.set('calcVars', vars); drawVars(); preview(); } } }, icon('close'))));
-    }
-    if (!ks.length) varsEl.append(h('small', { text: 'Variablen: tippe z. B. „a = 5“ und dann =, oder nimm „→ Var“.' }));
-  }
-  const expo = expoInput(inp);
-  const ins = (t, back = 0) => { expo.insert(t, back); preview(); };
-  const K = [
-    [['sin', () => ins('sin()', 1)], ['cos', () => ins('cos()', 1)], ['tan', () => ins('tan()', 1)], ['√', () => ins('sqrt()', 1)], ['x²', () => ins('^2')], ['xʸ', () => ins('^')]],
-    [['sin⁻¹', () => ins('arcsin()', 1)], ['cos⁻¹', () => ins('arccos()', 1)], ['tan⁻¹', () => ins('arctan()', 1)], ['ln', () => ins('ln()', 1)], ['log', () => ins('log()', 1)], ['π', () => ins('π')]],
-    [['(', () => ins('(')], [')', () => { const c = inp.selectionStart; if (inp.value[c] === ')') { inp.setSelectionRange(c + 1, c + 1); preview(); } else ins(')'); }], ['%', () => ins('%')], ['n!', () => ins('!')], ['Ans', () => ins('Ans')], ['e', () => ins('e')]],
-    [['a'], ['b'], ['x'], ['ⁿ√', () => { ins('^(1/'); }], ['|x|', () => ins('abs()', 1)], ['a/b', () => { fracFirst = !fracFirst; store.set('calcFrac', fracFirst); if (inp.value.trim()) preview(); else if (last != null) show(last); toast(fracFirst ? 'Ergebnis als Bruch' : 'Ergebnis als Kommazahl'); }, 'frac']],
-    [['7'], ['8'], ['9'], ['C', () => { expo.reset(); inp.value = ''; preview(); }, 'fn'], ['⌫', () => { expo.reset(); const s = inp.selectionStart, e = inp.selectionEnd; if (e > s) inp.setRangeText('', s, e, 'end'); else if (s > 0) inp.setRangeText('', s - 1, s, 'end'); preview(); }, 'fn']],
-    [['4'], ['5'], ['6'], ['×', () => ins('·'), 'op'], ['÷', () => ins('/'), 'op']],
-    [['1'], ['2'], ['3'], ['+', () => ins('+'), 'op'], ['−', () => ins('-'), 'op']],
-    [['0'], [',', () => ins(',')], ['×10ˣ', () => ins('·10^')], ['=', equals, 'eq', 12]],
-  ];
-  const pad = h('div.calcpad');
-  K.forEach((row, ri) => {
-    for (const [l, fn, cls, span] of row) {
-      const b = h('button.ck' + (cls ? '.' + cls : '') + (ri < 4 ? '.sci' : ''), { text: l, style: span ? { gridColumn: `span ${span}` } : {} });
-      b.addEventListener('pointerdown', (e) => { e.preventDefault(); (fn || (() => ins(l)))(); });
-      pad.append(b);
-    }
-  });
-  inp.addEventListener('input', preview);
-  inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); equals(); } });
-  function drawHist() {
-    histEl.textContent = '';
-    for (const x of hist.slice(0, compact ? 3 : 12)) {
-      histEl.append(h('button.hrow', { on: { click: () => { expo.reset(); inp.value = supify(x.q); preview(); } } }, h('span', { text: supify(x.q) }), h('b', { text: '= ' + de(x.a) })));
-    }
-  }
-  drawHist(); drawVars();
-  root.append(h('div.calc' + (compact ? '.compact' : ''), null,
-    h('div.calcscreen', null, h('div.calctop', null, modeBtn, kbBtn, saveBtn, h('small', { text: 'Tippe oder schreib die Rechnung' })), inp, out, varsEl),
-    pad, histEl));
-  if (focus) setTimeout(() => inp.focus(), 50);
-  // Für den schwebenden Rechner: aktuelle Rechnung + Ergebnis (oder das letzte Ergebnis)
-  return {
-    result() {
-      const s = inp.value.trim();
-      if (s && !(last != null && s === de(last).replace('−', '-'))) {
-        try { const r = evalStr(s); if (isFinite(r.v)) return { q: r.name ? '' : supify(s), a: r.v, name: r.name }; } catch (e) { /* weiter */ }
-        return null;
-      }
-      return last != null ? { q: lastQ, a: last, name: lastName } : null;
-    },
-  };
-}
-function fact(n) { if (n > 170) return Infinity; let r = 1; for (let i = 2; i <= n; i++) r *= i; return r; }
+// Taschenrechner wie ein Schulrechner (Anzeige wie im Heft) – siehe js/scicalc.js
+export function calcWidget(root, opts) { return sciCalc(root, opts); }
 function calcModes(root) {
   const modes = [['calc', 'Rechnen'], ['eq', 'Gleichungen'], ['stat', 'Statistik']];
   let cur = store.get('calcMode', 'calc');

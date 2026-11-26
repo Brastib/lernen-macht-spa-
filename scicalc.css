@@ -1,0 +1,164 @@
+/* ---------- Schulrechner (js/scicalc.js) ---------- */
+.calc.nc { display: grid; grid-template-columns: minmax(0, 540px) minmax(200px, 1fr); gap: 20px; align-items: start; }
+.calc.nc.compact { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+@media (max-width: 760px) { .calc.nc { grid-template-columns: minmax(0, 1fr); } }
+.ndevcol { min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.ndev {
+  --kfn: #2d3037; --kfn-ink: #eef0f3; --knum: #565b64; --knum-ink: #fff; --kgrn: #8cc640; --kgrn-ink: #172208;
+  --ksh: #f0b44c; --lcd: #d3dcd4; --lcd-ink: #17201b; --nfont: var(--font-display, -apple-system, system-ui, sans-serif);
+  display: flex; flex-direction: column; gap: 12px; padding: 14px 14px 16px; border-radius: 26px; color: #eef0f3;
+  background: linear-gradient(180deg, #282b31, #1b1d21);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .07), 0 0 0 0.5px rgba(0, 0, 0, .5), 0 14px 30px -14px rgba(10, 12, 20, .55);
+}
+:root[data-theme="dark"] .ndev { --lcd: #b4c0b7; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06), 0 0 0 1px rgba(255, 255, 255, .06); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .ndev { --lcd: #b4c0b7; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06), 0 0 0 1px rgba(255, 255, 255, .06); } }
+
+/* Anzeige */
+.nlcd {
+  display: flex; flex-direction: column; min-height: 136px; padding: 7px 14px 10px; border-radius: 14px; outline: none;
+  background: linear-gradient(180deg, var(--lcd), color-mix(in srgb, var(--lcd) 90%, #000)); color: var(--lcd-ink);
+  box-shadow: inset 0 2px 7px rgba(0, 0, 0, .28), 0 0 0 1.5px rgba(0, 0, 0, .55);
+}
+.nlcd:focus-visible { box-shadow: inset 0 2px 7px rgba(0, 0, 0, .28), 0 0 0 1.5px rgba(0, 0, 0, .55), 0 0 0 3.5px var(--accent); }
+.nind { display: flex; gap: 10px; height: 15px; font: 700 10.5px/15px ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: .05em; opacity: .7; }
+.nexpr {
+  flex: 1; display: flex; align-items: center; min-height: 60px; padding: 4px 2px; overflow-x: auto; overflow-y: hidden;
+  white-space: nowrap; font: 500 27px/1.2 var(--nfont); font-variant-numeric: tabular-nums; scrollbar-width: none; cursor: text; touch-action: pan-x;
+}
+.nexpr::-webkit-scrollbar { display: none; }
+.nexpr[hidden] { display: none; }
+.ntext { margin: 6px 0; min-height: 44px; padding: 0 12px; border-radius: 10px; border: 0; background: rgba(255, 255, 255, .55); color: var(--lcd-ink); font: 500 19px/1.2 ui-monospace, "SF Mono", Menlo, monospace; outline: none; box-shadow: inset 0 0 0 1.5px rgba(0, 0, 0, .35); }
+.ntext[hidden] { display: none; }
+.nres { display: flex; flex-direction: column; align-items: flex-end; justify-content: flex-end; min-height: 42px; max-width: 100%; font: 650 31px/1.15 var(--nfont); font-variant-numeric: tabular-nums; }
+.nres .nout { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+.nres .nout::-webkit-scrollbar { display: none; }
+.nalt { margin-top: 2px; font: 500 13px/1.3 var(--font); opacity: .68; }
+.nerr { max-width: 100%; font: 600 14px/1.35 var(--font); color: #9b1414; text-align: right; white-space: normal; }
+
+/* Mathe-Satz */
+.nrow { display: inline-flex; align-items: center; white-space: nowrap; }
+.nc { padding: 0 .015em; }
+.nop { padding: 0 .14em; }
+.nfn { font-size: .88em; padding-right: .03em; }
+.nexp .nop, .nsub .nop, .nidx .nop { padding: 0 .02em; }
+.nvar, .nans { font-style: italic; }
+.nans { font-style: normal; font-size: .86em; }
+.nslot { position: relative; display: inline-block; flex: none; width: .58em; height: .78em; margin: 0 .06em; border: 1.5px dashed currentColor; border-radius: 3px; opacity: .55; }
+.nslot .ncur { position: absolute; left: 50%; top: 50%; height: 1em; margin: -.5em 0 0 -1px; }
+.ncur { display: inline-block; flex: none; width: 2px; height: 1.05em; margin: 0 -1px; background: currentColor; border-radius: 1px; animation: nblink 1.05s steps(1) infinite; position: relative; z-index: 1; }
+@keyframes nblink { 50% { opacity: 0; } }
+.nfrac { display: inline-flex; flex-direction: column; align-items: center; margin: 0 .1em; font-size: .9em; }
+.nnum, .nden { padding: 0 .14em; }
+.nbar { align-self: stretch; height: 2px; margin: .07em 0; background: currentColor; border-radius: 1px; }
+.nsqrt { display: inline-flex; align-items: stretch; margin: 0 .05em; }
+.nrsvg { flex: none; width: .52em; overflow: visible; fill: none; stroke: currentColor; stroke-width: 2px; stroke-linejoin: round; stroke-linecap: round; }
+.nrad { margin-left: -1px; padding: .08em .12em 0 .08em; border-top: 2px solid currentColor; }
+.nroot .nidx { align-self: flex-start; margin: .05em -.38em 0 0; font-size: .55em; position: relative; z-index: 1; }
+.npow { display: inline-flex; flex-direction: column; align-items: flex-start; margin-left: .03em; font-size: .62em; }
+.npow .nbase { display: block; height: .95em; }
+.nE { display: inline-flex; align-items: center; }
+.nten { font-size: .92em; padding-left: .08em; }
+.nabs { display: inline-flex; align-items: center; margin: 0 .08em; padding: 0 .12em; border-left: 2px solid currentColor; border-right: 2px solid currentColor; }
+.nlogb { display: inline-flex; align-items: center; }
+.nsub { align-self: flex-end; margin-bottom: -.15em; font-size: .6em; }
+
+/* Kopfzeile: SHIFT, Winkel, Pfeile, S⇔D */
+.ntopbar { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 8px; }
+.ntl, .ntr { display: flex; gap: 6px; min-width: 0; }
+.ntr { justify-content: flex-end; }
+.nk {
+  position: relative; display: flex; flex-direction: column; align-items: stretch; justify-content: flex-end; min-width: 0;
+  padding: 0; border: 0; background: none; color: inherit; font-family: var(--font);
+  touch-action: manipulation; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent;
+}
+.ksh { display: block; height: 13px; margin-bottom: 3px; overflow: hidden; color: var(--ksh); font: 650 10.5px/13px var(--font); text-align: center; white-space: nowrap; transition: color .12s, text-shadow .12s; }
+.ksh sup { font-size: .8em; vertical-align: .35em; line-height: 0; }
+.kl {
+  display: flex; align-items: center; justify-content: center; gap: 1px; height: 40px; border-radius: 12px;
+  background: var(--kfn); color: var(--kfn-ink); font: 600 15px/1 var(--font); white-space: nowrap;
+  box-shadow: 0 2px 0 rgba(0, 0, 0, .5), inset 0 1px 0 rgba(255, 255, 255, .08); transition: transform .06s ease, box-shadow .06s ease, background .12s;
+}
+.kl sup { font-size: .66em; vertical-align: .62em; line-height: 0; }
+.kl sub { font-size: .66em; vertical-align: -.3em; line-height: 0; }
+.nk.down .kl { transform: translateY(1.5px); box-shadow: 0 .5px 0 rgba(0, 0, 0, .5), inset 0 1px 0 rgba(255, 255, 255, .05); filter: brightness(1.15); }
+.kbox { display: inline-block; width: .6em; height: .7em; border: 1.3px solid currentColor; border-radius: 2px; opacity: .85; vertical-align: middle; }
+sup .kbox, sub .kbox { width: .7em; height: .8em; }
+.kfr { display: inline-flex; flex-direction: column; align-items: center; gap: 2px; }
+.kfr .kbox { width: .55em; height: .48em; }
+.kfl { display: block; width: .85em; height: 1.5px; background: currentColor; }
+
+.ntop .ksh { display: none; }
+.nk.ntop .kl, .nshift .kl { height: 32px; min-width: 52px; padding: 0 10px; border-radius: 16px; background: #3a3e46; font: 750 11px/1 var(--font); letter-spacing: .05em; }
+.nshift.on .kl { background: var(--ksh); color: #2b1d00; }
+.nnav { display: flex; align-items: center; gap: 2px; padding: 3px; border-radius: 18px; background: #33363d; box-shadow: 0 2px 0 rgba(0, 0, 0, .5), inset 0 1px 0 rgba(255, 255, 255, .08); }
+.nk.narr { width: 34px; }
+.nk.narr .ksh { display: none; }
+.nk.narr .kl { height: 28px; border-radius: 14px; background: transparent; box-shadow: none; color: #d3d7dd; font-size: 11px; }
+.nk.narr.down .kl { background: rgba(255, 255, 255, .14); transform: none; }
+
+/* Tastenfelder */
+.calcpad.npad { display: block; }
+.nk.xtra { display: none; }
+.nfgrid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 5px 8px; }
+.nngrid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px 10px; margin-top: 12px; }
+.numk .kl { height: 52px; border-radius: 14px; background: var(--knum); color: var(--knum-ink); font: 520 23px/1 var(--font); }
+.numk .ksh { height: 11px; margin-bottom: 2px; line-height: 11px; }
+.numk.opk .kl { font-size: 25px; font-weight: 450; }
+.numk.grn .kl { background: var(--kgrn); color: var(--kgrn-ink); font-size: 16px; font-weight: 750; letter-spacing: .03em; }
+.numk.exk .kl, .numk.ansk .kl { font-size: 16px; font-weight: 600; }
+.numk.eqk .kl { background: var(--accent-grad, var(--accent)); color: #fff; font-size: 26px; }
+.shifted .ksh { color: #ffd889; text-shadow: 0 0 8px rgba(240, 180, 76, .55); }
+.shifted .nk:not(.ntop):not(.narr):has(.ksh:not(:empty)) .kl { box-shadow: 0 2px 0 rgba(0, 0, 0, .5), inset 0 0 0 1.5px var(--ksh); }
+
+/* Verlauf und Speicher */
+.nc .calchist { max-height: 640px; }
+.nc .hrow { min-width: 0; }
+.nc .hrow span, .nc .hrow b { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; overflow-wrap: normal; }
+.nhhead { padding: 6px 10px 2px; font: 650 13px/1.3 var(--font); color: var(--muted); }
+.nvars:empty { display: none; }
+.nvars { margin-top: 0; padding-top: 0; border-top: 0; min-height: 0; }
+.vdel { min-width: 32px; min-height: 34px; font-size: 18px; color: var(--muted); }
+
+/* Schwebender Rechner im Editor */
+.fcalc .ndev { gap: 8px; padding: 10px 10px 12px; border-radius: 18px; }
+.fcalc .nlcd { min-height: 98px; padding: 5px 10px 7px; border-radius: 11px; }
+.fcalc .nexpr { min-height: 42px; font-size: 21px; }
+.fcalc .nres { min-height: 30px; font-size: 23px; }
+.fcalc .nerr { font-size: 12.5px; }
+.fcalc .nfgrid { gap: 3px 5px; }
+.fcalc .nngrid { gap: 3px 6px; margin-top: 8px; }
+.fcalc .ksh { height: 11px; margin-bottom: 2px; font-size: 9px; line-height: 11px; }
+.fcalc .kl { height: 31px; border-radius: 9px; font-size: 12.5px; }
+.fcalc .numk .kl { height: 39px; border-radius: 11px; font-size: 18px; }
+.fcalc .numk.grn .kl, .fcalc .numk.exk .kl, .fcalc .numk.ansk .kl { font-size: 13px; }
+.fcalc .numk .ksh { height: 9px; line-height: 9px; }
+.fcalc .nk.ntop .kl, .fcalc .nshift .kl { height: 28px; min-width: 40px; padding: 0 7px; font-size: 10px; }
+.fcalc .nnav { padding: 2px; gap: 0; }
+.fcalc .nk.narr { width: 27px; }
+.fcalc .nk.narr .kl { height: 24px; font-size: 9.5px; }
+.fcalc .ntopbar { gap: 4px; }
+.fcalc .ntl, .fcalc .ntr { gap: 4px; }
+.fcalc.small .nfgrid, .fcalc.fitsmall .nfgrid, .fcalc.small .ntl, .fcalc.fitsmall .ntl, .fcalc.small .ntr .nk:last-child, .fcalc.fitsmall .ntr .nk:last-child { display: none; }
+.fcalc.small .nngrid, .fcalc.fitsmall .nngrid { margin-top: 0; }
+.fcalc.small .ntopbar, .fcalc.fitsmall .ntopbar { display: flex; justify-content: space-between; }
+.fcalc.min .ntopbar, .fcalc.fitmin .ntopbar { display: none; }
+
+/* iPad quer: Funktions- und Zahlentasten nebeneinander, damit alles auf einen Blick passt */
+@media (min-width: 1000px) {
+  .calc.nc:not(.compact) { grid-template-columns: minmax(0, 880px) minmax(220px, 1fr); }
+  .calc.nc:not(.compact) .npad { display: grid; grid-template-columns: minmax(0, 6fr) minmax(0, 5fr); gap: 22px; align-items: start; }
+  .calc.nc:not(.compact) .nngrid { margin-top: 0; }
+  .calc.nc:not(.compact) .nfgrid { row-gap: 9px; }
+  .calc.nc:not(.compact) .nlcd { min-height: 116px; }
+  .calc.nc:not(.compact) .nk.xtra { display: flex; }
+  .calc.nc:not(.compact) .nfgrid .kl { height: 44px; }
+}
+
+/* Physik: Hochzahl-Knöpfe über den Zahlenfeldern */
+.phgiven, .cvhead { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; min-width: 0; }
+.phgiven .fieldlabel { margin-bottom: 8px; }
+.cvhead { align-items: center; margin-bottom: 6px; }
+.phexpo { display: flex; flex: none; gap: 6px; margin-bottom: 4px; }
+.cvhead .phexpo { margin-bottom: 0; }
+.phxb { min-width: 44px; min-height: 34px; padding: 0 10px; border-radius: 10px; background: var(--surface); box-shadow: var(--hair, 0 0 0 1px var(--line)); color: var(--accent); font: 650 14px/1 var(--font); white-space: nowrap; }
+.phxb:active { background: var(--surface-2); }
