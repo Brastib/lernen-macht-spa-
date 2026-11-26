@@ -3641,5 +3641,5 @@ body:has(#editor.lupeon:not([hidden])) .toast { bottom: calc(clamp(200px, 29vh, 
 .penhover[hidden] { display: none; }
 
 /* Leser: scharfe Ebene beim Heranzoomen (wird nach dem Zoomen in voller Auflösung gezeichnet) */
-.readstage .rdsharp { position: absolute; left: 0; top: 0; width: 100%; height: 100%; z-index: 4; pointer-events: none; opacity: 0; transition: opacity .12s ease; }
+.readstage .rdsharp { position: absolute; z-index: 4; pointer-events: none; opacity: 0; transform-origin: 0 0; transition: opacity .12s ease; will-change: transform; }
 .readstage .rdsharp.on { opacity: 1; }

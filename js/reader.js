@@ -231,7 +231,7 @@ function applyZ(anim) {
   el.style.transform = on ? `translate3d(${z.x}px, ${z.y}px, 0) scale(${z.s})` : '';
   stage.classList.toggle('zoomed', on);
   zbar.update(z.s);
-  sharpSoon(anim ? 300 : 160);
+  sharpSoon(anim ? 320 : 180, anim);
 }
 function resetZoom(anim) { z = { s: 1, x: 0, y: 0 }; pinch = null; pan = null; applyZ(anim); }
 // Punkt (Bildschirm) bleibt beim Zoomen an seiner Stelle
@@ -273,10 +273,11 @@ function sharpenSoon() {
 // Ein gezoomtes Bild (CSS-Skalierung) wird auf dem iPad oft nur in der Ausgangsgröße gerastert und wirkt matschig.
 // Darum wird nach dem Zoomen der sichtbare Ausschnitt in voller Bildschirm-Auflösung direkt aus dem Original
 // (Scan in voller Größe + Striche als Vektoren) auf eine Ebene darüber gezeichnet.
-const sharp = h('canvas.rdsharp', { 'aria-hidden': 'true' });
-stage.append(sharp);
+let sharp = null;              // aktuelle scharfe Ebene (Canvas) oder null
+let sharpAt = null;            // Zoom-Zustand, mit dem sie gezeichnet wurde { s, x, y, ox, oy, el }
 const srcCache = new Map();   // Seiten-ID -> Promise<{ bg, strokes }>
 let sharpTimer = 0, sharpTok = 0;
+const SHARP_MAX_PX = 13e6;    // Pixel-Budget der scharfen Ebene
 function pageSrc(p) {
   if (!srcCache.has(p.id)) {
     if (srcCache.size > 6) srcCache.delete(srcCache.keys().next().value);
@@ -289,45 +290,74 @@ function pageSrc(p) {
   return srcCache.get(p.id);
 }
 export function forgetSharp(id) { srcCache.delete(id); }
-function hideSharp() { sharpTok++; sharp.classList.remove('on'); }
-function sharpSoon(ms) {
-  hideSharp();
+function hideSharp() {
+  sharpTok++; clearTimeout(sharpTimer);
+  if (sharp) { const old = sharp; sharp = null; sharpAt = null; old.classList.remove('on'); setTimeout(() => old.remove(), 150); }
+}
+// Die scharfe Ebene wandert beim Verschieben/Zoomen mit (wie die Seite darunter), statt zu verschwinden.
+// Nach dem Loslassen wird sie im Hintergrund neu gezeichnet und ohne Flackern ausgetauscht.
+function followSharp(anim) {
+  if (!sharp || !sharpAt) return;
+  if (z.s < 1.15 || curEl() !== sharpAt.el) { hideSharp(); return; }
+  const sr = stage.getBoundingClientRect(), b = box();
+  const bx = b.l - sr.left, by = b.t - sr.top, k = z.s / sharpAt.s;
+  const tx = bx + z.x + (sharpAt.ox - bx - sharpAt.x) * k - sharpAt.ox;
+  const ty = by + z.y + (sharpAt.oy - by - sharpAt.y) * k - sharpAt.oy;
+  sharp.style.transition = anim ? 'transform .28s cubic-bezier(.2,.8,.2,1), opacity .12s ease' : 'opacity .12s ease';
+  sharp.style.transform = `translate3d(${tx}px, ${ty}px, 0) scale(${k})`;
+}
+function sharpSoon(ms, anim) {
+  if (z.s < 1.15) { hideSharp(); return; }
+  followSharp(anim);
   clearTimeout(sharpTimer);
-  if (z.s < 1.15) return;
-  const tok = sharpTok;
+  const tok = ++sharpTok;
   sharpTimer = setTimeout(() => drawSharp(tok), ms);
 }
 async function drawSharp(tok) {
   const el = curEl(); if (!el || tok !== sharpTok) return;
+  if (pinch) return;   // noch mitten im Zoomen: nach dem Loslassen
   const sr = stage.getBoundingClientRect();
   const dpr = Math.min(3, window.devicePixelRatio || 1);
-  const imgs = [...el.querySelectorAll('img[data-idx]')];
+  // Bereich: sichtbarer Teil plus Rand ringsum, damit beim Schieben alles scharf bleibt
+  let m = 0.5;
+  while (m > 0 && (sr.width * (1 + 2 * m)) * (sr.height * (1 + 2 * m)) * dpr * dpr > SHARP_MAX_PX) m -= 0.05;
+  m = Math.max(0, m);
+  const area = { l: sr.left - sr.width * m, t: sr.top - sr.height * m, r: sr.right + sr.width * m, b: sr.bottom + sr.height * m };
   const jobs = [];
-  for (const img of imgs) {
+  for (const img of el.querySelectorAll('img[data-idx]')) {
     const p = pages[+img.dataset.idx]; if (!p) continue;
     const r = img.getBoundingClientRect(), H = pageHeight(p);
-    // sichtbarer Inhalt im Bild (object-fit: contain)
-    const k = Math.min(r.width / PAGE_W, r.height / H);
+    const k = Math.min(r.width / PAGE_W, r.height / H);   // object-fit: contain
     const cw = PAGE_W * k, ch = H * k;
     const R = { l: r.left + (r.width - cw) / 2, t: r.top + (r.height - ch) / 2, w: cw, h: ch };
-    if (R.l > sr.right || R.t > sr.bottom || R.l + R.w < sr.left || R.t + R.h < sr.top) continue;
+    if (R.l > area.r || R.t > area.b || R.l + R.w < area.l || R.t + R.h < area.t) continue;
     jobs.push({ p, R, H, src: pageSrc(p) });
   }
   if (!jobs.length) return;
+  // nur so groß wie nötig: Schnitt aus Rand-Bereich und Seiten
+  const ul = Math.max(area.l, Math.min(...jobs.map((j) => j.R.l))), ut = Math.max(area.t, Math.min(...jobs.map((j) => j.R.t)));
+  const ur = Math.min(area.r, Math.max(...jobs.map((j) => j.R.l + j.R.w))), ub = Math.min(area.b, Math.max(...jobs.map((j) => j.R.t + j.R.h)));
+  if (ur <= ul || ub <= ut) return;
+  const state = { s: z.s, x: z.x, y: z.y, el };
   const data = await Promise.all(jobs.map((j) => j.src.catch(() => null)));
-  if (tok !== sharpTok) return;
-  const W = Math.round(sr.width * dpr), Hh = Math.round(sr.height * dpr);
-  if (sharp.width !== W || sharp.height !== Hh) { sharp.width = W; sharp.height = Hh; }
-  const ctx = sharp.getContext('2d');
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.clearRect(0, 0, W, Hh);
+  if (tok !== sharpTok || z.s !== state.s || z.x !== state.x || z.y !== state.y) return;
+  const c = document.createElement('canvas');
+  c.className = 'rdsharp';
+  c.setAttribute('aria-hidden', 'true');
+  const W = Math.round((ur - ul) * dpr), Hh = Math.round((ub - ut) * dpr);
+  c.width = W; c.height = Hh;
+  const ox = ul - sr.left, oy = ut - sr.top;
+  c.style.left = ox + 'px'; c.style.top = oy + 'px';
+  c.style.width = (ur - ul) + 'px'; c.style.height = (ub - ut) + 'px';
+  const ctx = c.getContext('2d');
   jobs.forEach((j, i) => {
     const d = data[i]; if (!d) return;
     const s = j.R.w / PAGE_W * dpr;
-    const x0 = (j.R.l - sr.left) * dpr, y0 = (j.R.t - sr.top) * dpr;
+    const x0 = (j.R.l - ul) * dpr, y0 = (j.R.t - ut) * dpr;
     ctx.save();
     ctx.beginPath();
-    ctx.rect(Math.max(0, x0), Math.max(0, y0), Math.min(W, x0 + j.R.w * dpr) - Math.max(0, x0), Math.min(Hh, y0 + j.R.h * dpr) - Math.max(0, y0));
+    const cx0 = Math.max(0, x0), cy0 = Math.max(0, y0);
+    ctx.rect(cx0, cy0, Math.min(W, x0 + j.R.w * dpr) - cx0, Math.min(Hh, y0 + j.R.h * dpr) - cy0);
     ctx.clip();
     ctx.setTransform(1, 0, 0, 1, x0, y0);
     ctx.fillStyle = '#fff';
@@ -338,7 +368,15 @@ async function drawSharp(tok) {
     drawStrokes(ctx, d.strokes, s);
     ctx.restore();
   });
-  if (tok === sharpTok) sharp.classList.add('on');
+  if (tok !== sharpTok) return;
+  // austauschen: neue Ebene sofort sichtbar (ohne Einblenden), alte danach entfernen
+  const old = sharp;
+  sharp = c; sharpAt = { ...state, ox, oy };
+  c.classList.add('on');
+  stage.append(c);
+  if (old) setTimeout(() => old.remove(), 220);
+  // Zwischenzeit: wurde schon wieder geschoben, gleich nachführen
+  followSharp(false);
 }
 window.addEventListener('resize', hideSharp);
 
