@@ -2,6 +2,7 @@
 // Dazu ein Einheiten-Umrechner, der zusammengesetzte Einheiten versteht (N in kg·m/s², km/h in m/s, kWh in J …).
 // Alles offline, ohne Bibliotheken.
 import { h, icon } from './ui.js';
+import { expoInput } from './mathfn.js';
 
 const store = { get: (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } }, set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* egal */ } } };
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -42,6 +43,21 @@ export function parseNum(s) {
   const mul = () => { let v = unary(); while (peek() === '*' || peek() === '/') { const o = s[i++]; const r = unary(); v = o === '*' ? v * r : v / r; } return v; };
   const add = () => { let v = mul(); while (peek() === '+' || peek() === '-') { const o = s[i++]; const r = mul(); v = o === '+' ? v + r : v - r; } return v; };
   try { const v = add(); return i === s.length ? v : NaN; } catch (e) { return NaN; }
+}
+
+// Knöpfe für Hochzahlen in Zahlenfeldern: 6,67 ·10ⁿ − 1 1 -> 6,67·10⁻¹¹ (iPad-Zahlentastatur hat kein ^)
+function numField(inp) { if (!inp._expo) inp._expo = expoInput(inp); return inp; }
+function expoBar(target) {
+  const ins = (t) => (e) => {
+    e.preventDefault();
+    const inp = target();
+    if (!inp || inp.readOnly) return;
+    if (document.activeElement !== inp) { inp.focus(); const n = inp.value.length; inp.setSelectionRange(n, n); }
+    numField(inp)._expo.insert(t);
+    inp.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+  const b = (label, t, title) => h('button.phxb', { type: 'button', title, 'aria-label': title, on: { pointerdown: ins(t) } }, label);
+  return h('div.phexpo', null, b('·10ⁿ', '·10^', 'Mal 10 hoch …'), b('xʸ', '^', 'Hochzahl'), b('−', '-', 'Minus (auch in der Hochzahl)'));
 }
 
 // ================= Einheiten =================
@@ -471,6 +487,7 @@ function solver(root, F, back) {
     }
   };
   const fields = {};
+  let lastNum = null;
   const drawInputs = () => {
     inputs.textContent = '';
     for (const s of syms) {
@@ -486,6 +503,7 @@ function solver(root, F, back) {
       const upd = () => { vals[s] = [inp.value, sel.value]; if (units.length > 1) { unitPref[qk] = sel.value; store.set('physUnits', unitPref); } save(); calc(); };
       inp.addEventListener('input', upd); sel.addEventListener('change', upd);
       fields[s] = inp;
+      if (!fixed) { numField(inp); inp.addEventListener('focus', () => { lastNum = inp; }); }
       inputs.append(h('label.phrow' + (fixed ? '.fixed' : ''), null, lab, h('span.phname', { text: name + (fixed ? ' (fest)' : '') }), inp, sel));
     }
   };
@@ -564,7 +582,7 @@ function solver(root, F, back) {
 
   drawTargets(); drawInputs(); calc();
   root.append(head, h('div.phcardbox', null, big, note), h('p.fieldlabel', { text: 'Was suchst du?' }), tchips,
-    h('p.fieldlabel', { text: 'Gegeben' }), inputs, result, way);
+    h('div.phgiven', null, h('p.fieldlabel', { text: 'Gegeben' }), expoBar(() => (lastNum && lastNum.isConnected ? lastNum : inputs.querySelector('.phnum:not([readonly])')))), inputs, result, way);
 }
 
 // ---------- Einheiten ----------
@@ -655,7 +673,7 @@ function convWidget(root) {
   [val, from, to].forEach((x) => x.addEventListener('input', upd));
   root.append(qchips,
     h('div.cvpair', null,
-      h('div.ucard.cvcard', null, h('small', { text: 'Wert und Einheit' }), h('div.cvin', null, val, from), fchips),
+      h('div.ucard.cvcard', null, h('div.cvhead', null, h('small', { text: 'Wert und Einheit' }), expoBar(() => val)), h('div.cvin', null, numField(val), from), fchips),
       swap,
       h('div.ucard.cvcard', null, h('small', { text: 'Umrechnen in' }), to, tchips)),
     out, way);
