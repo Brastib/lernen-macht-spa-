@@ -2,7 +2,7 @@
 // Quer (breiter Bildschirm): Doppelseite, erste Seite allein rechts wie ein Buchdeckel.
 // Hoch: eine Seite.
 import * as db from './db.js';
-import { renderPage, blobToImage } from './paper.js';
+import { renderPage, blobToImage, PAGE_W, pageHeight, drawPaper, drawStrokes } from './paper.js';
 import { $, h, icon, sheet, promptSheet, toast, menu, busy, zoomBar } from './ui.js';
 
 let pages = [], spreads = [], si = 0, selected = 0, title = '', onEdit = null, onMarks = null;
@@ -10,6 +10,7 @@ const urls = new Map();       // Seiten-ID -> Bild-URL (fertig zusammengesetzt)
 const hiUrls = new Map();     // schärfere Fassung für starkes Heranzoomen
 
 export function invalidate(id) {
+  srcCache.delete(id);
   const u = urls.get(id);
   if (u) { URL.revokeObjectURL(u); urls.delete(id); }
   const hu = hiUrls.get(id);
@@ -230,6 +231,7 @@ function applyZ(anim) {
   el.style.transform = on ? `translate3d(${z.x}px, ${z.y}px, 0) scale(${z.s})` : '';
   stage.classList.toggle('zoomed', on);
   zbar.update(z.s);
+  sharpSoon(anim ? 300 : 160);
 }
 function resetZoom(anim) { z = { s: 1, x: 0, y: 0 }; pinch = null; pan = null; applyZ(anim); }
 // Punkt (Bildschirm) bleibt beim Zoomen an seiner Stelle
@@ -266,6 +268,79 @@ function sharpenSoon() {
     });
   }, 250);
 }
+
+// ---------- Gestochen scharf beim Heranzoomen ----------
+// Ein gezoomtes Bild (CSS-Skalierung) wird auf dem iPad oft nur in der Ausgangsgröße gerastert und wirkt matschig.
+// Darum wird nach dem Zoomen der sichtbare Ausschnitt in voller Bildschirm-Auflösung direkt aus dem Original
+// (Scan in voller Größe + Striche als Vektoren) auf eine Ebene darüber gezeichnet.
+const sharp = h('canvas.rdsharp', { 'aria-hidden': 'true' });
+stage.append(sharp);
+const srcCache = new Map();   // Seiten-ID -> Promise<{ bg, strokes }>
+let sharpTimer = 0, sharpTok = 0;
+function pageSrc(p) {
+  if (!srcCache.has(p.id)) {
+    if (srcCache.size > 6) srcCache.delete(srcCache.keys().next().value);
+    srcCache.set(p.id, (async () => {
+      const blob = p.kind === 'blank' ? null : await db.getImage(p.id);
+      const [bg, strokes] = await Promise.all([blob ? blobToImage(blob) : null, db.getInk(p.id).catch(() => [])]);
+      return { bg, strokes: strokes || [] };
+    })());
+  }
+  return srcCache.get(p.id);
+}
+export function forgetSharp(id) { srcCache.delete(id); }
+function hideSharp() { sharpTok++; sharp.classList.remove('on'); }
+function sharpSoon(ms) {
+  hideSharp();
+  clearTimeout(sharpTimer);
+  if (z.s < 1.15) return;
+  const tok = sharpTok;
+  sharpTimer = setTimeout(() => drawSharp(tok), ms);
+}
+async function drawSharp(tok) {
+  const el = curEl(); if (!el || tok !== sharpTok) return;
+  const sr = stage.getBoundingClientRect();
+  const dpr = Math.min(3, window.devicePixelRatio || 1);
+  const imgs = [...el.querySelectorAll('img[data-idx]')];
+  const jobs = [];
+  for (const img of imgs) {
+    const p = pages[+img.dataset.idx]; if (!p) continue;
+    const r = img.getBoundingClientRect(), H = pageHeight(p);
+    // sichtbarer Inhalt im Bild (object-fit: contain)
+    const k = Math.min(r.width / PAGE_W, r.height / H);
+    const cw = PAGE_W * k, ch = H * k;
+    const R = { l: r.left + (r.width - cw) / 2, t: r.top + (r.height - ch) / 2, w: cw, h: ch };
+    if (R.l > sr.right || R.t > sr.bottom || R.l + R.w < sr.left || R.t + R.h < sr.top) continue;
+    jobs.push({ p, R, H, src: pageSrc(p) });
+  }
+  if (!jobs.length) return;
+  const data = await Promise.all(jobs.map((j) => j.src.catch(() => null)));
+  if (tok !== sharpTok) return;
+  const W = Math.round(sr.width * dpr), Hh = Math.round(sr.height * dpr);
+  if (sharp.width !== W || sharp.height !== Hh) { sharp.width = W; sharp.height = Hh; }
+  const ctx = sharp.getContext('2d');
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, W, Hh);
+  jobs.forEach((j, i) => {
+    const d = data[i]; if (!d) return;
+    const s = j.R.w / PAGE_W * dpr;
+    const x0 = (j.R.l - sr.left) * dpr, y0 = (j.R.t - sr.top) * dpr;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(Math.max(0, x0), Math.max(0, y0), Math.min(W, x0 + j.R.w * dpr) - Math.max(0, x0), Math.min(Hh, y0 + j.R.h * dpr) - Math.max(0, y0));
+    ctx.clip();
+    ctx.setTransform(1, 0, 0, 1, x0, y0);
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, PAGE_W * s, j.H * s);
+    ctx.imageSmoothingQuality = 'high';
+    if (d.bg) ctx.drawImage(d.bg, 0, 0, PAGE_W * s, j.H * s);
+    else drawPaper(ctx, j.p.paper || 'blank', PAGE_W, j.H, s);
+    drawStrokes(ctx, d.strokes, s);
+    ctx.restore();
+  });
+  if (tok === sharpTok) sharp.classList.add('on');
+}
+window.addEventListener('resize', hideSharp);
 
 stage.addEventListener('pointerdown', (e) => {
   if (e.target.closest('.nav, .zbar')) return;
