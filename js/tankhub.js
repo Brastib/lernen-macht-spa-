@@ -49,6 +49,8 @@ export function tankHub(openFx, players, me) {
     const solo = mode.kind === 'solo';
     const problem = rosterProblem(mode);
     body.append(h('div.tksteps', null, ...STEPS.map(([id, name], k) => h('button.tkstep' + (k === step ? '.on' : k < step ? '.done' : ''), { on: { click: () => go(0, k) } }, h('i', { text: String(k + 1) }), h('span', { text: name })))));
+    const sv = loadSave();
+    if (sv) body.append(saveCard(sv));
     const id = STEPS[step][0];
     const head = (t, d) => body.append(h('div.tkstephead', null, h('h2', { text: t }), d ? h('p', { text: d }) : null));
     if (id === 'players') {
@@ -117,7 +119,7 @@ export function tankHub(openFx, players, me) {
       }
     // Optionen
     const opt = h('div.tkopts');
-    OPTS.forEach((o) => {
+    [...OPTS].sort((a, b) => (b.id === 'ff') - (a.id === 'ff')).forEach((o) => {
       if (o.id === 'rounds' && mode.kind !== 'score') return;
       if (o.id === 'ff' && !mode.teams && !mode.coop) return;
       if (o.id === 'cpu') return;
@@ -133,6 +135,7 @@ export function tankHub(openFx, players, me) {
         row(2, 'Modus', mode.name),
         row(3, 'Karte', mapName()),
         row(4, 'Wetter', WEATHER.find((w) => w.id === lob.weather).name),
+        mode.teams || mode.coop ? row(5, 'Team-Schaden', lob.opts.ff ? 'An' : 'Aus') : null,
         row(5, 'Regeln', OPTS.filter((o) => o.id !== 'cpu' && lob.opts[o.id] !== o.def).length ? `${OPTS.filter((o) => o.id !== 'cpu' && lob.opts[o.id] !== o.def).length} geändert` : 'Standard')));
     }
     // Leiste unten
@@ -142,6 +145,35 @@ export function tankHub(openFx, players, me) {
       problem ? h('small.tkwarn', { text: problem }) : h('small', { text: `${kindName()} · ${mode.name} · ${mapName()} · ${WEATHER.find((w) => w.id === lob.weather).name}` }),
       last ? null : h('button.btn.tknext', { on: { click: () => go(+1) } }, h('span', { text: 'Weiter' }), icon('right')),
       h('button.btn.primary.tkgo', { disabled: !!problem, on: { click: () => startMatch() } }, icon('play'), h('span', { text: last ? 'Los geht’s' : 'Start' }))));
+  }
+  // ---------- Gespeichertes Spiel ----------
+  function loadSave() {
+    try { const s = JSON.parse(localStorage.getItem('tkSave') || 'null'); return s && s.v === 1 && s.cfg && s.tanks ? s : null; } catch (e) { return null; }
+  }
+  function dropSave() { try { localStorage.removeItem('tkSave'); } catch (e) { /* egal */ } }
+  function saveCard(sv) {
+    const m = MODE[sv.cfg.mode] || MODE.ffa, mp = findMap(sv.cfg.map);
+    const liga = sv.ctx && sv.ctx.kind === 'liga';
+    const when = new Date(sv.time), today = new Date().toDateString() === when.toDateString();
+    const t = `${today ? 'heute' : when.toLocaleDateString('de-DE', { day: 'numeric', month: 'numeric' })}, ${when.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} Uhr`;
+    const alive = sv.tanks.filter((q) => !q.dead).length;
+    const names = sv.cfg.players.map((p) => p.name).join(', ');
+    return h('div.tksavecard', null,
+      h('span.tksaveic', null, icon('restore')),
+      h('div.tksavetx', null, h('b', { text: liga ? `Liga-Spieltag ${sv.ctx.day + 1} weiterspielen` : 'Gespeichertes Spiel weiterspielen' }),
+        h('small', { text: `${m.name} · ${mp ? mp.name : 'Karte'} · Runde ${Math.floor(sv.turnsDone / Math.max(1, sv.tanks.length)) + 1} · ${alive} von ${sv.tanks.length} Panzern übrig` }),
+        h('small', { text: `${names} · gespeichert ${t}` })),
+      h('button.btn.tksavedel', { on: { click: async () => { if (await confirmSheet('Gespeichertes Spiel löschen?', 'Das Spiel kann danach nicht mehr weitergespielt werden.', 'Löschen')) { dropSave(); render(); } } } }, icon('trash'), h('span', { text: 'Löschen' })),
+      h('button.btn.primary.tksavego', { on: { click: () => resumeSave(sv) } }, icon('play'), h('span', { text: 'Weiter' })));
+  }
+  function resumeSave(sv) {
+    if (sv.ctx && sv.ctx.kind === 'liga') {
+      const L = liga();
+      if (L.day !== sv.ctx.day || L.days !== sv.ctx.days) { toast('Dieser Liga-Spieltag passt nicht mehr zur aktuellen Liga'); dropSave(); render(); return; }
+      playDay(L, sv); return;
+    }
+    if (sv.ctx && sv.ctx.lob) { lob = { ...lob, ...sv.ctx.lob }; lob.opts = { ...defOpts(), ...lob.opts }; saveLob(); }
+    startMatch(sv);
   }
   function nextTeam() { const m = MODE[lob.mode]; if (!m.teams) return 0; const c = [0, 0]; lob.roster.forEach((r) => { if (r.team < 2) c[r.team || 0]++; }); return c[0] <= c[1] ? 0 : 1; }
   function fixRoster() {
@@ -175,11 +207,14 @@ export function tankHub(openFx, players, me) {
     if (mode.coop) players.push({ name: 'Riesenpanzer', color: '#e0a106', cpu: Math.min(4, (opts.cpu || 2) + 1), boss: true, team: 1 });
     return { players, mode: mode.id, map: mapId, weather, opts };
   }
-  async function startMatch() {
+  async function startMatch(resume) {
     const mode = MODE[lob.mode];
     for (;;) {
       fx.stage.replaceChildren();
-      const res = await battle(fx, buildCfg(mode, lob.map, lob.weather, lob.roster, lob.opts));
+      const cfg = resume ? { ...resume.cfg, resume } : buildCfg(mode, lob.map, lob.weather, lob.roster, lob.opts);
+      cfg.saveCtx = { kind: 'match', lob: JSON.parse(JSON.stringify(lob)) };
+      resume = null;
+      const res = await battle(fx, cfg);
       if (!res || fx.signal.aborted) return;
       if (res.solo) { const old = store.get('tkTargetBest', 0), rec = res.solo.all && (!old || res.solo.shots < old); if (rec) store.set('tkTargetBest', res.solo.shots); res.rec = rec; res.old = old; if (res.solo.all) try { recordScore('tanksTargets', lob.roster[0], res.solo.shots, true); } catch (e) { /* egal */ } }
       else if (lob.ranked !== false) { recordLadder(res.ranking); recordProfiles(res); }
@@ -300,11 +335,13 @@ export function tankHub(openFx, players, me) {
     });
     return h('div.tkchartwrap', null, svg);
   }
-  async function playDay(L) {
+  async function playDay(L, resume) {
     const d = L.plan[L.day], mode = MODE[d.mode];
     const roster = L.parts.map((p) => ({ name: p.name, color: p.color, cpu: p.cpu, team: 0 }));
     fx.stage.replaceChildren();
-    const res = await battle(fx, buildCfg(mode, d.map, 'map', roster, { ...defOpts(), ups: 1, rounds: 6 }));
+    const cfg = resume ? { ...resume.cfg, resume } : buildCfg(mode, d.map, 'map', roster, { ...defOpts(), ups: 1, rounds: 6 });
+    cfg.saveCtx = { kind: 'liga', day: L.day, days: L.days };
+    const res = await battle(fx, cfg);
     if (!res || fx.signal.aborted) { if (!fx.signal.aborted) render(); return; }
     const before = ligaTable(L).map((r) => r.i);
     res.ranking.forEach((r) => {
